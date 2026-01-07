@@ -79,6 +79,24 @@ def "nu-complete claude sessions" [] {
     }
 }
 
+# Completion for MCP scope
+def "nu-complete claude mcp-scope" [] {
+    [
+        { value: "local", description: "Local configuration (default)" }
+        { value: "user", description: "User-wide configuration" }
+        { value: "project", description: "Project-specific configuration" }
+    ]
+}
+
+# Completion for MCP transport type
+def "nu-complete claude mcp-transport" [] {
+    [
+        { value: "stdio", description: "Standard I/O (default)" }
+        { value: "sse", description: "Server-Sent Events" }
+        { value: "http", description: "HTTP transport" }
+    ]
+}
+
 # Completion for built-in tools
 def "nu-complete claude tools" [] {
     [
@@ -142,15 +160,146 @@ export extern main [
     --help(-h)                                          # Display help for command
 ]
 
+# ===== MCP Commands =====
+
 # MCP server management
 export extern "claude mcp" [
     --help(-h)                                          # Display help for command
 ]
 
+# Start the Claude Code MCP server
+export extern "claude mcp serve" [
+    --debug(-d)                                         # Enable debug mode
+    --verbose                                           # Override verbose mode setting from config
+    --help(-h)                                          # Display help for command
+]
+
+# Add an MCP server
+export extern "claude mcp add" [
+    name: string                                        # Server name
+    commandOrUrl: string                                # Command or URL for the server
+    ...args: string                                     # Additional arguments
+    --scope(-s): string@"nu-complete claude mcp-scope"  # Configuration scope (local, user, project)
+    --transport(-t): string@"nu-complete claude mcp-transport" # Transport type (stdio, sse, http)
+    --env(-e): string                                   # Set environment variables (KEY=value)
+    --header(-H): string                                # Set WebSocket headers
+    --help(-h)                                          # Display help for command
+]
+
+# Remove an MCP server
+export extern "claude mcp remove" [
+    name: string                                        # Server name to remove
+    --scope(-s): string@"nu-complete claude mcp-scope"  # Configuration scope
+    --help(-h)                                          # Display help for command
+]
+
+# List configured MCP servers
+export extern "claude mcp list" [
+    --help(-h)                                          # Display help for command
+]
+
+# Get details about an MCP server
+export extern "claude mcp get" [
+    name: string                                        # Server name
+    --help(-h)                                          # Display help for command
+]
+
+# Add an MCP server with JSON configuration
+export extern "claude mcp add-json" [
+    name: string                                        # Server name
+    json: string                                        # JSON configuration string
+    --scope(-s): string@"nu-complete claude mcp-scope"  # Configuration scope
+    --help(-h)                                          # Display help for command
+]
+
+# Import MCP servers from Claude Desktop
+export extern "claude mcp add-from-claude-desktop" [
+    --scope(-s): string@"nu-complete claude mcp-scope"  # Configuration scope
+    --help(-h)                                          # Display help for command
+]
+
+# Reset project MCP server choices
+export extern "claude mcp reset-project-choices" [
+    --help(-h)                                          # Display help for command
+]
+
+# ===== Plugin Commands =====
+
 # Plugin management
 export extern "claude plugin" [
     --help(-h)                                          # Display help for command
 ]
+
+# Validate a plugin or marketplace manifest
+export extern "claude plugin validate" [
+    path: string                                        # Path to plugin or manifest
+    --help(-h)                                          # Display help for command
+]
+
+# Plugin marketplace management
+export extern "claude plugin marketplace" [
+    --help(-h)                                          # Display help for command
+]
+
+# Add a marketplace
+export extern "claude plugin marketplace add" [
+    source: string                                      # URL, path, or GitHub repo
+    --help(-h)                                          # Display help for command
+]
+
+# List all marketplaces
+export extern "claude plugin marketplace list" [
+    --help(-h)                                          # Display help for command
+]
+
+# Remove a marketplace
+export extern "claude plugin marketplace remove" [
+    name: string                                        # Marketplace name to remove
+    --help(-h)                                          # Display help for command
+]
+
+# Update marketplace(s)
+export extern "claude plugin marketplace update" [
+    name?: string                                       # Marketplace name (all if not specified)
+    --help(-h)                                          # Display help for command
+]
+
+# Install a plugin
+export extern "claude plugin install" [
+    plugin: string                                      # Plugin name (use plugin@marketplace for specific)
+    --scope(-s): string@"nu-complete claude mcp-scope"  # Configuration scope
+    --help(-h)                                          # Display help for command
+]
+
+# Uninstall a plugin
+export extern "claude plugin uninstall" [
+    plugin: string                                      # Plugin name to uninstall
+    --scope(-s): string@"nu-complete claude mcp-scope"  # Configuration scope
+    --help(-h)                                          # Display help for command
+]
+
+# Enable a disabled plugin
+export extern "claude plugin enable" [
+    plugin: string                                      # Plugin name to enable
+    --scope(-s): string@"nu-complete claude mcp-scope"  # Configuration scope
+    --help(-h)                                          # Display help for command
+]
+
+# Disable an enabled plugin
+export extern "claude plugin disable" [
+    plugin: string                                      # Plugin name to disable
+    --scope(-s): string@"nu-complete claude mcp-scope"  # Configuration scope
+    --help(-h)                                          # Display help for command
+]
+
+# Update a plugin
+export extern "claude plugin update" [
+    plugin: string                                      # Plugin name to update
+    --scope(-s): string@"nu-complete claude mcp-scope"  # Configuration scope
+    --help(-h)                                          # Display help for command
+]
+
+# ===== Other Commands =====
 
 # Set up authentication token
 export extern "claude setup-token" [
@@ -170,5 +319,6 @@ export extern "claude update" [
 # Install Claude Code native build
 export extern "claude install" [
     target?: string@"nu-complete claude install-target" # Version to install (stable, latest, or specific)
+    --force                                             # Force installation even if already installed
     --help(-h)                                          # Display help for command
 ]
