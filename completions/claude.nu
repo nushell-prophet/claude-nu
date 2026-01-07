@@ -1,5 +1,7 @@
 # Nushell custom completions for Claude Code CLI
 
+use ../nu-claude/commands.nu [ "nu-complete claude sessions" ]
+
 # Completion for output format
 def "nu-complete claude output-format" [] {
     [
@@ -46,37 +48,6 @@ def "nu-complete claude install-target" [] {
         { value: "stable", description: "Stable release" }
         { value: "latest", description: "Latest release" }
     ]
-}
-
-# Completion for session UUIDs (for --resume)
-# Reads sessions from ~/.claude/projects/<project-path>/ sorted by modification time (newest first)
-def "nu-complete claude sessions" [] {
-    let project_path = ($env.PWD | str replace --all '/' '-')
-    let sessions_dir = ($env.HOME | path join ".claude" "projects" $project_path)
-
-    if not ($sessions_dir | path exists) {
-        return { options: { sort: false }, completions: [] }
-    }
-
-    # Get UUID session files (exclude agent-* files), sorted by modification time
-    let completions = ls $sessions_dir
-        | where name =~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
-        | sort-by modified --reverse
-        | each {|file|
-            let uuid = ($file.name | path basename | str replace '.jsonl' '')
-            # Try to read summary from first line
-            let summary = try {
-                open $file.name | lines | first | from json | get summary? | default "No summary"
-            } catch {
-                "No summary"
-            }
-            { value: $uuid, description: $summary }
-        }
-
-    {
-        options: { sort: false },
-        completions: $completions
-    }
 }
 
 # Completion for MCP scope

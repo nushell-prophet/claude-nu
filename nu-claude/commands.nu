@@ -29,12 +29,14 @@ export def "nu-complete claude sessions" []: nothing -> record {
     | sort-by modified --reverse
     | each {|file|
         let uuid = ($file.name | path basename | str replace '.jsonl' '')
+        let age = $file.modified | date humanize
+        let size = $file.size | into string
         let summary = try {
             open $file.name | lines | first | from json | get summary? | default "No summary"
         } catch {
             "No summary"
         }
-        {value: $uuid description: $summary}
+        {value: $uuid description: $"($age), ($size): ($summary)"}
     }
 
     {
