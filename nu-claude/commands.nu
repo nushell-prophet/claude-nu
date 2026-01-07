@@ -47,6 +47,7 @@ export def "nu-complete claude sessions" []: nothing -> record {
 
 # Extract user messages from Claude Code session files
 export def messages [
+    regex?: string # Filter messages by regex pattern
     --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
     --all (-a) # Include all message types (not just user-typed)
     --raw (-r) # Return raw message records instead of just content
@@ -99,10 +100,22 @@ export def messages [
         }
     }
 
+    let filtered = $messages
+    | if $regex == null { } else {
+        where {
+            let content = $in.message?.content?
+            if ($content | describe | str starts-with "list") {
+                ($content | each { $in.content? } | str join "\n") =~ $regex
+            } else {
+                $content =~ $regex
+            }
+        }
+    }
+
     if $raw {
-        $messages
+        $filtered
     } else {
-        $messages | each {|msg|
+        $filtered | each {|msg|
             let content = $msg.message?.content?
             let message = if ($content | describe | str starts-with "list") {
                 $content | each { $in.content? } | str join "\n"
