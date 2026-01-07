@@ -48,6 +48,37 @@ def "nu-complete claude install-target" [] {
     ]
 }
 
+# Completion for session UUIDs (for --resume)
+# Reads sessions from ~/.claude/projects/<project-path>/ sorted by modification time (newest first)
+def "nu-complete claude sessions" [] {
+    let project_path = ($env.PWD | str replace --all '/' '-')
+    let sessions_dir = ($env.HOME | path join ".claude" "projects" $project_path)
+
+    if not ($sessions_dir | path exists) {
+        return { options: { sort: false }, completions: [] }
+    }
+
+    # Get UUID session files (exclude agent-* files), sorted by modification time
+    let completions = ls $sessions_dir
+        | where name =~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
+        | sort-by modified --reverse
+        | each {|file|
+            let uuid = ($file.name | path basename | str replace '.jsonl' '')
+            # Try to read summary from first line
+            let summary = try {
+                open $file.name | lines | first | from json | get summary? | default "No summary"
+            } catch {
+                "No summary"
+            }
+            { value: $uuid, description: $summary }
+        }
+
+    {
+        options: { sort: false },
+        completions: $completions
+    }
+}
+
 # Completion for built-in tools
 def "nu-complete claude tools" [] {
     [
@@ -89,7 +120,7 @@ export extern main [
     --append-system-prompt: string                      # Append to default system prompt
     --permission-mode: string@"nu-complete claude permission-mode" # Permission mode for the session
     --continue(-c)                                      # Continue the most recent conversation
-    --resume(-r): string                                # Resume conversation by session ID or open picker
+    --resume(-r): string@"nu-complete claude sessions"  # Resume conversation by session ID or open picker
     --fork-session                                      # Create new session ID when resuming
     --no-session-persistence                            # Disable session persistence (with --print)
     --model: string@"nu-complete claude model"          # Model for the current session
