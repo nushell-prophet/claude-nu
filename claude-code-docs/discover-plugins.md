@@ -230,7 +230,7 @@ To choose a different [installation scope](/en/settings#configuration-scopes), u
 * **Project scope**: install for all collaborators on this repository (adds to `.claude/settings.json`)
 * **Local scope**: install for yourself in this repository only (not shared with collaborators)
 
-You may also see plugins with **managed** scope—these are installed by enterprise administrators via [managed settings](/en/settings#enterprise-managed-policy-settings) and cannot be modified.
+You may also see plugins with **managed** scope—these are installed by administrators via [managed settings](/en/settings#settings-files) and cannot be modified.
 
 Run `/plugin` and go to the **Installed** tab to see your plugins grouped by scope.
 
@@ -322,6 +322,15 @@ Toggle auto-update for individual marketplaces through the UI:
 Official Anthropic marketplaces have auto-update enabled by default. Third-party and local development marketplaces have auto-update disabled by default.
 
 To disable all automatic updates entirely for both Claude Code and all plugins, set the `DISABLE_AUTOUPDATER` environment variable. See [Auto updates](/en/setup#auto-updates) for details.
+
+To keep plugin auto-updates enabled while disabling Claude Code auto-updates, set `FORCE_AUTOUPDATE_PLUGINS=true` along with `DISABLE_AUTOUPDATER`:
+
+```shell  theme={null}
+export DISABLE_AUTOUPDATER=true
+export FORCE_AUTOUPDATE_PLUGINS=true
+```
+
+This is useful when you want to manage Claude Code updates manually but still receive automatic plugin updates.
 
 ## Configure team marketplaces
 
