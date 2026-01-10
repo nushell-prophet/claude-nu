@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-nu-claude is a Nushell module providing utilities for working with Claude Code sessions and CLI completions.
+claude-nu is a Nushell module providing utilities for working with Claude Code sessions and CLI completions.
 
 ## Architecture
 
 ```
-nu-claude/
-├── nu-claude/           # Main module
+claude-nu/
+├── claude-nu/           # Main module
 │   ├── mod.nu           # Module entry point, exports public commands
 │   └── commands.nu      # Command implementations (messages, completions)
 ├── completions/
@@ -28,14 +28,14 @@ nu-claude/
 
 ```nushell
 # Add to config.nu
-use /path/to/nu-claude
+use /path/to/claude-nu
 source /path/to/completions/claude.nu
 
 # Commands
-nu-claude messages              # Get user messages from current session
-nu-claude messages 'pattern'    # Filter by regex
-nu-claude messages --raw        # Get raw JSONL records
-nu-claude messages --all        # Include system messages
+claude-nu messages              # Get user messages from current session
+claude-nu messages 'pattern'    # Filter by regex
+claude-nu messages --raw        # Get raw JSONL records
+claude-nu messages --all        # Include system messages
 ```
 
 ## Code Style

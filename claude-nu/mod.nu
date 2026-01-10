@@ -1,9 +1,9 @@
-# nu-claude - Nushell utilities for Claude Code
+# claude-nu - Nushell utilities for Claude Code
 #
 # Usage:
-#   use nu-claude
-#   nu-claude messages           # Get user messages from current session
-#   nu-claude messages --all     # Include system messages
-#   nu-claude messages --raw     # Get raw message records
+#   use claude-nu
+#   claude-nu messages           # Get user messages from current session
+#   claude-nu messages --all     # Include system messages
+#   claude-nu messages --raw     # Get raw message records
 
 export use commands.nu [ messages ]

@@ -1,6 +1,6 @@
 # Nushell custom completions for Claude Code CLI
 
-use ../nu-claude/commands.nu [ "nu-complete claude sessions" ]
+use ../claude-nu/commands.nu [ "nu-complete claude sessions" ]
 
 # Completion for output format
 def "nu-complete claude output-format" [] {

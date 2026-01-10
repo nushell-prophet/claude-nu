@@ -1,4 +1,4 @@
-# nu-claude - Nushell utilities for Claude Code
+# claude-nu - Nushell utilities for Claude Code
 
 # System-generated message prefixes to filter out
 const SYSTEM_PREFIXES = [
