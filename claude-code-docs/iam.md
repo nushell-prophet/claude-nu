@@ -4,21 +4,37 @@
 
 ## Authentication methods
 
-Setting up Claude Code requires access to Anthropic models. For teams, you can set up Claude Code access in one of four ways:
+Setting up Claude Code requires access to Anthropic models. For teams, you can set up Claude Code access in one of these ways:
 
-* Claude API via the Claude Console
-* Amazon Bedrock
-* Microsoft Foundry
-* Google Vertex AI
+* [Claude for Teams or Enterprise](/en/setup#for-teams-and-organizations) (recommended)
+* [Claude Console with team billing](/en/setup#for-teams-and-organizations)
+* [Amazon Bedrock](/en/amazon-bedrock)
+* [Google Vertex AI](/en/google-vertex-ai)
+* [Microsoft Foundry](/en/microsoft-foundry)
 
-### Claude API authentication
+### Claude for Teams or Enterprise (recommended)
 
-**To set up Claude Code access for your team via Claude API:**
+[Claude for Teams](https://claude.com/pricing#team-&-enterprise) and [Claude for Enterprise](https://anthropic.com/contact-sales) provide the best experience for organizations using Claude Code. Team members get access to both Claude Code and Claude on the web with centralized billing and team management.
+
+* **Claude for Teams**: Self-service plan with collaboration features, admin tools, and billing management. Best for smaller teams.
+* **Claude for Enterprise**: Adds SSO, domain capture, role-based permissions, compliance API, and managed policy settings for organization-wide Claude Code configurations. Best for larger organizations with security and compliance requirements.
+
+**To set up Claude Code access:**
+
+1. Subscribe to [Claude for Teams](https://claude.com/pricing#team-&-enterprise) or contact sales for [Claude for Enterprise](https://anthropic.com/contact-sales)
+2. Invite team members from the admin dashboard
+3. Team members install Claude Code and log in with their Claude.ai accounts
+
+### Claude Console authentication
+
+For organizations that prefer API-based billing, you can set up access through the Claude Console.
+
+**To set up Claude Code access for your team via Claude Console:**
 
 1. Use your existing Claude Console account or create a new Claude Console account
 2. You can add users through either method below:
    * Bulk invite users from within the Console (Console -> Settings -> Members -> Invite)
-   * [Set up SSO](https://support.claude.com/en/articles/10280258-setting-up-single-sign-on-on-the-api-console)
+   * [Set up SSO](https://support.claude.com/en/articles/13132885-setting-up-single-sign-on-sso)
 3. When inviting users, they need one of the following roles:
    * "Claude Code" role means users can only create Claude Code API keys
    * "Developer" role means users can create any kind of API key
@@ -92,9 +108,13 @@ Some tools support more fine-grained permission controls:
 
 **Bash**
 
+Bash permission rules support both prefix matching with `:*` and wildcard matching with `*`:
+
 * `Bash(npm run build)` Matches the exact Bash command `npm run build`
 * `Bash(npm run test:*)` Matches Bash commands starting with `npm run test`
-* `Bash(curl http://site.com/:*)` Matches curl commands that start with exactly `curl http://site.com/`
+* `Bash(npm *)` Matches any command starting with `npm ` (e.g., `npm install`, `npm run build`)
+* `Bash(* install)` Matches any command ending with ` install` (e.g., `npm install`, `yarn install`)
+* `Bash(git * main)` Matches commands like `git checkout main`, `git merge main`
 
 <Tip>
   Claude Code is aware of shell operators (like `&&`) so a prefix match rule like `Bash(safe-cmd:*)` won't give it permission to run the command `safe-cmd && other-cmd`
@@ -103,8 +123,8 @@ Some tools support more fine-grained permission controls:
 <Warning>
   Important limitations of Bash permission patterns:
 
-  1. This tool uses **prefix matches**, not regex or glob patterns
-  2. The wildcard `:*` only works at the end of a pattern to match any continuation
+  1. The `:*` wildcard only works at the end of a pattern for prefix matching
+  2. The `*` wildcard can appear at any position and matches any sequence of characters
   3. Patterns like `Bash(curl http://github.com/:*)` can be bypassed in many ways:
      * Options before URL: `curl -X GET http://github.com/...` won't match
      * Different protocol: `curl https://github.com/...` won't match
@@ -150,6 +170,24 @@ Read & Edit rules both follow the [gitignore](https://git-scm.com/docs/gitignore
 * `mcp__puppeteer` Matches any tool provided by the `puppeteer` server (name configured in Claude Code)
 * `mcp__puppeteer__*` Wildcard syntax that also matches all tools from the `puppeteer` server
 * `mcp__puppeteer__puppeteer_navigate` Matches the `puppeteer_navigate` tool provided by the `puppeteer` server
+
+**Task (Subagents)**
+
+Use `Task(AgentName)` rules to control which [subagents](/en/sub-agents) Claude can use:
+
+* `Task(Explore)` Matches the Explore subagent
+* `Task(Plan)` Matches the Plan subagent
+* `Task(Verify)` Matches the Verify subagent
+
+Add these rules to the `deny` array in your [settings](/en/settings#permission-settings) or use the `--disallowedTools` CLI flag to disable specific agents. For example, to disable the Explore agent:
+
+```json  theme={null}
+{
+  "permissions": {
+    "deny": ["Task(Explore)"]
+  }
+}
+```
 
 ### Additional permission control with hooks
 
