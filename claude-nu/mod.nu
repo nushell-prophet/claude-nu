@@ -6,4 +6,4 @@
 #   claude-nu messages --all     # Include system messages
 #   claude-nu messages --raw     # Get raw message records
 
-export use commands.nu [ messages ]
+export use commands.nu [ messages get-sessions-dir ]
