@@ -139,8 +139,8 @@ export def extract-text-content []: record -> string {
         $t if ($t =~ '^(list|table)') => {
             $content
             | where type? == "text"
-            | each { $in.text? | default "" }
-            | str join ""
+            | get text --optional
+            | str join
         }
         _ => { "" }
     }
