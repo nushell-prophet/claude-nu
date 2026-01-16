@@ -227,7 +227,7 @@ export def parse-session-file []: path -> record {
     | uniq
 
     let edited_files = $all_tool_calls
-    | where { ($in.name? == "Edit") or ($in.name? == "Write") }
+    | where name? in ["Edit" "Write"]
     | each { $in.input?.file_path? }
     | compact
     | uniq
