@@ -60,7 +60,12 @@ export def messages [
 
     # Get session file path
     let session_file = if $session != null {
-        $sessions_dir | path join $"($session).jsonl"
+        # Accept either UUID or full path (path has .jsonl extension)
+        if ($session | str ends-with '.jsonl') {
+            $session
+        } else {
+            $sessions_dir | path join $"($session).jsonl"
+        }
     } else {
         # Use most recent session
         let files = ls $sessions_dir
