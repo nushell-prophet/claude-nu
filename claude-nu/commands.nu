@@ -131,7 +131,7 @@ export def messages [
 }
 
 # Helper to extract text content from a message
-def extract-text-content []: record -> string {
+export def extract-text-content []: record -> string {
     let content = $in.message?.content?
     let content_type = $content | describe
     match $content_type {
@@ -147,7 +147,7 @@ def extract-text-content []: record -> string {
 }
 
 # Helper to extract tool calls from assistant messages
-def extract-tool-calls []: record -> table {
+export def extract-tool-calls []: record -> table {
     let content = $in.message?.content?
     let content_type = $content | describe
     if ($content_type =~ '^(list|table)') {
@@ -156,7 +156,7 @@ def extract-tool-calls []: record -> table {
 }
 
 # Parse a single session file into structured info
-def parse-session-file []: path -> record {
+export def parse-session-file []: path -> record {
     let file_path = $in
     let lines = open --raw $file_path | lines
 
