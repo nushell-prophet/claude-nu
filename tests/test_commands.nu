@@ -492,3 +492,61 @@ def "response length sums text content" [] {
 
     assert equal $length 15  # 5 + 6 + 4
 }
+
+# =============================================================================
+# Integration test for parse-session-file
+# =============================================================================
+
+@test
+def "parse-session-file extracts all fields from session file" [] {
+    # Create temp file with realistic session data
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"summary","summary":"Test session about file parsing"}'
+        '{"type":"user","message":{"content":"Please check @src/main.rs"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"I will read that file."},{"type":"tool_use","name":"Read","input":{"file_path":"/src/main.rs"}}]},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"user","message":{"content":"Now edit @src/lib.rs please"},"timestamp":"2024-01-15T10:00:02Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"Making the edit."},{"type":"tool_use","name":"Edit","input":{"file_path":"/src/lib.rs","old_string":"old","new_string":"new"}}]},"timestamp":"2024-01-15T10:00:03Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Task","input":{"subagent_type":"Explore","description":"Find tests"}}]},"timestamp":"2024-01-15T10:00:04Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    # Run parse-session-file
+    let result = $temp_file | parse-session-file
+
+    # Cleanup
+    rm $temp_file
+
+    # Assertions
+    assert equal $result.summary "Test session about file parsing"
+    assert equal $result.user_msg_count 2
+    assert ($result.user_msg_length > 0)
+    assert ($result.response_length > 0)
+    assert equal $result.agent_count 1
+    assert equal ($result.agents | first | get type) "Explore"
+    assert equal ($result.agents | first | get description) "Find tests"
+    assert ("src/main.rs" in $result.mentioned_files)
+    assert ("src/lib.rs" in $result.mentioned_files)
+    assert ("/src/main.rs" in $result.read_files)
+    assert ("/src/lib.rs" in $result.edited_files)
+}
+
+@test
+def "parse-session-file handles empty file" [] {
+    let temp_file = $nu.temp-path | path join $"test-empty-(random uuid).jsonl"
+
+    "" | save --force $temp_file
+
+    let result = $temp_file | parse-session-file
+
+    rm $temp_file
+
+    assert equal $result.summary ""
+    assert equal $result.user_msg_count 0
+    assert equal $result.first_timestamp null
+    assert equal $result.last_timestamp null
+    assert equal ($result.agents | length) 0
+    assert equal ($result.mentioned_files | length) 0
+}
