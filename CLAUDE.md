@@ -15,7 +15,9 @@ claude-nu/
 │   └── commands.nu      # Command implementations (messages, completions)
 ├── completions/
 │   └── claude.nu        # Nushell completions for `claude` CLI
-├── toolkit.nu           # Development tools (fetch-claude-docs)
+├── tests/               # Unit tests (nutest framework)
+│   └── test_commands.nu # Tests for command logic
+├── toolkit.nu           # Development tools (test, fetch-claude-docs)
 └── claude-code-docs/    # Downloaded Claude Code documentation (reference)
 ```
 
@@ -37,6 +39,18 @@ claude-nu messages 'pattern'    # Filter by regex
 claude-nu messages --raw        # Get raw JSONL records
 claude-nu messages --all        # Include system messages
 ```
+
+## Testing
+
+Uses [nutest](https://github.com/vyadh/nutest) framework (expected at `../nutest`).
+
+```nushell
+nu toolkit.nu test          # Run all tests
+nu toolkit.nu test --json   # Output JSON for CI
+nu toolkit.nu test --fail   # Exit non-zero on failures (for CI)
+```
+
+Test files use `@test` decorator and live in `tests/` directory.
 
 ## Code Style
 
