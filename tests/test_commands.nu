@@ -550,3 +550,52 @@ def "parse-session-file handles empty file" [] {
     assert equal ($result.agents | length) 0
     assert equal ($result.mentioned_files | length) 0
 }
+
+# =============================================================================
+# Tests for --session flag path detection
+# =============================================================================
+
+@test
+def "session flag detects jsonl extension as path" [] {
+    let input = "/Users/user/.claude/projects/-test/abc123.jsonl"
+    let is_path = $input | str ends-with '.jsonl'
+
+    assert equal $is_path true
+}
+
+@test
+def "session flag detects uuid without extension" [] {
+    let input = "b8890913-730d-4621-b108-9c565d5cea3a"
+    let is_path = $input | str ends-with '.jsonl'
+
+    assert equal $is_path false
+}
+
+@test
+def "session flag works with windows-style paths" [] {
+    let input = 'C:\Users\user\.claude\projects\-test\abc123.jsonl'
+    let is_path = $input | str ends-with '.jsonl'
+
+    assert equal $is_path true
+}
+
+@test
+def "messages command accepts full path via --session" [] {
+    # Create temp session file
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Hello from path test"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":"Hi there"},"timestamp":"2024-01-15T10:00:01Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    # Call messages with full path
+    let result = messages --session $temp_file
+
+    rm $temp_file
+
+    assert equal ($result | length) 1
+    assert equal ($result | first | get message) "Hello from path test"
+}
