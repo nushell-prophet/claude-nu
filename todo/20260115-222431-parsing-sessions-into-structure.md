@@ -1,7 +1,7 @@
 ---
-status: planned
+status: done
 created: 20260115-222431
-updated: 20260115-224500
+updated: 20260115-230000
 ---
 
 # Initial request (only the user can edit this section)
@@ -75,5 +75,14 @@ claude-nu sessions ...paths: path
 
 ---
 
-## Status: Ready to implement
+## Status: Done
+
+### Implementation notes:
+- Added to `claude-nu/commands.nu`: `sessions` command + helpers (`extract-text-content`, `extract-tool-calls`, `parse-session-file`)
+- Exported in `claude-nu/mod.nu`
+- Key fixes during implementation:
+  - Use `open --raw` to prevent auto-parsing of JSONL
+  - Check for both `list` and `table` content types (Nushell uses `table` for arrays of records)
+  - Handle empty session files gracefully
+  - Handle missing summary records
 
