@@ -213,10 +213,12 @@ export def parse-session-file []: path -> record {
 
     let agent_calls = $all_tool_calls | where name? == "Task"
     let agents = $agent_calls
-    | each {{
-        type: ($in.input?.subagent_type? | default "unknown")
-        description: ($in.input?.description? | default "")
-    }}
+    | each {
+        {
+            type: ($in.input?.subagent_type? | default "unknown")
+            description: ($in.input?.description? | default "")
+        }
+    }
 
     let read_files = $all_tool_calls
     | where name? == "Read"
