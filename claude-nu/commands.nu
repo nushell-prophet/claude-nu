@@ -133,28 +133,26 @@ export def messages [
 # Helper to extract text content from a message
 def extract-text-content []: record -> string {
     let content = $in.message?.content?
-    let content_type = ($content | describe)
-    if ($content_type | str starts-with "list") or ($content_type | str starts-with "table") {
-        $content
-        | where type? == "text"
-        | each { $in.text? | default "" }
-        | str join ""
-    } else if $content_type == "string" {
-        $content
-    } else {
-        ""
+    let content_type = $content | describe
+    match $content_type {
+        "string" => { $content }
+        $t if ($t =~ '^(list|table)') => {
+            $content
+            | where type? == "text"
+            | each { $in.text? | default "" }
+            | str join ""
+        }
+        _ => { "" }
     }
 }
 
 # Helper to extract tool calls from assistant messages
 def extract-tool-calls []: record -> table {
     let content = $in.message?.content?
-    let content_type = ($content | describe)
-    if ($content_type | str starts-with "list") or ($content_type | str starts-with "table") {
+    let content_type = $content | describe
+    if ($content_type =~ '^(list|table)') {
         $content | where type? == "tool_use"
-    } else {
-        []
-    }
+    } else { [] }
 }
 
 # Parse a single session file into structured info
@@ -162,7 +160,6 @@ def parse-session-file []: path -> record {
     let file_path = $in
     let lines = open --raw $file_path | lines
 
-    # Handle empty files
     if ($lines | is-empty) {
         return {
             path: $file_path
@@ -182,71 +179,54 @@ def parse-session-file []: path -> record {
 
     let records = $lines | each { from json }
 
-    # Extract summary
-    let summary_records = $records | where type? == "summary"
-    let summary = if ($summary_records | is-empty) {
-        ""
-    } else {
-        $summary_records | first | get summary? | default ""
-    }
+    let summary = $records
+    | where type? == "summary"
+    | if ($in | is-empty) { "" } else { first | get summary? | default "" }
 
-    # User messages
     let user_records = $records | where type? == "user"
     let user_timestamps = $user_records
     | each { $in.timestamp? }
     | compact
-    | each { $in | into datetime }
+    | each { into datetime }
 
-    let first_ts = if ($user_timestamps | is-empty) { null } else { $user_timestamps | first }
-    let last_ts = if ($user_timestamps | is-empty) { null } else { $user_timestamps | last }
+    let first_ts = $user_timestamps | if ($in | is-empty) { null } else { first }
+    let last_ts = $user_timestamps | if ($in | is-empty) { null } else { last }
 
-    let user_texts = $user_records
-    | each { $in | extract-text-content }
-    | where { ($in | describe) == "string" }
-    let user_msg_length = if ($user_texts | is-empty) { 0 } else {
-        $user_texts | each { $in | str length } | math sum
-    }
+    let user_texts = $user_records | each { extract-text-content }
+    let user_msg_length = $user_texts
+    | each { str length }
+    | if ($in | is-empty) { 0 } else { math sum }
 
-    # Mentioned files (@path patterns in user messages)
     let mentioned_files = $user_texts
-    | each { $in | parse --regex '@([^\s<>]+)' | get capture0? | default [] }
+    | each { parse --regex '@([^\s<>]+)' | get capture0? | default [] }
     | flatten
     | uniq
 
-    # Assistant messages
     let assistant_records = $records | where type? == "assistant"
-    let response_texts = $assistant_records
-    | each { $in | extract-text-content }
-    | where { ($in | describe) == "string" }
-    let response_length = if ($response_texts | is-empty) { 0 } else {
-        $response_texts | each { $in | str length } | math sum
-    }
+    let response_length = $assistant_records
+    | each { extract-text-content }
+    | each { str length }
+    | if ($in | is-empty) { 0 } else { math sum }
 
-    # Tool calls
     let all_tool_calls = $assistant_records
-    | each { $in | extract-tool-calls }
+    | each { extract-tool-calls }
     | flatten
 
-    # Agent usages (Task tool)
     let agent_calls = $all_tool_calls | where name? == "Task"
     let agents = $agent_calls
-    | each {|call|
-        {
-            type: ($call.input?.subagent_type? | default "unknown")
-            description: ($call.input?.description? | default "")
-        }
-    }
+    | each {{
+        type: ($in.input?.subagent_type? | default "unknown")
+        description: ($in.input?.description? | default "")
+    }}
 
-    # Read files
     let read_files = $all_tool_calls
     | where name? == "Read"
     | each { $in.input?.file_path? }
     | compact
     | uniq
 
-    # Edited files (Edit + Write)
     let edited_files = $all_tool_calls
-    | where {|call| ($call.name? == "Edit") or ($call.name? == "Write") }
+    | where { ($in.name? == "Edit") or ($in.name? == "Write") }
     | each { $in.input?.file_path? }
     | compact
     | uniq
@@ -271,14 +251,9 @@ def parse-session-file []: path -> record {
 export def sessions [
     ...paths: path # Session files or directories to parse (default: current project sessions)
 ]: nothing -> table {
-    # Resolve paths - default to get-sessions-dir if none provided
-    let target_paths = if ($paths | is-empty) {
-        [( get-sessions-dir )]
-    } else {
-        $paths
-    }
+    let target_paths = $paths
+    | if ($in | is-empty) { [(get-sessions-dir)] } else { }
 
-    # Collect all session files
     let session_files = $target_paths
     | each {|p|
         if not ($p | path exists) {
@@ -286,9 +261,7 @@ export def sessions [
         }
         if ($p | path type) == "dir" {
             glob ($p | path join "*.jsonl")
-        } else {
-            [$p]
-        }
+        } else { [$p] }
     }
     | flatten
     | where { $in =~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$' }
@@ -297,6 +270,5 @@ export def sessions [
         error make {msg: "No session files found"}
     }
 
-    # Parse each session file
-    $session_files | each { $in | parse-session-file }
+    $session_files | each { parse-session-file }
 }
