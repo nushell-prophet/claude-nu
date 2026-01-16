@@ -192,10 +192,11 @@ export def parse-session-file []: path -> record {
     let first_ts = $user_timestamps | if ($in | is-empty) { null } else { first }
     let last_ts = $user_timestamps | if ($in | is-empty) { null } else { last }
 
-    let user_texts = $user_records | each { extract-text-content }
-    let user_msg_length = $user_texts
-    | each { str length }
+    let user_msg_length = $user_records
+    | each { extract-text-content | str length }
     | if ($in | is-empty) { 0 } else { math sum }
+
+    let user_texts = $user_records | each { extract-text-content }
 
     let mentioned_files = $user_texts
     | each { parse --regex '@([^\s<>]+)' | get capture0? | default [] }
@@ -222,8 +223,7 @@ export def parse-session-file []: path -> record {
 
     let read_files = $all_tool_calls
     | where name? == "Read"
-    | each { $in.input?.file_path? }
-    | compact
+    | get input.file_path --optional
     | uniq
 
     let edited_files = $all_tool_calls
