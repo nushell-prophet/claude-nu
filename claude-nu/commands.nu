@@ -204,8 +204,7 @@ export def parse-session-file []: path -> record {
 
     let assistant_records = $records | where type? == "assistant"
     let response_length = $assistant_records
-    | each { extract-text-content }
-    | each { str length }
+    | each { extract-text-content | str length }
     | if ($in | is-empty) { 0 } else { math sum }
 
     let all_tool_calls = $assistant_records
