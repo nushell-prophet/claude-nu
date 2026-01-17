@@ -1,5 +1,8 @@
 # claude-nu - Nushell utilities for Claude Code
 
+# UUID pattern for session files
+const UUID_JSONL_PATTERN = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
+
 # System-generated message prefixes to filter out
 const SYSTEM_PREFIXES = [
     "<command-name>"
@@ -32,6 +35,35 @@ export def get-sessions-dir []: nothing -> path {
     $env.HOME | path join ".claude" "projects" $project_path
 }
 
+# Resolve session file path from UUID, path, or default to most recent
+export def resolve-session-file [
+    session?: string # Session UUID or path (null = most recent)
+    --sessions-dir: path # Override sessions directory
+]: nothing -> path {
+    let dir = $sessions_dir | default (get-sessions-dir)
+
+    if $session != null {
+        if ($session | str ends-with '.jsonl') {
+            return $session
+        }
+        return ($dir | path join $"($session).jsonl")
+    }
+
+    if not ($dir | path exists) {
+        error make {msg: "No sessions directory found for current project"}
+    }
+
+    let files = ls $dir
+    | where name =~ $UUID_JSONL_PATTERN
+    | sort-by modified --reverse
+
+    if ($files | is-empty) {
+        error make {msg: "No session files found"}
+    }
+
+    $files | first | get name
+}
+
 # Completion for session UUIDs
 export def "nu-complete claude sessions" []: nothing -> record {
     let sessions_dir = get-sessions-dir
@@ -41,7 +73,7 @@ export def "nu-complete claude sessions" []: nothing -> record {
     }
 
     let completions = ls $sessions_dir
-    | where name =~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
+    | where name =~ $UUID_JSONL_PATTERN
     | sort-by modified --reverse
     | each {|file|
         let uuid = ($file.name | path basename | str replace '.jsonl' '')
@@ -68,32 +100,7 @@ export def messages [
     --all (-a) # Include all message types (not just user-typed)
     --raw (-r) # Return raw message records instead of just content
 ]: nothing -> table {
-    let sessions_dir = get-sessions-dir
-
-    if not ($sessions_dir | path exists) {
-        error make {msg: "No sessions directory found for current project"}
-    }
-
-    # Get session file path
-    let session_file = if $session != null {
-        # Accept either UUID or full path (path has .jsonl extension)
-        if ($session | str ends-with '.jsonl') {
-            $session
-        } else {
-            $sessions_dir | path join $"($session).jsonl"
-        }
-    } else {
-        # Use most recent session
-        let files = ls $sessions_dir
-        | where name =~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
-        | sort-by modified --reverse
-
-        if ($files | is-empty) {
-            error make {msg: "No session files found"}
-        }
-
-        $files | first | get name
-    }
+    let session_file = resolve-session-file $session
 
     if not ($session_file | path exists) {
         error make {msg: $"Session file not found: ($session_file)"}
@@ -204,6 +211,18 @@ export def extract-thinking-level []: table -> string {
     | if ($in | is-empty) { "" } else { first }
 }
 
+# Extract first/last timestamps from user records
+export def extract-timestamps []: table -> record {
+    let ts = $in
+    | each { $in.timestamp? }
+    | compact
+    | each { into datetime }
+    {
+        first: ($ts | if ($in | is-empty) { null } else { first })
+        last: ($ts | if ($in | is-empty) { null } else { last })
+    }
+}
+
 # Extract file operations from tool calls
 export def extract-file-operations []: table -> record {
     let tool_calls = $in
@@ -269,21 +288,14 @@ export def parse-session-file []: path -> record {
     | if ($in | is-empty) { "" } else { first | get summary? | default "" }
 
     let user_records = $records | where type? == "user"
-    let user_timestamps = $user_records
-    | each { $in.timestamp? }
-    | compact
-    | each { into datetime }
-
-    let first_ts = $user_timestamps | if ($in | is-empty) { null } else { first }
-    let last_ts = $user_timestamps | if ($in | is-empty) { null } else { last }
+    let timestamps = $user_records | extract-timestamps
 
     let user_msg_length = $user_records
     | each { extract-text-content | str length }
     | if ($in | is-empty) { 0 } else { math sum }
 
-    let user_texts = $user_records | each { extract-text-content }
-
-    let mentioned_files = $user_texts
+    let mentioned_files = $user_records
+    | each { extract-text-content }
     | each { parse --regex '@([^\s<>]+)' | get capture0? | default [] }
     | flatten
     | uniq
@@ -293,41 +305,22 @@ export def parse-session-file []: path -> record {
     | each { extract-text-content | str length }
     | if ($in | is-empty) { 0 } else { math sum }
 
-    let all_tool_calls = $assistant_records
-    | each { extract-tool-calls }
-    | flatten
-
-    let agent_calls = $all_tool_calls | where name? == "Task"
-    let agents = $agent_calls
-    | each {
-        {
-            type: ($in.input?.subagent_type? | default "unknown")
-            description: ($in.input?.description? | default "")
-        }
-    }
-
-    let read_files = $all_tool_calls
-    | where name? == "Read"
-    | get input.file_path --optional
-    | uniq
-
-    let edited_files = $all_tool_calls
-    | where name? in ["Edit" "Write"]
-    | get input.file_path --optional
-    | uniq
+    let all_tool_calls = $assistant_records | each { extract-tool-calls } | flatten
+    let file_ops = $all_tool_calls | extract-file-operations
+    let agents = $all_tool_calls | extract-agents
 
     $EMPTY_SESSION_SUMMARY
     | update summary $summary
-    | update first_timestamp $first_ts
-    | update last_timestamp $last_ts
+    | update first_timestamp $timestamps.first
+    | update last_timestamp $timestamps.last
     | update user_msg_count ($user_records | length)
     | update user_msg_length $user_msg_length
     | update response_length $response_length
-    | update agent_count ($agent_calls | length)
+    | update agent_count ($agents | length)
     | update agents $agents
     | update mentioned_files $mentioned_files
-    | update read_files $read_files
-    | update edited_files $edited_files
+    | update read_files $file_ops.read_files
+    | update edited_files $file_ops.edited_files
     | update path $file_path
 }
 
@@ -348,7 +341,7 @@ export def sessions [
         } else { [$p] }
     }
     | flatten
-    | where { $in =~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$' }
+    | where { $in =~ $UUID_JSONL_PATTERN }
 
     if ($session_files | is-empty) {
         error make {msg: "No session files found"}
@@ -390,28 +383,7 @@ export def parse-session [
     --tool-call-count # Include tool_call_count column
     --all (-a) # Include all columns
 ]: nothing -> record {
-    let sessions_dir = get-sessions-dir
-
-    # Resolve session file path
-    let session_file = if $session != null {
-        if ($session | str ends-with '.jsonl') {
-            $session
-        } else {
-            $sessions_dir | path join $"($session).jsonl"
-        }
-    } else {
-        if not ($sessions_dir | path exists) {
-            error make {msg: "No sessions directory found for current project"}
-        }
-        let files = ls $sessions_dir
-        | where name =~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
-        | sort-by modified --reverse
-
-        if ($files | is-empty) {
-            error make {msg: "No session files found"}
-        }
-        $files | first | get name
-    }
+    let session_file = resolve-session-file $session
 
     if not ($session_file | path exists) {
         error make {msg: $"Session file not found: ($session_file)"}
@@ -470,13 +442,7 @@ export def parse-session [
         | if ($in | is-empty) { "" } else { first | get summary? | default "" }
     } else { "" }
 
-    let timestamps = if $need_timestamps {
-        let ts = $user_records | each { $in.timestamp? } | compact | each { into datetime }
-        {
-            first: ($ts | if ($in | is-empty) { null } else { first })
-            last: ($ts | if ($in | is-empty) { null } else { last })
-        }
-    } else { {first: null, last: null} }
+    let timestamps = if $need_timestamps { $user_records | extract-timestamps } else { {first: null, last: null} }
 
     # Build result record with optional columns
     $base
