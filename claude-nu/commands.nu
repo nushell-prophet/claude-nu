@@ -352,6 +352,7 @@ export def sessions [
 
 # Parse session file into raw data with selectable columns
 # A plumbing command for downstream pipelines
+# Uses lazy evaluation: expensive extractions only run when their flags are requested
 export def parse-session [
     session?: string@"nu-complete claude sessions" # Session UUID or path (default: most recent)
     # File operations
