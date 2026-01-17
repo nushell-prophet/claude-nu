@@ -295,8 +295,7 @@ export def parse-session-file []: path -> record {
     | if ($in | is-empty) { 0 } else { math sum }
 
     let mentioned_files = $user_records
-    | each { extract-text-content }
-    | each { parse --regex '@([^\s<>]+)' | get capture0? | default [] }
+    | each { extract-text-content | parse --regex '@([^\s<>]+)' | get capture0? | default [] }
     | flatten
     | uniq
 
@@ -341,7 +340,7 @@ export def sessions [
         } else { [$p] }
     }
     | flatten
-    | where { $in =~ $UUID_JSONL_PATTERN }
+    | where $it =~ $UUID_JSONL_PATTERN
 
     if ($session_files | is-empty) {
         error make {msg: "No session files found"}
@@ -407,10 +406,9 @@ export def parse-session [
     let all_tool_calls = $assistant_records | each { extract-tool-calls } | flatten
 
     # Default columns
-    let user_messages = $user_records | each { extract-text-content } | where { $in != "" }
+    let user_messages = $user_records | each { extract-text-content } | where $it != ""
     let mentioned_files = $user_records
-    | each { extract-text-content }
-    | each { parse --regex '@([^\s<>]+)' | get capture0? | default [] }
+    | each { extract-text-content | parse --regex '@([^\s<>]+)' | get capture0? | default [] }
     | flatten
     | uniq
 
