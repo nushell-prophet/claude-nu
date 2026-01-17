@@ -99,6 +99,21 @@ claude-nu parse-session -s <uuid> # Specific session
 | `--tool-call-count` | Total tool invocations |
 | `--all`, `-a` | Include everything |
 
+### `claude-nu export-session`
+
+Export session dialogue to a markdown file for git tracking.
+
+```nushell
+claude-nu export-session                    # Uses session summary as topic
+claude-nu export-session "auth-refactor"    # Custom topic
+claude-nu export-session -s <uuid>          # Specific session
+claude-nu export-session -o ./docs          # Custom output directory
+```
+
+**Output format:** `docs/sessions/yyyymmdd+topic.md`
+
+Filters out system-generated messages, keeping only user prompts and assistant responses.
+
 ## CLI Completions
 
 The completions file provides tab completion for the entire `claude` CLI:
