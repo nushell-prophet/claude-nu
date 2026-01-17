@@ -176,6 +176,83 @@ export def extract-tool-calls []: record -> table {
     } else { [] }
 }
 
+# Extract tool results from user records (responses to tool calls)
+export def extract-tool-results []: table -> table {
+    $in
+    | each {|r|
+        let content = $r.message?.content?
+        if ($content | describe) =~ '^(list|table)' {
+            $content | where type? == "tool_result"
+        } else { [] }
+    }
+    | flatten
+}
+
+# Extract session metadata from first record
+export def extract-session-metadata []: record -> record {
+    $in
+    | select --optional sessionId slug version cwd gitBranch
+    | default "" sessionId slug version cwd gitBranch
+    | rename --column {sessionId: session_id, gitBranch: git_branch}
+}
+
+# Extract thinking level from user records
+export def extract-thinking-level []: table -> string {
+    $in
+    | each { $in.thinkingMetadata?.level? }
+    | compact
+    | if ($in | is-empty) { "" } else { first }
+}
+
+# Extract file operations from tool calls
+export def extract-file-operations []: table -> record {
+    let tool_calls = $in
+    {
+        edited_files: ($tool_calls | where name? in ["Edit" "Write"] | get input.file_path --optional | uniq)
+        read_files: ($tool_calls | where name? == "Read" | get input.file_path --optional | uniq)
+    }
+}
+
+# Extract agent info from tool calls
+export def extract-agents []: table -> table {
+    $in
+    | where name? == "Task"
+    | each {
+        {
+            type: ($in.input?.subagent_type? | default "unknown")
+            description: ($in.input?.description? | default "")
+        }
+    }
+}
+
+# Extract tool statistics from tool calls and results
+export def extract-tool-stats [
+    tool_results: table
+]: table -> record {
+    let tool_calls = $in
+    let bash_cmds = $tool_calls | where name? == "Bash" | get input.command --optional
+    {
+        bash_commands: $bash_cmds
+        bash_count: ($bash_cmds | length)
+        skill_invocations: ($tool_calls | where name? == "Skill" | get input.skill --optional)
+        tool_errors: ($tool_results | where is_error? == true | length)
+        ask_user_count: ($tool_calls | where name? == "AskUserQuestion" | length)
+        plan_mode_used: (($tool_calls | where name? == "EnterPlanMode" | length) > 0)
+    }
+}
+
+# Extract derived metrics from session data
+export def extract-derived-metrics [
+    assistant_records: table
+    tool_calls: table
+]: table -> record {
+    {
+        turn_count: ($in | where isMeta? != true | length)
+        assistant_msg_count: ($assistant_records | length)
+        tool_call_count: ($tool_calls | length)
+    }
+}
+
 # Parse a single session file into structured info
 export def parse-session-file []: path -> record {
     let file_path = $in
@@ -351,106 +428,48 @@ export def parse-session [
         }
     }
 
-    # Extract raw data
+    # Extract base data
     let user_records = $records | where type? == "user"
-    let user_messages = $user_records | each { extract-text-content } | where { $in != "" }
+    let assistant_records = $records | where type? == "assistant"
+    let all_tool_calls = $assistant_records | each { extract-tool-calls } | flatten
 
-    let user_texts = $user_records | each { extract-text-content }
-    let mentioned_files = $user_texts
+    # Default columns
+    let user_messages = $user_records | each { extract-text-content } | where { $in != "" }
+    let mentioned_files = $user_records
+    | each { extract-text-content }
     | each { parse --regex '@([^\s<>]+)' | get capture0? | default [] }
     | flatten
     | uniq
 
-    # Build result with default columns
     let base = {
         path: $session_file
         user_messages: $user_messages
         mentioned_files: $mentioned_files
     }
 
-    # Extract base data
-    let assistant_records = $records | where type? == "assistant"
-    let all_tool_calls = $assistant_records | each { extract-tool-calls } | flatten
-    let first_record = $records | first
-
-    let user_timestamps = $user_records
-    | each { $in.timestamp? }
-    | compact
-    | each { into datetime }
-
-    # Extract tool results from user records (responses to tool calls)
-    let tool_results = $user_records
-    | each {|r|
-        let content = $r.message?.content?
-        if ($content | describe) =~ '^(list|table)' {
-            $content | where type? == "tool_result"
-        } else { [] }
-    }
-    | flatten
-
-    # Pre-compute optional fields
-    let edited = $all_tool_calls
-    | where name? in ["Edit" "Write"]
-    | get input.file_path --optional
-    | uniq
-
-    let read = $all_tool_calls
-    | where name? == "Read"
-    | get input.file_path --optional
-    | uniq
+    # Use helper functions to extract optional data
+    let file_ops = $all_tool_calls | extract-file-operations
+    let agent_list = $all_tool_calls | extract-agents
+    let meta = $records | first | extract-session-metadata
+    let tool_results = $user_records | extract-tool-results
+    let tool_stats = $all_tool_calls | extract-tool-stats $tool_results
+    let metrics = $user_records | extract-derived-metrics $assistant_records $all_tool_calls
 
     let sum = $records
     | where type? == "summary"
     | if ($in | is-empty) { "" } else { first | get summary? | default "" }
 
-    let agent_list = $all_tool_calls
-    | where name? == "Task"
-    | each {
-        {
-            type: ($in.input?.subagent_type? | default "unknown")
-            description: ($in.input?.description? | default "")
-        }
-    }
-
+    let user_timestamps = $user_records
+    | each { $in.timestamp? }
+    | compact
+    | each { into datetime }
     let first_ts = $user_timestamps | if ($in | is-empty) { null } else { first }
     let last_ts = $user_timestamps | if ($in | is-empty) { null } else { last }
 
-    # Session metadata
-    let meta = $first_record
-    | select --optional sessionId slug version cwd gitBranch
-    | default "" sessionId slug version cwd gitBranch
-    | rename --column {sessionId: session_id, gitBranch: git_branch}
-
-    # Thinking metadata
-    let meta_thinking_level = $user_records
-    | each { $in.thinkingMetadata?.level? }
-    | compact
-    | if ($in | is-empty) { "" } else { first }
-
-    # Tool statistics
-    let bash_cmds = $all_tool_calls
-    | where name? == "Bash"
-    | get input.command --optional
-
-    let skill_list = $all_tool_calls
-    | where name? == "Skill"
-    | get input.skill --optional
-
-    let error_count = $tool_results | where is_error? == true | length
-
-    let ask_count = $all_tool_calls | where name? == "AskUserQuestion" | length
-
-    let plan_used = ($all_tool_calls | where name? == "EnterPlanMode" | length) > 0
-
-    # Derived metrics
-    let turns = $user_records | where isMeta? != true | length
-    let asst_count = $assistant_records | length
-    let tool_count = $all_tool_calls | length
-
     # Build result record with optional columns
     $base
-    | if ($all or $edited_files) { merge {edited_files: $edited} } else { $in }
-    | if ($all or $read_files) { merge {read_files: $read} } else { $in }
+    | if ($all or $edited_files) { merge {edited_files: $file_ops.edited_files} } else { $in }
+    | if ($all or $read_files) { merge {read_files: $file_ops.read_files} } else { $in }
     | if ($all or $summary) { merge {summary: $sum} } else { $in }
     | if ($all or $agents) { merge {agents: $agent_list} } else { $in }
     | if ($all or $first_timestamp) { merge {first_timestamp: $first_ts} } else { $in }
@@ -462,16 +481,16 @@ export def parse-session [
     | if ($all or $cwd) { merge {cwd: $meta.cwd} } else { $in }
     | if ($all or $git_branch) { merge {git_branch: $meta.git_branch} } else { $in }
     # Thinking
-    | if ($all or $thinking_level) { merge {thinking_level: $meta_thinking_level} } else { $in }
+    | if ($all or $thinking_level) { merge {thinking_level: ($user_records | extract-thinking-level)} } else { $in }
     # Tool statistics
-    | if ($all or $bash_commands) { merge {bash_commands: $bash_cmds} } else { $in }
-    | if ($all or $bash_count) { merge {bash_count: ($bash_cmds | length)} } else { $in }
-    | if ($all or $skill_invocations) { merge {skill_invocations: $skill_list} } else { $in }
-    | if ($all or $tool_errors) { merge {tool_errors: $error_count} } else { $in }
-    | if ($all or $ask_user_count) { merge {ask_user_count: $ask_count} } else { $in }
-    | if ($all or $plan_mode_used) { merge {plan_mode_used: $plan_used} } else { $in }
+    | if ($all or $bash_commands) { merge {bash_commands: $tool_stats.bash_commands} } else { $in }
+    | if ($all or $bash_count) { merge {bash_count: $tool_stats.bash_count} } else { $in }
+    | if ($all or $skill_invocations) { merge {skill_invocations: $tool_stats.skill_invocations} } else { $in }
+    | if ($all or $tool_errors) { merge {tool_errors: $tool_stats.tool_errors} } else { $in }
+    | if ($all or $ask_user_count) { merge {ask_user_count: $tool_stats.ask_user_count} } else { $in }
+    | if ($all or $plan_mode_used) { merge {plan_mode_used: $tool_stats.plan_mode_used} } else { $in }
     # Derived metrics
-    | if ($all or $turn_count) { merge {turn_count: $turns} } else { $in }
-    | if ($all or $assistant_msg_count) { merge {assistant_msg_count: $asst_count} } else { $in }
-    | if ($all or $tool_call_count) { merge {tool_call_count: $tool_count} } else { $in }
+    | if ($all or $turn_count) { merge {turn_count: $metrics.turn_count} } else { $in }
+    | if ($all or $assistant_msg_count) { merge {assistant_msg_count: $metrics.assistant_msg_count} } else { $in }
+    | if ($all or $tool_call_count) { merge {tool_call_count: $metrics.tool_call_count} } else { $in }
 }
