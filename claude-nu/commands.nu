@@ -10,6 +10,22 @@ const SYSTEM_PREFIXES = [
     "Caveat:"
 ]
 
+# Template for session summary record
+const EMPTY_SESSION_SUMMARY = {
+    summary: ""
+    first_timestamp: null
+    last_timestamp: null
+    user_msg_count: 0
+    user_msg_length: 0
+    response_length: 0
+    agent_count: 0
+    agents: []
+    mentioned_files: []
+    read_files: []
+    edited_files: []
+    path: null
+}
+
 # Helper to get project sessions directory
 export def get-sessions-dir []: nothing -> path {
     let project_path = ($env.PWD | str replace --all '/' '-')
@@ -166,20 +182,7 @@ export def parse-session-file []: path -> record {
     let lines = open --raw $file_path | lines
 
     if ($lines | is-empty) {
-        return {
-            path: $file_path
-            summary: ""
-            first_timestamp: null
-            last_timestamp: null
-            user_msg_count: 0
-            user_msg_length: 0
-            response_length: 0
-            agent_count: 0
-            agents: []
-            mentioned_files: []
-            read_files: []
-            edited_files: []
-        }
+        return ($EMPTY_SESSION_SUMMARY | update path $file_path)
     }
 
     let records = $lines | each { from json }
@@ -236,20 +239,19 @@ export def parse-session-file []: path -> record {
     | get input.file_path --optional
     | uniq
 
-    {
-        path: $file_path
-        summary: $summary
-        first_timestamp: $first_ts
-        last_timestamp: $last_ts
-        user_msg_count: ($user_records | length)
-        user_msg_length: $user_msg_length
-        response_length: $response_length
-        agent_count: ($agent_calls | length)
-        agents: $agents
-        mentioned_files: $mentioned_files
-        read_files: $read_files
-        edited_files: $edited_files
-    }
+    $EMPTY_SESSION_SUMMARY
+    | update summary $summary
+    | update first_timestamp $first_ts
+    | update last_timestamp $last_ts
+    | update user_msg_count ($user_records | length)
+    | update user_msg_length $user_msg_length
+    | update response_length $response_length
+    | update agent_count ($agent_calls | length)
+    | update agents $agents
+    | update mentioned_files $mentioned_files
+    | update read_files $read_files
+    | update edited_files $edited_files
+    | update path $file_path
 }
 
 # Parse Claude Code sessions for structured information
