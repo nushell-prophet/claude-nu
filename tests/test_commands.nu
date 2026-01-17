@@ -599,3 +599,444 @@ def "messages command accepts full path via --session" [] {
     assert equal ($result | length) 1
     assert equal ($result | first | get message) "Hello from path test"
 }
+
+# =============================================================================
+# Tests for parse-session command - Session metadata extraction
+# =============================================================================
+
+@test
+def "parse-session extracts session_id from first record" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","sessionId":"abc-123-def","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --session-id
+
+    rm $temp_file
+
+    assert equal $result.session_id "abc-123-def"
+}
+
+@test
+def "parse-session extracts slug from first record" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","slug":"happy-coding-session","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --slug
+
+    rm $temp_file
+
+    assert equal $result.slug "happy-coding-session"
+}
+
+@test
+def "parse-session extracts version from first record" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","version":"2.1.11","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --version
+
+    rm $temp_file
+
+    assert equal $result.version "2.1.11"
+}
+
+@test
+def "parse-session extracts cwd from first record" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","cwd":"/Users/test/project","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --cwd
+
+    rm $temp_file
+
+    assert equal $result.cwd "/Users/test/project"
+}
+
+@test
+def "parse-session extracts git_branch from first record" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","gitBranch":"feature/new-feature","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --git-branch
+
+    rm $temp_file
+
+    assert equal $result.git_branch "feature/new-feature"
+}
+
+@test
+def "parse-session handles missing metadata with empty defaults" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --session-id --slug --version --cwd --git-branch
+
+    rm $temp_file
+
+    assert equal $result.session_id ""
+    assert equal $result.slug ""
+    assert equal $result.version ""
+    assert equal $result.cwd ""
+    assert equal $result.git_branch ""
+}
+
+# =============================================================================
+# Tests for parse-session command - Thinking level extraction
+# =============================================================================
+
+@test
+def "parse-session extracts thinking_level from user records" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","thinkingMetadata":{"level":"high","disabled":false},"message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --thinking-level
+
+    rm $temp_file
+
+    assert equal $result.thinking_level "high"
+}
+
+@test
+def "parse-session handles missing thinking metadata" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --thinking-level
+
+    rm $temp_file
+
+    assert equal $result.thinking_level ""
+}
+
+# =============================================================================
+# Tests for parse-session command - Tool statistics
+# =============================================================================
+
+@test
+def "parse-session extracts bash_commands list" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Run tests"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm build"}}]}}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --bash-commands
+
+    rm $temp_file
+
+    assert equal ($result.bash_commands | length) 2
+    assert ("npm test" in $result.bash_commands)
+    assert ("npm build" in $result.bash_commands)
+}
+
+@test
+def "parse-session counts bash commands correctly" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Run tests"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cmd1"}},{"type":"tool_use","name":"Bash","input":{"command":"cmd2"}}]}}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cmd3"}}]}}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --bash-count
+
+    rm $temp_file
+
+    assert equal $result.bash_count 3
+}
+
+@test
+def "parse-session extracts skill_invocations list" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Use skill"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"nushell-style"}}]}}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"jj-commit"}}]}}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --skill-invocations
+
+    rm $temp_file
+
+    assert equal ($result.skill_invocations | length) 2
+    assert ("nushell-style" in $result.skill_invocations)
+    assert ("jj-commit" in $result.skill_invocations)
+}
+
+@test
+def "parse-session counts tool_errors from tool_result" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"123","is_error":false,"content":"success"}]}}'
+        '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"456","is_error":true,"content":"error"}]}}'
+        '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"789","is_error":true,"content":"another error"}]}}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --tool-errors
+
+    rm $temp_file
+
+    assert equal $result.tool_errors 2
+}
+
+@test
+def "parse-session counts ask_user_count" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Help me"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"AskUserQuestion","input":{"questions":[]}}]}}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"AskUserQuestion","input":{"questions":[]}}]}}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/test"}}]}}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --ask-user-count
+
+    rm $temp_file
+
+    assert equal $result.ask_user_count 2
+}
+
+@test
+def "parse-session detects plan_mode_used true" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Plan this"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"EnterPlanMode","input":{}}]}}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --plan-mode-used
+
+    rm $temp_file
+
+    assert equal $result.plan_mode_used true
+}
+
+@test
+def "parse-session detects plan_mode_used false" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Just do it"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"echo hi"}}]}}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --plan-mode-used
+
+    rm $temp_file
+
+    assert equal $result.plan_mode_used false
+}
+
+# =============================================================================
+# Tests for parse-session command - Derived metrics
+# =============================================================================
+
+@test
+def "parse-session counts turn_count excluding meta messages" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","isMeta":true,"message":{"content":"System info"}}'
+        '{"type":"user","message":{"content":"Real message 1"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"Real message 2"},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"user","isMeta":true,"message":{"content":"More system info"}}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --turn-count
+
+    rm $temp_file
+
+    assert equal $result.turn_count 2
+}
+
+@test
+def "parse-session counts assistant_msg_count" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Q1"}}'
+        '{"type":"assistant","message":{"content":"A1"}}'
+        '{"type":"user","message":{"content":"Q2"}}'
+        '{"type":"assistant","message":{"content":"A2"}}'
+        '{"type":"assistant","message":{"content":"A3"}}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --assistant-msg-count
+
+    rm $temp_file
+
+    assert equal $result.assistant_msg_count 3
+}
+
+@test
+def "parse-session counts tool_call_count" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Do stuff"}}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Edit","input":{}}]}}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --tool-call-count
+
+    rm $temp_file
+
+    assert equal $result.tool_call_count 3
+}
+
+@test
+def "parse-session handles empty session for derived metrics" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    # Single record to avoid empty file edge case
+    let lines = [
+        '{"type":"summary","summary":"Empty session"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --turn-count --assistant-msg-count --tool-call-count
+
+    rm $temp_file
+
+    assert equal $result.turn_count 0
+    assert equal $result.assistant_msg_count 0
+    assert equal $result.tool_call_count 0
+}
+
+# =============================================================================
+# Tests for parse-session command - --all flag
+# =============================================================================
+
+@test
+def "parse-session --all includes all columns" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","sessionId":"test-id","slug":"test-slug","version":"1.0","cwd":"/test","gitBranch":"main","thinkingMetadata":{"level":"high"},"message":{"content":"@file.txt"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"echo"}}]}}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --all
+    let cols = $result | columns
+
+    rm $temp_file
+
+    # Check all expected columns exist
+    assert ("path" in $cols)
+    assert ("user_messages" in $cols)
+    assert ("mentioned_files" in $cols)
+    assert ("edited_files" in $cols)
+    assert ("read_files" in $cols)
+    assert ("summary" in $cols)
+    assert ("agents" in $cols)
+    assert ("first_timestamp" in $cols)
+    assert ("last_timestamp" in $cols)
+    assert ("session_id" in $cols)
+    assert ("slug" in $cols)
+    assert ("version" in $cols)
+    assert ("cwd" in $cols)
+    assert ("git_branch" in $cols)
+    assert ("thinking_level" in $cols)
+    assert ("bash_commands" in $cols)
+    assert ("bash_count" in $cols)
+    assert ("skill_invocations" in $cols)
+    assert ("tool_errors" in $cols)
+    assert ("ask_user_count" in $cols)
+    assert ("plan_mode_used" in $cols)
+    assert ("turn_count" in $cols)
+    assert ("assistant_msg_count" in $cols)
+    assert ("tool_call_count" in $cols)
+}
+
+@test
+def "parse-session default columns are minimal" [] {
+    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file
+    let cols = $result | columns
+
+    rm $temp_file
+
+    # Default should only have 3 columns
+    assert equal ($cols | length) 3
+    assert ("path" in $cols)
+    assert ("user_messages" in $cols)
+    assert ("mentioned_files" in $cols)
+}
