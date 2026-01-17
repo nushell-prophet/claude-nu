@@ -185,8 +185,7 @@ export def extract-tool-calls []: record -> table {
 
 # Extract tool results from user records (responses to tool calls)
 export def extract-tool-results []: table -> table {
-    $in
-    | each {|r|
+    each {|r|
         let content = $r.message?.content?
         if ($content | describe) =~ '^(list|table)' {
             $content | where type? == "tool_result"
@@ -197,16 +196,14 @@ export def extract-tool-results []: table -> table {
 
 # Extract session metadata from first record
 export def extract-session-metadata []: record -> record {
-    $in
-    | select --optional sessionId slug version cwd gitBranch
+    select --optional sessionId slug version cwd gitBranch
     | default "" sessionId slug version cwd gitBranch
     | rename --column {sessionId: session_id gitBranch: git_branch}
 }
 
 # Extract thinking level from user records
 export def extract-thinking-level []: table -> string {
-    $in
-    | each { $in.thinkingMetadata?.level? }
+    each { $in.thinkingMetadata?.level? }
     | compact
     | if ($in | is-empty) { "" } else { first }
 }
@@ -234,8 +231,7 @@ export def extract-file-operations []: table -> record {
 
 # Extract agent info from tool calls
 export def extract-agents []: table -> table {
-    $in
-    | where name? == "Task"
+    where name? == "Task"
     | each {
         {
             type: ($in.input?.subagent_type? | default "unknown")
