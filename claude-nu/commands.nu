@@ -284,12 +284,33 @@ export def sessions [
 # A plumbing command for downstream pipelines
 export def parse-session [
     session?: string@"nu-complete claude sessions" # Session UUID or path (default: most recent)
+    # File operations
     --edited-files # Include edited_files column
     --read-files # Include read_files column
+    # Session info
     --summary (-s) # Include summary column
     --agents (-g) # Include agents column
     --first-timestamp # Include first_timestamp column
     --last-timestamp # Include last_timestamp column
+    # Session metadata
+    --session-id # Include session_id column
+    --slug # Include slug column (human-readable session name)
+    --version # Include version column (Claude Code version)
+    --cwd # Include cwd column (working directory)
+    --git-branch # Include git_branch column
+    # Thinking
+    --thinking-level # Include thinking_level column
+    # Tool statistics
+    --bash-commands # Include bash_commands column (list of commands)
+    --bash-count # Include bash_count column
+    --skill-invocations # Include skill_invocations column
+    --tool-errors # Include tool_errors column (count of failed tool calls)
+    --ask-user-count # Include ask_user_count column
+    --plan-mode-used # Include plan_mode_used column (bool)
+    # Derived metrics
+    --turn-count # Include turn_count column (user→assistant turns)
+    --assistant-msg-count # Include assistant_msg_count column
+    --tool-call-count # Include tool_call_count column
     --all (-a) # Include all columns
 ]: nothing -> record {
     let sessions_dir = get-sessions-dir
@@ -338,14 +359,25 @@ export def parse-session [
         mentioned_files: $mentioned_files
     }
 
-    # Extract optional data upfront
+    # Extract base data
     let assistant_records = $records | where type? == "assistant"
     let all_tool_calls = $assistant_records | each { extract-tool-calls } | flatten
+    let first_record = $records | first
 
     let user_timestamps = $user_records
     | each { $in.timestamp? }
     | compact
     | each { into datetime }
+
+    # Extract tool results from user records (responses to tool calls)
+    let tool_results = $user_records
+    | each {|r|
+        let content = $r.message?.content?
+        if ($content | describe) =~ '^(list|table)' {
+            $content | where type? == "tool_result"
+        } else { [] }
+    }
+    | flatten
 
     # Pre-compute optional fields
     let edited = $all_tool_calls
@@ -374,6 +406,39 @@ export def parse-session [
     let first_ts = $user_timestamps | if ($in | is-empty) { null } else { first }
     let last_ts = $user_timestamps | if ($in | is-empty) { null } else { last }
 
+    # Session metadata
+    let meta_session_id = $first_record.sessionId? | default ""
+    let meta_slug = $first_record.slug? | default ""
+    let meta_version = $first_record.version? | default ""
+    let meta_cwd = $first_record.cwd? | default ""
+    let meta_git_branch = $first_record.gitBranch? | default ""
+
+    # Thinking metadata
+    let meta_thinking_level = $user_records
+    | each { $in.thinkingMetadata?.level? }
+    | compact
+    | if ($in | is-empty) { "" } else { first }
+
+    # Tool statistics
+    let bash_cmds = $all_tool_calls
+    | where name? == "Bash"
+    | get input.command --optional
+
+    let skill_list = $all_tool_calls
+    | where name? == "Skill"
+    | get input.skill --optional
+
+    let error_count = $tool_results | where is_error? == true | length
+
+    let ask_count = $all_tool_calls | where name? == "AskUserQuestion" | length
+
+    let plan_used = ($all_tool_calls | where name? == "EnterPlanMode" | length) > 0
+
+    # Derived metrics
+    let turns = $user_records | where isMeta? != true | length
+    let asst_count = $assistant_records | length
+    let tool_count = $all_tool_calls | length
+
     # Build result record with optional columns
     $base
     | if ($all or $edited_files) { merge {edited_files: $edited} } else { $in }
@@ -382,4 +447,23 @@ export def parse-session [
     | if ($all or $agents) { merge {agents: $agent_list} } else { $in }
     | if ($all or $first_timestamp) { merge {first_timestamp: $first_ts} } else { $in }
     | if ($all or $last_timestamp) { merge {last_timestamp: $last_ts} } else { $in }
+    # Session metadata
+    | if ($all or $session_id) { merge {session_id: $meta_session_id} } else { $in }
+    | if ($all or $slug) { merge {slug: $meta_slug} } else { $in }
+    | if ($all or $version) { merge {version: $meta_version} } else { $in }
+    | if ($all or $cwd) { merge {cwd: $meta_cwd} } else { $in }
+    | if ($all or $git_branch) { merge {git_branch: $meta_git_branch} } else { $in }
+    # Thinking
+    | if ($all or $thinking_level) { merge {thinking_level: $meta_thinking_level} } else { $in }
+    # Tool statistics
+    | if ($all or $bash_commands) { merge {bash_commands: $bash_cmds} } else { $in }
+    | if ($all or $bash_count) { merge {bash_count: ($bash_cmds | length)} } else { $in }
+    | if ($all or $skill_invocations) { merge {skill_invocations: $skill_list} } else { $in }
+    | if ($all or $tool_errors) { merge {tool_errors: $error_count} } else { $in }
+    | if ($all or $ask_user_count) { merge {ask_user_count: $ask_count} } else { $in }
+    | if ($all or $plan_mode_used) { merge {plan_mode_used: $plan_used} } else { $in }
+    # Derived metrics
+    | if ($all or $turn_count) { merge {turn_count: $turns} } else { $in }
+    | if ($all or $assistant_msg_count) { merge {assistant_msg_count: $asst_count} } else { $in }
+    | if ($all or $tool_call_count) { merge {tool_call_count: $tool_count} } else { $in }
 }
