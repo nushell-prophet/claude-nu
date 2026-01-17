@@ -203,7 +203,7 @@ export def extract-session-metadata []: record -> record {
 
 # Extract thinking level from user records
 export def extract-thinking-level []: table -> string {
-    each { $in.thinkingMetadata?.level? }
+    get thinkingMetadata.level --optional
     | compact
     | if ($in | is-empty) { "" } else { first }
 }
