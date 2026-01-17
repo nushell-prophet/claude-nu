@@ -315,3 +315,132 @@ Done. Should I add `docs/sessions/` to `.gitignore`? That directory is for user-
 ## User
 
 don't exclude `<selected-text`. That's not from claude, that's my own format for quoting
+
+---
+
+## Assistant
+
+Done. `<selected-text>` will now be preserved as your quotes.
+
+On the `.gitignore` question — should `docs/sessions/` be ignored, or do you want exported sessions tracked in git?
+
+---
+
+## User
+
+I want them to be tracked in git
+
+---
+
+## Assistant
+
+Got it — no `.gitignore` entry needed.
+
+**Summary of what's built:**
+
+| Component | Description |
+|-----------|-------------|
+| `export-session` command | Exports dialogue to `docs/sessions/yyyymmdd+topic.md` |
+| Topic resolution | Argument → session summary → "session" |
+| Filtering | Removes system prefixes, keeps user quotes (`<selected-text>`) |
+| README docs | Added command documentation |
+
+Ready to commit when you are.
+
+---
+
+## Assistant
+
+<thinking>
+Looking at the changes:
+
+1. `README.md` - docs update for export-session
+2. `claude-nu/commands.nu` - feature: export-session command + fix: added `<local-command-caveat>` to SYSTEM_PREFIXES
+3. `claude-nu/mod.nu` - export the new command
+4. `docs/sessions/20260117+session-export-feature.md` - exported session (feature demo)
+5. `docs/sessions/20260117+session.md` - another exported session
+
+The changes in commands.nu have two purposes:
+1. New feature: export-session command
+2. Bug fix: added `<local-command-caveat>` to SYSTEM_PREFIXES
+
+These are related enough to go together since the prefix fix was discovered while building the feature.
+
+I should commit:
+- The implementation files (commands.nu, mod.nu) as the feature
+- The README update as docs
+- The session exports as examples/demos
+
+Actually, looking more carefully - the session exports are demonstrations of the feature. They could go with the feature commit or separately. I'll group:
+
+1. feat: add export-session command (commands.nu, mod.nu)
+2. docs: add export-session to README (README.md)
+3. The session exports - these are user content, should they be committed? The user said they want sessions tracked in git. I'll include them.
+
+Let me do two commits:
+1. feat: add export-session command for dialogue export (commands.nu, mod.nu, docs/sessions/*)
+2. docs: document export-session command (README.md)
+
+Actually, let me reconsider. The docs/sessions files are output of the feature, demonstrating it. They could be:
+- Part of the feature commit (as examples)
+- A separate commit
+- Left out (but user wants them tracked)
+
+I think it makes sense to include them with the feature since they're the first use of it. But I could also separate docs changes from feature changes.
+
+Let me do:
+1. feat: add export-session command (commands.nu, mod.nu)
+2. docs: document export-session and add session exports (README.md, docs/sessions/*)
+
+Or even simpler, since it's all one coherent feature:
+1. feat: add export-session command with docs (all files)
+
+But the instructions say to group by purpose. So:
+1. feat: add export-session command (implementation)
+2. docs: document export-session (README + exported sessions as examples)
+
+Let me go with that.
+</thinking>
+
+Looking at the changes, I'll group by purpose:
+
+1. **Feature**: `export-session` command implementation
+2. **Docs**: README update + exported session examples
+
+---
+
+## Assistant
+
+Done:
+
+| Commit | Description |
+|--------|-------------|
+| `f4c89d11` | `feat: add export-session command for dialogue export to markdown` |
+| `0138e3f7` | `docs: document export-session command with example exports` |
+
+---
+
+## Assistant
+
+I've loaded the nushell-style guide. Would you like me to review the `export-session` command I just wrote against these style conventions?
+
+Quick scan shows a few potential improvements:
+- Line 504-505: Could use `| default` instead of `if/else` for the summary fallback
+- The filtering logic could potentially use row conditions instead of closures in some places
+
+Want me to apply style fixes?
+
+---
+
+## User
+
+apply
+
+---
+
+## Assistant
+
+Applying style fixes:
+
+1. **Lines 519-536**: Replace `each {if} | compact` with `insert` + `where` pattern
+2. **Line 551**: Use `match` for role dispatch
