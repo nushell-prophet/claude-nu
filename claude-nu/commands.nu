@@ -407,11 +407,10 @@ export def parse-session [
     let last_ts = $user_timestamps | if ($in | is-empty) { null } else { last }
 
     # Session metadata
-    let meta_session_id = $first_record.sessionId? | default ""
-    let meta_slug = $first_record.slug? | default ""
-    let meta_version = $first_record.version? | default ""
-    let meta_cwd = $first_record.cwd? | default ""
-    let meta_git_branch = $first_record.gitBranch? | default ""
+    let meta = $first_record
+    | select --optional sessionId slug version cwd gitBranch
+    | default "" sessionId slug version cwd gitBranch
+    | rename --column {sessionId: session_id, gitBranch: git_branch}
 
     # Thinking metadata
     let meta_thinking_level = $user_records
@@ -448,11 +447,11 @@ export def parse-session [
     | if ($all or $first_timestamp) { merge {first_timestamp: $first_ts} } else { $in }
     | if ($all or $last_timestamp) { merge {last_timestamp: $last_ts} } else { $in }
     # Session metadata
-    | if ($all or $session_id) { merge {session_id: $meta_session_id} } else { $in }
-    | if ($all or $slug) { merge {slug: $meta_slug} } else { $in }
-    | if ($all or $version) { merge {version: $meta_version} } else { $in }
-    | if ($all or $cwd) { merge {cwd: $meta_cwd} } else { $in }
-    | if ($all or $git_branch) { merge {git_branch: $meta_git_branch} } else { $in }
+    | if ($all or $session_id) { merge {session_id: $meta.session_id} } else { $in }
+    | if ($all or $slug) { merge {slug: $meta.slug} } else { $in }
+    | if ($all or $version) { merge {version: $meta.version} } else { $in }
+    | if ($all or $cwd) { merge {cwd: $meta.cwd} } else { $in }
+    | if ($all or $git_branch) { merge {git_branch: $meta.git_branch} } else { $in }
     # Thinking
     | if ($all or $thinking_level) { merge {thinking_level: $meta_thinking_level} } else { $in }
     # Tool statistics
