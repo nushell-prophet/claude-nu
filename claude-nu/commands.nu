@@ -342,6 +342,15 @@ export def parse-session [
 
     let records = open --raw $session_file | lines | each { from json }
 
+    # Handle empty session files
+    if ($records | is-empty) {
+        return {
+            path: $session_file
+            user_messages: []
+            mentioned_files: []
+        }
+    }
+
     # Extract raw data
     let user_records = $records | where type? == "user"
     let user_messages = $user_records | each { extract-text-content } | where { $in != "" }
