@@ -447,24 +447,36 @@ export def parse-session [
         mentioned_files: $mentioned_files
     }
 
-    # Use helper functions to extract optional data
-    let file_ops = $all_tool_calls | extract-file-operations
-    let agent_list = $all_tool_calls | extract-agents
-    let meta = $records | first | extract-session-metadata
-    let tool_results = $user_records | extract-tool-results
-    let tool_stats = $all_tool_calls | extract-tool-stats $tool_results
-    let metrics = $user_records | extract-derived-metrics $assistant_records $all_tool_calls
+    # Lazy extraction - only compute when flags require it
+    let need_file_ops = $all or $edited_files or $read_files
+    let need_meta = $all or $session_id or $slug or $version or $cwd or $git_branch
+    let need_tool_stats = $all or $bash_commands or $bash_count or $skill_invocations or $tool_errors or $ask_user_count or $plan_mode_used
+    let need_metrics = $all or $turn_count or $assistant_msg_count or $tool_call_count
+    let need_timestamps = $all or $first_timestamp or $last_timestamp
 
-    let sum = $records
-    | where type? == "summary"
-    | if ($in | is-empty) { "" } else { first | get summary? | default "" }
+    let file_ops = if $need_file_ops { $all_tool_calls | extract-file-operations } else { {} }
+    let agent_list = if ($all or $agents) { $all_tool_calls | extract-agents } else { [] }
+    let meta = if $need_meta { $records | first | extract-session-metadata } else { {} }
+    let tool_stats = if $need_tool_stats {
+        let tool_results = $user_records | extract-tool-results
+        $all_tool_calls | extract-tool-stats $tool_results
+    } else { {} }
+    let metrics = if $need_metrics {
+        $user_records | extract-derived-metrics $assistant_records $all_tool_calls
+    } else { {} }
 
-    let user_timestamps = $user_records
-    | each { $in.timestamp? }
-    | compact
-    | each { into datetime }
-    let first_ts = $user_timestamps | if ($in | is-empty) { null } else { first }
-    let last_ts = $user_timestamps | if ($in | is-empty) { null } else { last }
+    let sum = if ($all or $summary) {
+        $records | where type? == "summary"
+        | if ($in | is-empty) { "" } else { first | get summary? | default "" }
+    } else { "" }
+
+    let timestamps = if $need_timestamps {
+        let ts = $user_records | each { $in.timestamp? } | compact | each { into datetime }
+        {
+            first: ($ts | if ($in | is-empty) { null } else { first })
+            last: ($ts | if ($in | is-empty) { null } else { last })
+        }
+    } else { {first: null, last: null} }
 
     # Build result record with optional columns
     $base
@@ -472,8 +484,8 @@ export def parse-session [
     | if ($all or $read_files) { merge {read_files: $file_ops.read_files} } else { $in }
     | if ($all or $summary) { merge {summary: $sum} } else { $in }
     | if ($all or $agents) { merge {agents: $agent_list} } else { $in }
-    | if ($all or $first_timestamp) { merge {first_timestamp: $first_ts} } else { $in }
-    | if ($all or $last_timestamp) { merge {last_timestamp: $last_ts} } else { $in }
+    | if ($all or $first_timestamp) { merge {first_timestamp: $timestamps.first} } else { $in }
+    | if ($all or $last_timestamp) { merge {last_timestamp: $timestamps.last} } else { $in }
     # Session metadata
     | if ($all or $session_id) { merge {session_id: $meta.session_id} } else { $in }
     | if ($all or $slug) { merge {slug: $meta.slug} } else { $in }
