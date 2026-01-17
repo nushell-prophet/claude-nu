@@ -69,6 +69,7 @@ def print-test-result [result: record] {
 # Download Claude Code documentation pages from the sitemap
 export def fetch-claude-docs [
     --skip-sitemap # Skip refreshing the sitemap before downloading
+    --no-commit    # Skip creating a git commit after downloading
 ] {
     if not $skip_sitemap { fetch-sitemap }
 
@@ -83,6 +84,19 @@ export def fetch-claude-docs [
             print $"($url) ok"
         } catch {
             print $"($url) failed"
+        }
+    }
+
+    if not $no_commit {
+        # Stage and commit if there are changes
+        let status = git status --porcelain $output_dir $sitemap_csv | str trim
+        if $status != "" {
+            git add $output_dir $sitemap_csv
+            let date = date now | format date "%Y-%m-%d"
+            git commit -m $"docs: update claude-code-docs \(($date)\)"
+            print $"(ansi green)Committed documentation updates(ansi reset)"
+        } else {
+            print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
         }
     }
 }
