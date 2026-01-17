@@ -7,6 +7,7 @@ const UUID_JSONL_PATTERN = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 const SYSTEM_PREFIXES = [
     "<command-name>"
     "<command-message>"
+    "<local-command-caveat>"
     "<local-command-stdout>"
     "<bash-input>"
     "<bash-stdout>"
@@ -466,4 +467,101 @@ export def parse-session [
     | if ($all or $turn_count) { merge {turn_count: $metrics.turn_count} } else { $in }
     | if ($all or $assistant_msg_count) { merge {assistant_msg_count: $metrics.assistant_msg_count} } else { $in }
     | if ($all or $tool_call_count) { merge {tool_call_count: $metrics.tool_call_count} } else { $in }
+}
+
+# Sanitize topic string for use in filename
+def sanitize-topic []: string -> string {
+    str downcase
+    | str replace --all --regex '[^a-z0-9]+' '-'
+    | str trim --char '-'
+    | str substring 0..50
+}
+
+# Export session dialogue to markdown file
+export def export-session [
+    topic?: string # Topic for filename (default: session summary)
+    --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
+    --output-dir (-o): path # Output directory (default: docs/sessions)
+]: nothing -> path {
+    let session_file = resolve-session-file $session
+    let out_dir = $output_dir | default "docs/sessions"
+
+    if not ($session_file | path exists) {
+        error make {msg: $"Session file not found: ($session_file)"}
+    }
+
+    let records = open --raw $session_file | lines | each { from json }
+
+    if ($records | is-empty) {
+        error make {msg: "Session file is empty"}
+    }
+
+    # Extract summary from summary record
+    let summary = $records
+        | where type? == "summary"
+        | if ($in | is-empty) { "" } else { first | get summary? | default "" }
+
+    # Determine topic: argument > summary > "session"
+    let resolved_topic = $topic
+        | default (if $summary != "" { $summary } else { "session" })
+        | sanitize-topic
+
+    # Get date from first user record or now
+    let first_timestamp = $records
+        | where type? == "user"
+        | get timestamp? --optional
+        | compact
+        | if ($in | is-empty) { [(date now | format date "%Y-%m-%dT%H:%M:%S")] } else { }
+        | first
+    let date_str = $first_timestamp | into datetime | format date "%Y%m%d"
+
+    # Extract dialogue: user messages and assistant responses
+    let dialogue = $records
+        | where type? in ["user", "assistant"]
+        | where isMeta? != true
+        | each {|r|
+            let text = $r | extract-text-content
+            # Skip empty or system-generated messages
+            if ($text | str trim | is-empty) {
+                null
+            } else if ($r.type == "user") and ($SYSTEM_PREFIXES | any {|p| $text | str starts-with $p }) {
+                null
+            } else {
+                {
+                    role: $r.type
+                    content: $text
+                }
+            }
+        }
+        | compact
+
+    # Format as markdown
+    let header = [
+        $"# ($resolved_topic | str replace --all '-' ' ' | str title-case)"
+        ""
+        $"**Date:** ($first_timestamp | into datetime | format date '%Y-%m-%d')"
+        $"**Summary:** ($summary)"
+        ""
+        "---"
+        ""
+    ] | str join "\n"
+
+    let body = $dialogue
+        | each {|turn|
+            let role = if $turn.role == "user" { "User" } else { "Assistant" }
+            $"## ($role)\n\n($turn.content)"
+        }
+        | str join "\n\n---\n\n"
+
+    let markdown = $header + $body
+
+    # Ensure output directory exists
+    mkdir $out_dir
+
+    # Write file
+    let filename = $"($date_str)+($resolved_topic).md"
+    let filepath = $out_dir | path join $filename
+    $markdown | save -f $filepath
+
+    $filepath
 }
