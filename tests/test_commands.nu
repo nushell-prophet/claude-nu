@@ -1182,3 +1182,56 @@ def "nu-complete returns empty for non-existent sessions dir" [] {
     assert equal $result.completions []
     assert equal $result.options.sort false
 }
+
+# =============================================================================
+# sanitize-topic tests
+# =============================================================================
+
+@test
+def "sanitize-topic converts to lowercase" [] {
+    let result = "Hello World" | sanitize-topic
+    assert equal $result "hello-world"
+}
+
+@test
+def "sanitize-topic replaces special chars with dashes" [] {
+    let result = "feat: add new feature!" | sanitize-topic
+    assert equal $result "feat-add-new-feature"
+}
+
+@test
+def "sanitize-topic collapses multiple dashes" [] {
+    let result = "a--b---c" | sanitize-topic
+    assert equal $result "a-b-c"
+}
+
+@test
+def "sanitize-topic trims leading and trailing dashes" [] {
+    let result = "---hello---" | sanitize-topic
+    assert equal $result "hello"
+}
+
+@test
+def "sanitize-topic handles empty string" [] {
+    let result = "" | sanitize-topic
+    assert equal $result ""
+}
+
+@test
+def "sanitize-topic truncates to 50 chars" [] {
+    let long_input = "this-is-a-very-long-topic-name-that-exceeds-fifty-characters-limit"
+    let result = $long_input | sanitize-topic
+    assert (($result | str length) <= 50)
+}
+
+@test
+def "sanitize-topic preserves numbers" [] {
+    let result = "version-2.0.1-release" | sanitize-topic
+    assert equal $result "version-2-0-1-release"
+}
+
+@test
+def "sanitize-topic handles unicode" [] {
+    let result = "café résumé" | sanitize-topic
+    assert equal $result "caf-r-sum"
+}

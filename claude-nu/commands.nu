@@ -470,11 +470,11 @@ export def parse-session [
 }
 
 # Sanitize topic string for use in filename
-def sanitize-topic []: string -> string {
+export def sanitize-topic []: string -> string {
     str downcase
     | str replace --all --regex '[^a-z0-9]+' '-'
     | str trim --char '-'
-    | str substring 0..50
+    | str substring 0..<50
 }
 
 # Export session dialogue to markdown file
