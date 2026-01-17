@@ -279,3 +279,107 @@ export def sessions [
 
     $session_files | each { parse-session-file }
 }
+
+# Parse session file into raw data with selectable columns
+# A plumbing command for downstream pipelines
+export def parse-session [
+    session?: string@"nu-complete claude sessions" # Session UUID or path (default: most recent)
+    --edited-files # Include edited_files column
+    --read-files # Include read_files column
+    --summary (-s) # Include summary column
+    --agents (-g) # Include agents column
+    --first-timestamp # Include first_timestamp column
+    --last-timestamp # Include last_timestamp column
+    --all (-a) # Include all columns
+]: nothing -> record {
+    let sessions_dir = get-sessions-dir
+
+    # Resolve session file path
+    let session_file = if $session != null {
+        if ($session | str ends-with '.jsonl') {
+            $session
+        } else {
+            $sessions_dir | path join $"($session).jsonl"
+        }
+    } else {
+        if not ($sessions_dir | path exists) {
+            error make {msg: "No sessions directory found for current project"}
+        }
+        let files = ls $sessions_dir
+        | where name =~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
+        | sort-by modified --reverse
+
+        if ($files | is-empty) {
+            error make {msg: "No session files found"}
+        }
+        $files | first | get name
+    }
+
+    if not ($session_file | path exists) {
+        error make {msg: $"Session file not found: ($session_file)"}
+    }
+
+    let records = open --raw $session_file | lines | each { from json }
+
+    # Extract raw data
+    let user_records = $records | where type? == "user"
+    let user_messages = $user_records | each { extract-text-content } | where { $in != "" }
+
+    let user_texts = $user_records | each { extract-text-content }
+    let mentioned_files = $user_texts
+    | each { parse --regex '@([^\s<>]+)' | get capture0? | default [] }
+    | flatten
+    | uniq
+
+    # Build result with default columns
+    let base = {
+        path: $session_file
+        user_messages: $user_messages
+        mentioned_files: $mentioned_files
+    }
+
+    # Extract optional data upfront
+    let assistant_records = $records | where type? == "assistant"
+    let all_tool_calls = $assistant_records | each { extract-tool-calls } | flatten
+
+    let user_timestamps = $user_records
+    | each { $in.timestamp? }
+    | compact
+    | each { into datetime }
+
+    # Pre-compute optional fields
+    let edited = $all_tool_calls
+    | where name? in ["Edit" "Write"]
+    | get input.file_path --optional
+    | uniq
+
+    let read = $all_tool_calls
+    | where name? == "Read"
+    | get input.file_path --optional
+    | uniq
+
+    let sum = $records
+    | where type? == "summary"
+    | if ($in | is-empty) { "" } else { first | get summary? | default "" }
+
+    let agent_list = $all_tool_calls
+    | where name? == "Task"
+    | each {
+        {
+            type: ($in.input?.subagent_type? | default "unknown")
+            description: ($in.input?.description? | default "")
+        }
+    }
+
+    let first_ts = $user_timestamps | if ($in | is-empty) { null } else { first }
+    let last_ts = $user_timestamps | if ($in | is-empty) { null } else { last }
+
+    # Build result record with optional columns
+    $base
+    | if ($all or $edited_files) { merge {edited_files: $edited} } else { $in }
+    | if ($all or $read_files) { merge {read_files: $read} } else { $in }
+    | if ($all or $summary) { merge {summary: $sum} } else { $in }
+    | if ($all or $agents) { merge {agents: $agent_list} } else { $in }
+    | if ($all or $first_timestamp) { merge {first_timestamp: $first_ts} } else { $in }
+    | if ($all or $last_timestamp) { merge {last_timestamp: $last_ts} } else { $in }
+}
