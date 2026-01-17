@@ -200,7 +200,7 @@ export def extract-session-metadata []: record -> record {
     $in
     | select --optional sessionId slug version cwd gitBranch
     | default "" sessionId slug version cwd gitBranch
-    | rename --column {sessionId: session_id, gitBranch: git_branch}
+    | rename --column {sessionId: session_id gitBranch: git_branch}
 }
 
 # Extract thinking level from user records
@@ -442,7 +442,7 @@ export def parse-session [
         | if ($in | is-empty) { "" } else { first | get summary? | default "" }
     } else { "" }
 
-    let timestamps = if $need_timestamps { $user_records | extract-timestamps } else { {first: null, last: null} }
+    let timestamps = if $need_timestamps { $user_records | extract-timestamps } else { {first: null last: null} }
 
     # Build result record with optional columns
     $base
