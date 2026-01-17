@@ -519,21 +519,12 @@ export def export-session [
     let dialogue = $records
         | where type? in ["user", "assistant"]
         | where isMeta? != true
-        | each {|r|
-            let text = $r | extract-text-content
-            # Skip empty or system-generated messages
-            if ($text | str trim | is-empty) {
-                null
-            } else if ($r.type == "user") and ($SYSTEM_PREFIXES | any {|p| $text | str starts-with $p }) {
-                null
-            } else {
-                {
-                    role: $r.type
-                    content: $text
-                }
-            }
-        }
-        | compact
+        | insert text { extract-text-content }
+        | where { $in.text | str trim | is-not-empty }
+        # Keep assistant messages; filter user messages starting with system prefixes
+        | where {|r| $r.type != "user" or ($SYSTEM_PREFIXES | all {|p| not ($r.text | str starts-with $p) }) }
+        | select type text
+        | rename role content
 
     # Format as markdown
     let header = [
@@ -548,7 +539,7 @@ export def export-session [
 
     let body = $dialogue
         | each {|turn|
-            let role = if $turn.role == "user" { "User" } else { "Assistant" }
+            let role = match $turn.role { "user" => "User", _ => "Assistant" }
             $"## ($role)\n\n($turn.content)"
         }
         | str join "\n\n---\n\n"
