@@ -1040,3 +1040,145 @@ def "parse-session default columns are minimal" [] {
     assert ("user_messages" in $cols)
     assert ("mentioned_files" in $cols)
 }
+
+# =============================================================================
+# extract-tool-results tests
+# =============================================================================
+
+@test
+def "extract-tool-results extracts tool_result from user records" [] {
+    let records = [
+        {message: {content: [{type: "tool_result" tool_use_id: "123" content: "success"}]}}
+        {message: {content: [{type: "tool_result" tool_use_id: "456" content: "done"}]}}
+    ]
+
+    let result = $records | extract-tool-results
+
+    assert equal ($result | length) 2
+    assert equal ($result.0.tool_use_id) "123"
+    assert equal ($result.1.tool_use_id) "456"
+}
+
+@test
+def "extract-tool-results returns empty for string content" [] {
+    let records = [
+        {message: {content: "just a string"}}
+    ]
+
+    let result = $records | extract-tool-results
+
+    assert equal ($result | length) 0
+}
+
+@test
+def "extract-tool-results flattens results from multiple records" [] {
+    let records = [
+        {message: {content: [{type: "tool_result" tool_use_id: "1" content: "a"} {type: "tool_result" tool_use_id: "2" content: "b"}]}}
+        {message: {content: [{type: "tool_result" tool_use_id: "3" content: "c"}]}}
+    ]
+
+    let result = $records | extract-tool-results
+
+    assert equal ($result | length) 3
+}
+
+@test
+def "extract-tool-results filters non-tool_result items" [] {
+    let records = [
+        {message: {content: [{type: "tool_result" tool_use_id: "1" content: "result"} {type: "text" text: "some text"}]}}
+    ]
+
+    let result = $records | extract-tool-results
+
+    assert equal ($result | length) 1
+    assert equal ($result.0.type) "tool_result"
+}
+
+# =============================================================================
+# sessions tests
+# =============================================================================
+
+@test
+def "sessions parses single file" [] {
+    let temp_dir = $nu.temp-path | path join $"test-sessions-(random uuid)"
+    mkdir $temp_dir
+    let temp_file = $temp_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
+
+    let lines = [
+        '{"type":"summary","summary":"Test session"}'
+        '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = sessions $temp_file
+
+    rm -rf $temp_dir
+
+    assert equal ($result | length) 1
+    assert equal ($result.0.summary) "Test session"
+}
+
+@test
+def "sessions parses directory of files" [] {
+    let temp_dir = $nu.temp-path | path join $"test-sessions-(random uuid)"
+    mkdir $temp_dir
+
+    let file1 = $temp_dir | path join "11111111-1111-1111-1111-111111111111.jsonl"
+    let file2 = $temp_dir | path join "22222222-2222-2222-2222-222222222222.jsonl"
+
+    '{"type":"summary","summary":"Session 1"}' | save --force $file1
+    '{"type":"summary","summary":"Session 2"}' | save --force $file2
+
+    let result = sessions $temp_dir
+
+    rm -rf $temp_dir
+
+    assert equal ($result | length) 2
+}
+
+@test
+def "sessions ignores non-uuid files in directory" [] {
+    let temp_dir = $nu.temp-path | path join $"test-sessions-(random uuid)"
+    mkdir $temp_dir
+
+    let valid_file = $temp_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
+    let invalid_file = $temp_dir | path join "not-a-uuid.jsonl"
+
+    '{"type":"summary","summary":"Valid"}' | save --force $valid_file
+    '{"type":"summary","summary":"Invalid"}' | save --force $invalid_file
+
+    let result = sessions $temp_dir
+
+    rm -rf $temp_dir
+
+    assert equal ($result | length) 1
+    assert equal ($result.0.summary) "Valid"
+}
+
+@test
+def "sessions errors on non-existent path" [] {
+    let result = try {
+        sessions "/nonexistent/path"
+        false
+    } catch {
+        true
+    }
+
+    assert $result
+}
+
+# =============================================================================
+# nu-complete claude sessions tests
+# =============================================================================
+
+@test
+def "nu-complete returns empty for non-existent sessions dir" [] {
+    # Use a path that definitely doesn't exist
+    let result = do {
+        cd /tmp
+        nu-complete claude sessions
+    }
+
+    assert equal $result.completions []
+    assert equal $result.options.sort false
+}
