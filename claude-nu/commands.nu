@@ -32,7 +32,7 @@ const EMPTY_SESSION_SUMMARY = {
 
 # Helper to get project sessions directory
 export def get-sessions-dir []: nothing -> path {
-    let project_path = ($env.PWD | str replace --all '/' '-')
+    let project_path = $env.PWD | str replace --all '/' '-'
     $env.HOME | path join ".claude" "projects" $project_path
 }
 
@@ -122,7 +122,7 @@ export def messages [
         where isMeta? != true
         | where {
             let content = $in.message?.content?
-            let content_type = ($content | describe)
+            let content_type = $content | describe
             if ($content_type | str starts-with "list") {
                 false
             } else if ($content | is-empty) {
@@ -258,7 +258,7 @@ export def extract-tool-stats [
         skill_invocations: ($tool_calls | where name? == "Skill" | get input.skill --optional)
         tool_errors: ($tool_results | where is_error? == true | length)
         ask_user_count: ($tool_calls | where name? == "AskUserQuestion" | length)
-        plan_mode_used: (($tool_calls | where name? == "EnterPlanMode" | length) > 0)
+        plan_mode_used: ($tool_calls | where name? == "EnterPlanMode" | is-not-empty)
     }
 }
 
@@ -521,7 +521,7 @@ export def export-session [
     # Get date from first user record or now
     let first_timestamp = $records
     | where type? == "user"
-    | get timestamp? --optional
+    | get timestamp --optional
     | compact
     | if ($in | is-empty) { [(date now | format date "%Y-%m-%dT%H:%M:%S")] } else { }
     | first
