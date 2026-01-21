@@ -79,16 +79,17 @@ export def "nu-complete claude sessions" []: nothing -> record {
         let uuid = ($file.name | path basename | str replace '.jsonl' '')
         let size = $file.size | into string
         let lines = try {
-            open $file.name | lines | first 5 | each {from json}
+            open --raw $file.name | lines | first 5 | each { from json }
         } catch {
             []
         }
         let summary = $lines | get 0?.summary? | default "No summary"
         # Timestamps are on message records, not summary headers
         let timestamp = $lines
-            | where {|r| ($r | get timestamp? | default null) != null}
-            | get 0?.timestamp?
-            | if ($in != null) { into datetime } else { $file.modified }
+        | where {|r| ($r | get timestamp? | default null) != null }
+        | get 0?.timestamp?
+        | if ($in != null) { into datetime } else { $file.modified }
+
         {uuid: $uuid size: $size summary: $summary timestamp: $timestamp}
     }
     | sort-by timestamp --reverse
