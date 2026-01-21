@@ -498,33 +498,33 @@ export def export-session [
 
     # Extract summary from summary record
     let summary = $records
-        | where type? == "summary"
-        | if ($in | is-empty) { "" } else { first | get summary? | default "" }
+    | where type? == "summary"
+    | if ($in | is-empty) { "" } else { first | get summary? | default "" }
 
     # Determine topic: argument > summary > "session"
     let resolved_topic = $topic
-        | default (if $summary != "" { $summary } else { "session" })
-        | sanitize-topic
+    | default (if $summary != "" { $summary } else { "session" })
+    | sanitize-topic
 
     # Get date from first user record or now
     let first_timestamp = $records
-        | where type? == "user"
-        | get timestamp? --optional
-        | compact
-        | if ($in | is-empty) { [(date now | format date "%Y-%m-%dT%H:%M:%S")] } else { }
-        | first
+    | where type? == "user"
+    | get timestamp? --optional
+    | compact
+    | if ($in | is-empty) { [(date now | format date "%Y-%m-%dT%H:%M:%S")] } else { }
+    | first
     let date_str = $first_timestamp | into datetime | format date "%Y%m%d"
 
     # Extract dialogue: user messages and assistant responses
     let dialogue = $records
-        | where type? in ["user", "assistant"]
-        | where isMeta? != true
-        | insert text { extract-text-content }
-        | where { $in.text | str trim | is-not-empty }
-        # Keep assistant messages; filter user messages starting with system prefixes
-        | where {|r| $r.type != "user" or ($SYSTEM_PREFIXES | all {|p| not ($r.text | str starts-with $p) }) }
-        | select type text
-        | rename role content
+    | where type? in ["user" "assistant"]
+    | where isMeta? != true
+    | insert text { extract-text-content }
+    | where { $in.text | str trim | is-not-empty }
+    # Keep assistant messages; filter user messages starting with system prefixes
+    | where {|r| $r.type != "user" or ($SYSTEM_PREFIXES | all {|p| not ($r.text | str starts-with $p) }) }
+    | select type text
+    | rename role content
 
     # Format as markdown
     let header = [
@@ -538,11 +538,11 @@ export def export-session [
     ] | str join "\n"
 
     let body = $dialogue
-        | each {|turn|
-            let role = match $turn.role { "user" => "User", _ => "Assistant" }
-            $"## ($role)\n\n($turn.content)"
-        }
-        | str join "\n\n---\n\n"
+    | each {|turn|
+        let role = match $turn.role { "user" => "User" _ => "Assistant" }
+        $"## ($role)\n\n($turn.content)"
+    }
+    | str join "\n\n---\n\n"
 
     let markdown = $header + $body
 
