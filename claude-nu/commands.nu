@@ -123,7 +123,7 @@ export def messages [
         | where {
             let content = $in.message?.content?
             let content_type = $content | describe
-            if ($content_type | str starts-with "list") {
+            if $content_type =~ '^(list|table)' {
                 false
             } else if ($content | is-empty) {
                 false
@@ -139,7 +139,7 @@ export def messages [
     | if $regex == null { } else {
         where {
             let content = $in.message?.content?
-            if ($content | describe | str starts-with "list") {
+            if ($content | describe) =~ '^(list|table)' {
                 ($content | get content --optional | str join "\n") =~ $regex
             } else {
                 $content =~ $regex
@@ -152,7 +152,7 @@ export def messages [
     } else {
         $filtered | each {|msg|
             let content = $msg.message?.content?
-            let message = if ($content | describe | str starts-with "list") {
+            let message = if ($content | describe) =~ '^(list|table)' {
                 $content | get content --optional | str join "\n"
             } else {
                 $content
@@ -443,38 +443,38 @@ export def parse-session [
         | if ($in | is-empty) { "" } else { first | get summary? | default "" }
     } else { "" }
 
-    let timestamps = if $need_timestamps { $user_records | extract-timestamps } else { {first: null, last: null} }
+    let timestamps = if $need_timestamps { $user_records | extract-timestamps } else { {first: null last: null} }
     let thinking = if ($all or $thinking_level) { $user_records | extract-thinking-level } else { "" }
 
     # Build result record with optional columns (data-driven)
     [
         # File operations
-        {include: $edited_files, field: edited_files, value: $file_ops.edited_files?}
-        {include: $read_files, field: read_files, value: $file_ops.read_files?}
+        {include: $edited_files field: edited_files value: $file_ops.edited_files?}
+        {include: $read_files field: read_files value: $file_ops.read_files?}
         # Session info
-        {include: $summary, field: summary, value: $sum}
-        {include: $agents, field: agents, value: $agent_list}
-        {include: $first_timestamp, field: first_timestamp, value: $timestamps.first?}
-        {include: $last_timestamp, field: last_timestamp, value: $timestamps.last?}
+        {include: $summary field: summary value: $sum}
+        {include: $agents field: agents value: $agent_list}
+        {include: $first_timestamp field: first_timestamp value: $timestamps.first?}
+        {include: $last_timestamp field: last_timestamp value: $timestamps.last?}
         # Session metadata
-        {include: $session_id, field: session_id, value: $meta.session_id?}
-        {include: $slug, field: slug, value: $meta.slug?}
-        {include: $version, field: version, value: $meta.version?}
-        {include: $cwd, field: cwd, value: $meta.cwd?}
-        {include: $git_branch, field: git_branch, value: $meta.git_branch?}
+        {include: $session_id field: session_id value: $meta.session_id?}
+        {include: $slug field: slug value: $meta.slug?}
+        {include: $version field: version value: $meta.version?}
+        {include: $cwd field: cwd value: $meta.cwd?}
+        {include: $git_branch field: git_branch value: $meta.git_branch?}
         # Thinking
-        {include: $thinking_level, field: thinking_level, value: $thinking}
+        {include: $thinking_level field: thinking_level value: $thinking}
         # Tool statistics
-        {include: $bash_commands, field: bash_commands, value: $tool_stats.bash_commands?}
-        {include: $bash_count, field: bash_count, value: $tool_stats.bash_count?}
-        {include: $skill_invocations, field: skill_invocations, value: $tool_stats.skill_invocations?}
-        {include: $tool_errors, field: tool_errors, value: $tool_stats.tool_errors?}
-        {include: $ask_user_count, field: ask_user_count, value: $tool_stats.ask_user_count?}
-        {include: $plan_mode_used, field: plan_mode_used, value: $tool_stats.plan_mode_used?}
+        {include: $bash_commands field: bash_commands value: $tool_stats.bash_commands?}
+        {include: $bash_count field: bash_count value: $tool_stats.bash_count?}
+        {include: $skill_invocations field: skill_invocations value: $tool_stats.skill_invocations?}
+        {include: $tool_errors field: tool_errors value: $tool_stats.tool_errors?}
+        {include: $ask_user_count field: ask_user_count value: $tool_stats.ask_user_count?}
+        {include: $plan_mode_used field: plan_mode_used value: $tool_stats.plan_mode_used?}
         # Derived metrics
-        {include: $turn_count, field: turn_count, value: $metrics.turn_count?}
-        {include: $assistant_msg_count, field: assistant_msg_count, value: $metrics.assistant_msg_count?}
-        {include: $tool_call_count, field: tool_call_count, value: $metrics.tool_call_count?}
+        {include: $turn_count field: turn_count value: $metrics.turn_count?}
+        {include: $assistant_msg_count field: assistant_msg_count value: $metrics.assistant_msg_count?}
+        {include: $tool_call_count field: tool_call_count value: $metrics.tool_call_count?}
     ]
     | where { $all or $in.include }
     | reduce --fold $base {|it acc| $acc | insert $it.field $it.value }
