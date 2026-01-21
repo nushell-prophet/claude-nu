@@ -156,7 +156,7 @@ Code through hierarchical settings:
 | `strictKnownMarketplaces`    | When set in managed-settings.json, allowlist of plugin marketplaces users can add. Undefined = no restrictions, empty array = lockdown. Applies to marketplace additions only. See [Managed marketplace restrictions](/en/plugin-marketplaces#managed-marketplace-restrictions) | `[{ "source": "github", "repo": "acme-corp/plugins" }]`                 |
 | `awsAuthRefresh`             | Custom script that modifies the `.aws` directory (see [advanced credential configuration](/en/amazon-bedrock#advanced-credential-configuration))                                                                                                                                | `aws sso login --profile myprofile`                                     |
 | `awsCredentialExport`        | Custom script that outputs JSON with AWS credentials (see [advanced credential configuration](/en/amazon-bedrock#advanced-credential-configuration))                                                                                                                            | `/bin/generate_aws_grant.sh`                                            |
-| `alwaysThinkingEnabled`      | Enable [extended thinking](/en/common-workflows#use-extended-thinking) by default for all sessions. Typically configured via the `/config` command rather than editing directly                                                                                                 | `true`                                                                  |
+| `alwaysThinkingEnabled`      | Enable [extended thinking](/en/common-workflows#use-extended-thinking-thinking-mode) by default for all sessions. Typically configured via the `/config` command rather than editing directly                                                                                   | `true`                                                                  |
 | `plansDirectory`             | Customize where plan files are stored. Path is relative to project root. Default: `~/.claude/plans`                                                                                                                                                                             | `"./plans"`                                                             |
 | `showTurnDuration`           | Show turn duration messages after responses (e.g., "Cooked for 1m 6s"). Set to `false` to hide these messages                                                                                                                                                                   | `true`                                                                  |
 | `language`                   | Configure Claude's preferred response language (e.g., `"japanese"`, `"spanish"`, `"french"`). Claude will respond in this language by default                                                                                                                                   | `"japanese"`                                                            |
@@ -166,14 +166,102 @@ Code through hierarchical settings:
 
 ### Permission settings
 
-| Keys                           | Description                                                                                                                                                                                                                                                                                 | Example                                                                |
-| :----------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------- |
-| `allow`                        | Array of [permission rules](/en/iam#configuring-permissions) to allow tool use. **Note:** Bash rules use prefix matching, not regex                                                                                                                                                         | `[ "Bash(git diff:*)" ]`                                               |
-| `ask`                          | Array of [permission rules](/en/iam#configuring-permissions) to ask for confirmation upon tool use.                                                                                                                                                                                         | `[ "Bash(git push:*)" ]`                                               |
-| `deny`                         | Array of [permission rules](/en/iam#configuring-permissions) to deny tool use. Use this to also exclude sensitive files from Claude Code access. **Note:** Bash patterns are prefix matches and can be bypassed (see [Bash permission limitations](/en/iam#tool-specific-permission-rules)) | `[ "WebFetch", "Bash(curl:*)", "Read(./.env)", "Read(./secrets/**)" ]` |
-| `additionalDirectories`        | Additional [working directories](/en/iam#working-directories) that Claude has access to                                                                                                                                                                                                     | `[ "../docs/" ]`                                                       |
-| `defaultMode`                  | Default [permission mode](/en/iam#permission-modes) when opening Claude Code                                                                                                                                                                                                                | `"acceptEdits"`                                                        |
-| `disableBypassPermissionsMode` | Set to `"disable"` to prevent `bypassPermissions` mode from being activated. This disables the `--dangerously-skip-permissions` command-line flag. See [managed settings](/en/iam#managed-settings)                                                                                         | `"disable"`                                                            |
+| Keys                           | Description                                                                                                                                                                                                                              | Example                                                                |
+| :----------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------- |
+| `allow`                        | Array of permission rules to allow tool use. See [Permission rule syntax](#permission-rule-syntax) below for pattern matching details                                                                                                    | `[ "Bash(git diff:*)" ]`                                               |
+| `ask`                          | Array of permission rules to ask for confirmation upon tool use. See [Permission rule syntax](#permission-rule-syntax) below                                                                                                             | `[ "Bash(git push:*)" ]`                                               |
+| `deny`                         | Array of permission rules to deny tool use. Use this to exclude sensitive files from Claude Code access. See [Permission rule syntax](#permission-rule-syntax) and [Bash permission limitations](/en/iam#tool-specific-permission-rules) | `[ "WebFetch", "Bash(curl:*)", "Read(./.env)", "Read(./secrets/**)" ]` |
+| `additionalDirectories`        | Additional [working directories](/en/iam#working-directories) that Claude has access to                                                                                                                                                  | `[ "../docs/" ]`                                                       |
+| `defaultMode`                  | Default [permission mode](/en/iam#permission-modes) when opening Claude Code                                                                                                                                                             | `"acceptEdits"`                                                        |
+| `disableBypassPermissionsMode` | Set to `"disable"` to prevent `bypassPermissions` mode from being activated. This disables the `--dangerously-skip-permissions` command-line flag. See [managed settings](/en/iam#managed-settings)                                      | `"disable"`                                                            |
+
+### Permission rule syntax
+
+Permission rules follow the format `Tool` or `Tool(specifier)`. Understanding the syntax helps you write rules that match exactly what you intend.
+
+#### Rule evaluation order
+
+When multiple rules could match the same tool use, rules are evaluated in this order:
+
+1. **Deny** rules are checked first
+2. **Ask** rules are checked second
+3. **Allow** rules are checked last
+
+The first matching rule determines the behavior. This means deny rules always take precedence over allow rules, even if both match the same command.
+
+#### Matching all uses of a tool
+
+To match all uses of a tool, use just the tool name without parentheses:
+
+| Rule       | Effect                             |
+| :--------- | :--------------------------------- |
+| `Bash`     | Matches **all** Bash commands      |
+| `WebFetch` | Matches **all** web fetch requests |
+| `Read`     | Matches **all** file reads         |
+
+<Warning>
+  `Bash(*)` does **not** match all Bash commands. The `*` wildcard only matches within the specifier context. To allow or deny all uses of a tool, use just the tool name: `Bash`, not `Bash(*)`.
+</Warning>
+
+#### Using specifiers for fine-grained control
+
+Add a specifier in parentheses to match specific tool uses:
+
+| Rule                           | Effect                                                   |
+| :----------------------------- | :------------------------------------------------------- |
+| `Bash(npm run build)`          | Matches the exact command `npm run build`                |
+| `Read(./.env)`                 | Matches reading the `.env` file in the current directory |
+| `WebFetch(domain:example.com)` | Matches fetch requests to example.com                    |
+
+#### Wildcard patterns
+
+Two wildcard syntaxes are available for Bash rules:
+
+| Wildcard | Position            | Behavior                                                                                         | Example                                      |
+| :------- | :------------------ | :----------------------------------------------------------------------------------------------- | :------------------------------------------- |
+| `:*`     | End of pattern only | **Prefix matching** with word boundary. The prefix must be followed by a space or end-of-string. | `Bash(ls:*)` matches `ls -la` but not `lsof` |
+| `*`      | Anywhere in pattern | **Glob matching** with no word boundary. Matches any sequence of characters at that position.    | `Bash(ls*)` matches both `ls -la` and `lsof` |
+
+**Prefix matching with `:*`**
+
+The `:*` suffix matches any command that starts with the specified prefix. This works with multi-word commands. The following configuration allows npm and git commit commands while blocking git push and rm -rf:
+
+```json  theme={null}
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(git commit:*)",
+      "Bash(docker compose:*)"
+    ],
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(rm -rf:*)"
+    ]
+  }
+}
+```
+
+**Glob matching with `*`**
+
+The `*` wildcard can appear at the beginning, middle, or end of a pattern. The following configuration allows any git command targeting main (like `git checkout main`, `git merge main`) and any version check command (like `node --version`, `npm --version`):
+
+```json  theme={null}
+{
+  "permissions": {
+    "allow": [
+      "Bash(git * main)",
+      "Bash(* --version)"
+    ]
+  }
+}
+```
+
+<Warning>
+  Bash permission patterns that try to constrain command arguments are fragile. For example, `Bash(curl http://github.com/:*)` intends to restrict curl to GitHub URLs, but won't match `curl -X GET http://github.com/...` (flags before URL), `curl https://github.com/...` (different protocol), or commands using shell variables. Do not rely on argument-constraining patterns as a security boundary. See [Bash permission limitations](/en/iam#tool-specific-permission-rules) for alternatives.
+</Warning>
+
+For detailed information about tool-specific permission patterns—including Read, Edit, WebFetch, MCP, Task rules, and Bash permission limitations—see [Tool-specific permission rules](/en/iam#tool-specific-permission-rules).
 
 ### Sandbox settings
 
@@ -345,7 +433,7 @@ For example, if your user settings allow `Bash(npm run:*)` but a project's share
 
 * **Memory files (`CLAUDE.md`)**: Contain instructions and context that Claude loads at startup
 * **Settings files (JSON)**: Configure permissions, environment variables, and tool behavior
-* **Slash commands**: Custom commands that can be invoked during a session with `/command-name`
+* **Skills**: Custom prompts that can be invoked with `/skill-name` or loaded by Claude automatically
 * **MCP servers**: Extend Claude Code with additional tools and integrations
 * **Precedence**: Higher-level configurations (Managed) override lower-level ones (User/Project)
 * **Inheritance**: Settings are merged, with more specific settings adding to or overriding broader ones
@@ -385,7 +473,7 @@ Subagent files define specialized AI assistants with custom prompts and tool per
 
 ## Plugin configuration
 
-Claude Code supports a plugin system that lets you extend functionality with custom commands, agents, hooks, and MCP servers. Plugins are distributed through marketplaces and can be configured at both user and repository levels.
+Claude Code supports a plugin system that lets you extend functionality with skills, agents, hooks, and MCP servers. Plugins are distributed through marketplaces and can be configured at both user and repository levels.
 
 ### Plugin settings
 
@@ -739,7 +827,7 @@ Claude Code supports the following environment variables to control its behavior
 | `MCP_TIMEOUT`                                 | Timeout in milliseconds for MCP server startup                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `MCP_TOOL_TIMEOUT`                            | Timeout in milliseconds for MCP tool execution                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `NO_PROXY`                                    | List of domains and IPs to which requests will be directly issued, bypassing proxy                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `SLASH_COMMAND_TOOL_CHAR_BUDGET`              | Maximum number of characters for slash command metadata shown to the [Skill tool](/en/slash-commands#skill-tool) (default: 15000)                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `SLASH_COMMAND_TOOL_CHAR_BUDGET`              | Maximum number of characters for skill metadata shown to the [Skill tool](/en/skills#control-who-invokes-a-skill) (default: 15000). Legacy name kept for backwards compatibility.                                                                                                                                                                                                                                                                                                                                                      |
 | `USE_BUILTIN_RIPGREP`                         | Set to `0` to use system-installed `rg` instead of `rg` included with Claude Code                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `VERTEX_REGION_CLAUDE_3_5_HAIKU`              | Override region for Claude 3.5 Haiku when using Vertex AI                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `VERTEX_REGION_CLAUDE_3_7_SONNET`             | Override region for Claude 3.7 Sonnet when using Vertex AI                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -764,7 +852,7 @@ Claude Code has access to a set of powerful tools that help it understand and mo
 | **MCPSearch**       | Searches for and loads MCP tools when [tool search](/en/mcp#scale-with-mcp-tool-search) is enabled | No                  |
 | **NotebookEdit**    | Modifies Jupyter notebook cells                                                                    | Yes                 |
 | **Read**            | Reads the contents of files                                                                        | No                  |
-| **Skill**           | Executes a [skill or slash command](/en/slash-commands#skill-tool) within the main conversation    | Yes                 |
+| **Skill**           | Executes a [skill](/en/skills#control-who-invokes-a-skill) within the main conversation            | Yes                 |
 | **Task**            | Runs a sub-agent to handle complex, multi-step tasks                                               | No                  |
 | **TodoWrite**       | Creates and manages structured task lists                                                          | No                  |
 | **WebFetch**        | Fetches content from a specified URL                                                               | Yes                 |
@@ -846,9 +934,10 @@ files by blocking Write operations to certain paths.
 
 ## See also
 
-* [Identity and Access Management](/en/iam#configuring-permissions) - Learn about Claude Code's permission system
-* [IAM and access control](/en/iam#managed-settings) - Managed policy configuration
-* [Troubleshooting](/en/troubleshooting#auto-updater-issues) - Solutions for common configuration issues
+* [Identity and Access Management](/en/iam#configuring-permissions) - Permission system overview and how allow/ask/deny rules interact
+* [Tool-specific permission rules](/en/iam#tool-specific-permission-rules) - Detailed patterns for Bash, Read, Edit, WebFetch, MCP, and Task tools, including security limitations
+* [Managed settings](/en/iam#managed-settings) - Managed policy configuration for organizations
+* [Troubleshooting](/en/troubleshooting) - Solutions for common configuration issues
 
 
 ---
