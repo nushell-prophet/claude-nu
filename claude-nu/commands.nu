@@ -84,7 +84,7 @@ export def "nu-complete claude sessions" []: nothing -> record {
         let summary = $lines | get 0?.summary? | default "No summary"
         # Timestamps are on message records, not summary headers
         let timestamp = $lines
-        | where { $in.timestamp? != null }
+        | where $it.timestamp? != null
         | get 0?.timestamp?
         | if ($in != null) { into datetime } else { $file.modified }
 
