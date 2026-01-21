@@ -482,7 +482,8 @@ export def export-session [
     topic?: string # Topic for filename (default: session summary)
     --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
     --output-dir (-o): path # Output directory (default: docs/sessions)
-]: nothing -> path {
+    --echo (-e) # Print markdown to stdout instead of saving to file
+]: nothing -> string {
     let session_file = resolve-session-file $session
     let out_dir = $output_dir | default "docs/sessions"
 
@@ -546,13 +547,17 @@ export def export-session [
 
     let markdown = $header + $body
 
-    # Ensure output directory exists
-    mkdir $out_dir
+    if $echo {
+        $markdown
+    } else {
+        # Ensure output directory exists
+        mkdir $out_dir
 
-    # Write file
-    let filename = $"($date_str)+($resolved_topic).md"
-    let filepath = $out_dir | path join $filename
-    $markdown | save -f $filepath
+        # Write file
+        let filename = $"($date_str)+($resolved_topic).md"
+        let filepath = $out_dir | path join $filename
+        $markdown | save -f $filepath
 
-    $filepath
+        $filepath
+    }
 }
