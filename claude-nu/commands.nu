@@ -477,12 +477,14 @@ export def sanitize-topic []: string -> string {
     | str substring 0..<50
 }
 
-# Export session dialogue to markdown
+# Export session dialogue to markdown file
 export def export-session [
-    topic?: string # Topic for header (default: session summary)
+    topic?: string # Topic for filename (default: session summary)
     --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
-]: nothing -> string {
+    --output-dir (-o): path # Output directory (default: docs/sessions)
+]: nothing -> path {
     let session_file = resolve-session-file $session
+    let out_dir = $output_dir | default "docs/sessions"
 
     if not ($session_file | path exists) {
         error make {msg: $"Session file not found: ($session_file)"}
@@ -511,6 +513,7 @@ export def export-session [
     | compact
     | if ($in | is-empty) { [(date now | format date "%Y-%m-%dT%H:%M:%S")] } else { }
     | first
+    let date_str = $first_timestamp | into datetime | format date "%Y%m%d"
 
     # Extract dialogue: user messages and assistant responses
     let dialogue = $records
@@ -541,5 +544,15 @@ export def export-session [
     }
     | str join "\n\n---\n\n"
 
-    $header + $body
+    let markdown = $header + $body
+
+    # Ensure output directory exists
+    mkdir $out_dir
+
+    # Write file
+    let filename = $"($date_str)+($resolved_topic).md"
+    let filepath = $out_dir | path join $filename
+    $markdown | save -f $filepath
+
+    $filepath
 }
