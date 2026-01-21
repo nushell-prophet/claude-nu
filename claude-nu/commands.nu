@@ -563,7 +563,7 @@ export def export-session [
         mkdir $out_dir
 
         # Write file
-        let filename = $"($date_str)+($resolved_topic).md"
+        let filename = $"($date_str)-($resolved_topic).md"
         let filepath = $out_dir | path join $filename
         $markdown | save -f $filepath
 
