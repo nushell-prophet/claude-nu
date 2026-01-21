@@ -1,4 +1,3 @@
-const sitemap_csv = 'claude-code-docs/urls-from-sitemap.csv'
 const output_dir = 'claude-code-docs'
 
 export def main [] { }
@@ -68,24 +67,22 @@ def print-test-result [result: record] {
 
 # Download Claude Code documentation pages from the sitemap
 export def fetch-claude-docs [
-    --skip-sitemap # Skip refreshing the sitemap before downloading
-    --no-commit    # Skip creating a git commit after downloading
+    --no-commit # Skip creating a git commit after downloading
 ] {
-    if not $skip_sitemap { fetch-sitemap }
+    use claude-nu
 
-    open $sitemap_csv
-    | get url
-    | par-each --threads 4 {|url|
-        let filename = $url | path split | skip 4 | str join '_'
-        let dest_path = [$output_dir $filename] | path join
+    let results = claude-nu download-documentation --output-dir $output_dir
 
-        try {
-            http get $url | save -f $dest_path
-            print $"($url) ok"
-        } catch {
-            print $"($url) failed"
-        }
+    # Print results
+    $results | each {|r|
+        let icon = if $r.status == "ok" { $"(ansi green)✓(ansi reset)" } else { $"(ansi red)✗(ansi reset)" }
+        print $"($icon) ($r.url)"
     }
+
+    # Summary
+    let ok = $results | where status == "ok" | length
+    let failed = $results | where status == "failed" | length
+    print $"\n(ansi green_bold)($ok) ok(ansi reset), (ansi red_bold)($failed) failed(ansi reset)"
 
     if not $no_commit {
         # Stage and commit if there are changes
@@ -99,22 +96,4 @@ export def fetch-claude-docs [
             print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
         }
     }
-}
-
-# Fetch and parse sitemap.xml, saving English docs URLs to CSV
-def fetch-sitemap [] {
-    let sitemap_xml = http get https://code.claude.com/docs/sitemap.xml
-
-    $sitemap_xml
-    | get content.content
-    | each {
-        get content
-        | each { $in.content.0 }
-    }
-    | each {|entry|
-        {url: $entry.0, ts: $entry.1?}
-    }
-    | where url =~ 'docs/en/'
-    | update url { $in + '.md' }
-    | save -f $sitemap_csv
 }

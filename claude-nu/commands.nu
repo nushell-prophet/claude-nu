@@ -572,3 +572,35 @@ export def export-session [
         $filepath
     }
 }
+
+# Download Claude Code documentation from sitemap
+export def download-documentation [
+    --output-dir (-o): path = "claude-code-docs" # Output directory for downloaded docs
+]: nothing -> table {
+    # Fetch and parse sitemap
+    let sitemap_xml = http get https://code.claude.com/docs/sitemap.xml
+
+    let urls = $sitemap_xml
+    | get content.content
+    | each { get content | each { $in.content.0 } }
+    | each {|entry| $entry.0 }
+    | where $it =~ 'docs/en/'
+    | each { $in + '.md' }
+
+    # Ensure output directory exists
+    mkdir $output_dir
+
+    # Download files in parallel
+    $urls
+    | par-each --threads 4 {|url|
+        let filename = $url | path split | skip 4 | str join '_'
+        let dest_path = [$output_dir $filename] | path join
+
+        try {
+            http get $url | save -f $dest_path
+            {url: $url status: "ok" dest: $dest_path error: null}
+        } catch {|e|
+            {url: $url status: "failed" dest: $dest_path error: ($e.msg? | default "unknown error")}
+        }
+    }
+}
