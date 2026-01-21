@@ -217,8 +217,7 @@ export def extract-thinking-level []: table -> string {
 
 # Extract first/last timestamps from user records
 export def extract-timestamps []: table -> record {
-    let ts = $in
-    | each { $in.timestamp? }
+    let ts = get timestamp --optional
     | compact
     | each { into datetime }
     {
@@ -444,35 +443,41 @@ export def parse-session [
         | if ($in | is-empty) { "" } else { first | get summary? | default "" }
     } else { "" }
 
-    let timestamps = if $need_timestamps { $user_records | extract-timestamps } else { {first: null last: null} }
+    let timestamps = if $need_timestamps { $user_records | extract-timestamps } else { {first: null, last: null} }
+    let thinking = if ($all or $thinking_level) { $user_records | extract-thinking-level } else { "" }
 
-    # Build result record with optional columns
-    $base
-    | if ($all or $edited_files) { merge {edited_files: $file_ops.edited_files} } else { $in }
-    | if ($all or $read_files) { merge {read_files: $file_ops.read_files} } else { $in }
-    | if ($all or $summary) { merge {summary: $sum} } else { $in }
-    | if ($all or $agents) { merge {agents: $agent_list} } else { $in }
-    | if ($all or $first_timestamp) { merge {first_timestamp: $timestamps.first} } else { $in }
-    | if ($all or $last_timestamp) { merge {last_timestamp: $timestamps.last} } else { $in }
-    # Session metadata
-    | if ($all or $session_id) { merge {session_id: $meta.session_id} } else { $in }
-    | if ($all or $slug) { merge {slug: $meta.slug} } else { $in }
-    | if ($all or $version) { merge {version: $meta.version} } else { $in }
-    | if ($all or $cwd) { merge {cwd: $meta.cwd} } else { $in }
-    | if ($all or $git_branch) { merge {git_branch: $meta.git_branch} } else { $in }
-    # Thinking
-    | if ($all or $thinking_level) { merge {thinking_level: ($user_records | extract-thinking-level)} } else { $in }
-    # Tool statistics
-    | if ($all or $bash_commands) { merge {bash_commands: $tool_stats.bash_commands} } else { $in }
-    | if ($all or $bash_count) { merge {bash_count: $tool_stats.bash_count} } else { $in }
-    | if ($all or $skill_invocations) { merge {skill_invocations: $tool_stats.skill_invocations} } else { $in }
-    | if ($all or $tool_errors) { merge {tool_errors: $tool_stats.tool_errors} } else { $in }
-    | if ($all or $ask_user_count) { merge {ask_user_count: $tool_stats.ask_user_count} } else { $in }
-    | if ($all or $plan_mode_used) { merge {plan_mode_used: $tool_stats.plan_mode_used} } else { $in }
-    # Derived metrics
-    | if ($all or $turn_count) { merge {turn_count: $metrics.turn_count} } else { $in }
-    | if ($all or $assistant_msg_count) { merge {assistant_msg_count: $metrics.assistant_msg_count} } else { $in }
-    | if ($all or $tool_call_count) { merge {tool_call_count: $metrics.tool_call_count} } else { $in }
+    # Build result record with optional columns (data-driven)
+    [
+        # File operations
+        {include: $edited_files, field: edited_files, value: $file_ops.edited_files?}
+        {include: $read_files, field: read_files, value: $file_ops.read_files?}
+        # Session info
+        {include: $summary, field: summary, value: $sum}
+        {include: $agents, field: agents, value: $agent_list}
+        {include: $first_timestamp, field: first_timestamp, value: $timestamps.first?}
+        {include: $last_timestamp, field: last_timestamp, value: $timestamps.last?}
+        # Session metadata
+        {include: $session_id, field: session_id, value: $meta.session_id?}
+        {include: $slug, field: slug, value: $meta.slug?}
+        {include: $version, field: version, value: $meta.version?}
+        {include: $cwd, field: cwd, value: $meta.cwd?}
+        {include: $git_branch, field: git_branch, value: $meta.git_branch?}
+        # Thinking
+        {include: $thinking_level, field: thinking_level, value: $thinking}
+        # Tool statistics
+        {include: $bash_commands, field: bash_commands, value: $tool_stats.bash_commands?}
+        {include: $bash_count, field: bash_count, value: $tool_stats.bash_count?}
+        {include: $skill_invocations, field: skill_invocations, value: $tool_stats.skill_invocations?}
+        {include: $tool_errors, field: tool_errors, value: $tool_stats.tool_errors?}
+        {include: $ask_user_count, field: ask_user_count, value: $tool_stats.ask_user_count?}
+        {include: $plan_mode_used, field: plan_mode_used, value: $tool_stats.plan_mode_used?}
+        # Derived metrics
+        {include: $turn_count, field: turn_count, value: $metrics.turn_count?}
+        {include: $assistant_msg_count, field: assistant_msg_count, value: $metrics.assistant_msg_count?}
+        {include: $tool_call_count, field: tool_call_count, value: $metrics.tool_call_count?}
+    ]
+    | where { $all or $in.include }
+    | reduce --fold $base {|it acc| $acc | insert $it.field $it.value }
 }
 
 # Sanitize topic string for use in filename
