@@ -140,7 +140,7 @@ export def messages [
         where {
             let content = $in.message?.content?
             if ($content | describe | str starts-with "list") {
-                ($content | each { $in.content? } | str join "\n") =~ $regex
+                ($content | get content --optional | str join "\n") =~ $regex
             } else {
                 $content =~ $regex
             }
@@ -153,7 +153,7 @@ export def messages [
         $filtered | each {|msg|
             let content = $msg.message?.content?
             let message = if ($content | describe | str starts-with "list") {
-                $content | each { $in.content? } | str join "\n"
+                $content | get content --optional | str join "\n"
             } else {
                 $content
             }
