@@ -19,6 +19,16 @@ description: Load this skill when editing, writing, or reviewing any .nu file. P
 
 ---
 
+## Agent Tip: Syntax Checking
+
+```nushell
+nu --ide-check 10 file.nu | lines | each { from json }
+```
+
+Returns structured JSON with error spans. See [debugging.md](debugging.md) for parsing diagnostics.
+
+---
+
 ## Command Choices
 
 | Task | Preferred | Avoid |
@@ -47,10 +57,12 @@ Place `|` at start of continuation lines, aligned with `let`.
 When body starts with pipeline command (`each`, `where`, `select`), input flows automatically.
 
 ### Empty `{ }` Pass-Through
-Use `| if $cond { transform } else { }` to pass through unchanged.
+Use empty `{ }` for the branch that should pass through unchanged:
+- `| if $cond { transform } else { }` — transform when true, pass through when false
+- `| if $cond { } else { transform }` — pass through when true, transform when false
 
 ### Stateful Transforms
-Use `scan` from `std/iter` for sequences with state.
+Use `scan` for sequences with state: `use std/iter scan`
 
 → See [patterns.md](patterns.md) for detailed examples.
 
