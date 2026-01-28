@@ -87,7 +87,8 @@ Use `scan` for sequences with state: `use std/iter scan`
 - Use `@example` attributes (nutest)
 - Use `const` for static data
 - Keep custom commands focused
-- Export all commands (`export def`), control public API via `mod.nu`
+- Export ALL commands from implementation files (enables testing helpers)
+- Control public API via `mod.nu` re-exports (not by removing exports)
 - Use `par-each --keep-order` for parallel with deterministic output
 
 ### Don't
@@ -100,6 +101,7 @@ Use `scan` for sequences with state: `use std/iter scan`
 - Use verbose names for local variables
 - Break the pipeline flow unnecessarily
 - Remove existing comments (preserve user's context)
+- Remove `export` from helpers to "make them private" (use mod.nu instead)
 
 ---
 

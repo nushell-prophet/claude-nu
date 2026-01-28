@@ -345,14 +345,18 @@ Use meaningful labels instead of pattern matching throughout:
 
 ### Module Exports for Testing
 
-Export all commands from implementation files. Control what's public via `mod.nu`:
+**Key pattern:** Nushell has no private/public distinction within a file. Use a two-file pattern:
+
+1. **commands.nu** — export ALL commands (public + helpers) for testability
+2. **mod.nu** — re-export only the public API
 
 ```nushell
-# commands.nu - export everything for testability
+# commands.nu - export EVERYTHING (enables unit testing of helpers)
 export def my-command [] { ... }
 export def helper-function [] { ... }  # internal helper, still exported
+export def another-helper [] { ... }   # also exported
 
-# mod.nu - control public API
+# mod.nu - control public API (what users see)
 export use commands.nu [ my-command ]  # only my-command is public
 ```
 
@@ -360,8 +364,13 @@ Tests can then import everything:
 
 ```nushell
 # tests/test_commands.nu
-use ../module/commands.nu *  # access all exported commands including helpers
+use ../module/commands.nu *  # access ALL commands including helpers
 ```
+
+**When asked "should helpers be private/renamed?"** — the answer is:
+- Keep them exported (for testing)
+- Keep their current names (consistency within the module)
+- The public API is controlled by mod.nu, not by removing exports
 
 ### Const for Static Data
 
