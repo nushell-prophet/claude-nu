@@ -1,3 +1,7 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
 # Troubleshooting
 
 > Discover solutions to common issues with Claude Code installation and usage.
@@ -52,6 +56,26 @@ export PATH="$HOME/.nvm/versions/node/$(node -v)/bin:$PATH"
 <Warning>
   Avoid disabling Windows PATH importing (`appendWindowsPath = false`) as this breaks the ability to call Windows executables from WSL. Similarly, avoid uninstalling Node.js from Windows if you use it for Windows development.
 </Warning>
+
+### WSL2 sandbox setup
+
+[Sandboxing](/en/sandboxing) is supported on WSL2 but requires installing additional packages. If you see an error like "Sandbox requires socat and bubblewrap" when running `/sandbox`, install the dependencies:
+
+<Tabs>
+  <Tab title="Ubuntu/Debian">
+    ```bash  theme={null}
+    sudo apt-get install bubblewrap socat
+    ```
+  </Tab>
+
+  <Tab title="Fedora">
+    ```bash  theme={null}
+    sudo dnf install bubblewrap socat
+    ```
+  </Tab>
+</Tabs>
+
+WSL1 does not support sandboxing. If you see "Sandboxing requires WSL2", you need to upgrade to WSL2 or run Claude Code without sandboxing.
 
 ### Linux and Mac installation issues: permission or command not found errors
 
@@ -173,7 +197,7 @@ Claude Code stores configuration in several locations:
 | `~/.claude/settings.json`     | User settings (permissions, hooks, model overrides)      |
 | `.claude/settings.json`       | Project settings (checked into source control)           |
 | `.claude/settings.local.json` | Local project settings (not committed)                   |
-| `~/.claude.json`              | Global state (theme, OAuth, MCP servers, allowed tools)  |
+| `~/.claude.json`              | Global state (theme, OAuth, MCP servers)                 |
 | `.mcp.json`                   | Project MCP servers (checked into source control)        |
 | `managed-settings.json`       | [Managed settings](/en/settings#settings-files)          |
 | `managed-mcp.json`            | [Managed MCP servers](/en/mcp#managed-mcp-configuration) |
@@ -203,7 +227,7 @@ rm .mcp.json
 ```
 
 <Warning>
-  This will remove all your settings, allowed tools, MCP server configurations, and session history.
+  This will remove all your settings, MCP server configurations, and session history.
 </Warning>
 
 ## Performance and stability
@@ -398,8 +422,3 @@ If you're experiencing issues not covered here:
    * Context usage warnings (large CLAUDE.md files, high MCP token usage, unreachable permission rules)
    * Plugin and agent loading errors
 4. Ask Claude directly about its capabilities and features - Claude has built-in access to its documentation
-
-
----
-
-> To find navigation and other pages in this documentation, fetch the llms.txt file at: https://code.claude.com/docs/llms.txt

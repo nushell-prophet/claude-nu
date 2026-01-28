@@ -1,3 +1,7 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
 # Connect Claude Code to tools via MCP
 
 > Learn how to connect Claude Code to your tools with the Model Context Protocol.
@@ -419,6 +423,10 @@ MCP servers can be configured at three different scope levels, each serving dist
 ### Local scope
 
 Local-scoped servers represent the default configuration level and are stored in `~/.claude.json` under your project's path. These servers remain private to you and are only accessible when working within the current project directory. This scope is ideal for personal development servers, experimental configurations, or servers containing sensitive credentials that shouldn't be shared.
+
+<Note>
+  The term "local scope" for MCP servers differs from general local settings. MCP local-scoped servers are stored in `~/.claude.json` (your home directory), while general local settings use `.claude/settings.local.json` (in the project directory). See [Settings](/en/settings#settings-files) for details on settings file locations.
+</Note>
 
 ```bash  theme={null}
 # Add a local-scoped server (default)
@@ -1123,8 +1131,3 @@ URL patterns support wildcards using `*` to match any sequence of characters. Th
 <Note>
   **When using `managed-mcp.json`**: Users cannot add MCP servers through `claude mcp add` or configuration files. The `allowedMcpServers` and `deniedMcpServers` settings still apply to filter which managed servers are actually loaded.
 </Note>
-
-
----
-
-> To find navigation and other pages in this documentation, fetch the llms.txt file at: https://code.claude.com/docs/llms.txt

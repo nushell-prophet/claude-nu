@@ -1,3 +1,7 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
 # CLI reference
 
 > Complete reference for Claude Code command-line interface, including commands and flags.
@@ -26,7 +30,7 @@ Customize Claude Code's behavior with these command-line flags:
 | `--agent`                              | Specify an agent for the current session (overrides the `agent` setting)                                                                                                                                  | `claude --agent my-custom-agent`                                                                   |
 | `--agents`                             | Define custom [subagents](/en/sub-agents) dynamically via JSON (see below for format)                                                                                                                     | `claude --agents '{"reviewer":{"description":"Reviews code","prompt":"You are a code reviewer"}}'` |
 | `--allow-dangerously-skip-permissions` | Enable permission bypassing as an option without immediately activating it. Allows composing with `--permission-mode` (use with caution)                                                                  | `claude --permission-mode plan --allow-dangerously-skip-permissions`                               |
-| `--allowedTools`                       | Tools that execute without prompting for permission. See [permission rule syntax](/en/settings#permission-rule-syntax) for pattern matching. To restrict which tools are available, use `--tools` instead | `"Bash(git log:*)" "Bash(git diff:*)" "Read"`                                                      |
+| `--allowedTools`                       | Tools that execute without prompting for permission. See [permission rule syntax](/en/settings#permission-rule-syntax) for pattern matching. To restrict which tools are available, use `--tools` instead | `"Bash(git log *)" "Bash(git diff *)" "Read"`                                                      |
 | `--append-system-prompt`               | Append custom text to the end of the default system prompt (works in both interactive and print modes)                                                                                                    | `claude --append-system-prompt "Always use TypeScript"`                                            |
 | `--append-system-prompt-file`          | Load additional system prompt text from a file and append to the default prompt (print mode only)                                                                                                         | `claude -p --append-system-prompt-file ./extra-rules.txt "query"`                                  |
 | `--betas`                              | Beta headers to include in API requests (API key users only)                                                                                                                                              | `claude --betas interleaved-thinking`                                                              |
@@ -35,7 +39,7 @@ Customize Claude Code's behavior with these command-line flags:
 | `--dangerously-skip-permissions`       | Skip all permission prompts (use with caution)                                                                                                                                                            | `claude --dangerously-skip-permissions`                                                            |
 | `--debug`                              | Enable debug mode with optional category filtering (for example, `"api,hooks"` or `"!statsig,!file"`)                                                                                                     | `claude --debug "api,mcp"`                                                                         |
 | `--disable-slash-commands`             | Disable all skills and slash commands for this session                                                                                                                                                    | `claude --disable-slash-commands`                                                                  |
-| `--disallowedTools`                    | Tools that are removed from the model's context and cannot be used                                                                                                                                        | `"Bash(git log:*)" "Bash(git diff:*)" "Edit"`                                                      |
+| `--disallowedTools`                    | Tools that are removed from the model's context and cannot be used                                                                                                                                        | `"Bash(git log *)" "Bash(git diff *)" "Edit"`                                                      |
 | `--fallback-model`                     | Enable automatic fallback to specified model when default model is overloaded (print mode only)                                                                                                           | `claude -p --fallback-model sonnet "query"`                                                        |
 | `--fork-session`                       | When resuming, create a new session ID instead of reusing the original (use with `--resume` or `--continue`)                                                                                              | `claude --resume abc123 --fork-session`                                                            |
 | `--ide`                                | Automatically connect to IDE on startup if exactly one valid IDE is available                                                                                                                             | `claude --ide`                                                                                     |
@@ -78,12 +82,12 @@ Customize Claude Code's behavior with these command-line flags:
 
 The `--agents` flag accepts a JSON object that defines one or more custom subagents. Each subagent requires a unique name (as the key) and a definition object with the following fields:
 
-| Field         | Required | Description                                                                                                            |
-| :------------ | :------- | :--------------------------------------------------------------------------------------------------------------------- |
-| `description` | Yes      | Natural language description of when the subagent should be invoked                                                    |
-| `prompt`      | Yes      | The system prompt that guides the subagent's behavior                                                                  |
-| `tools`       | No       | Array of specific tools the subagent can use (for example, `["Read", "Edit", "Bash"]`). If omitted, inherits all tools |
-| `model`       | No       | Model alias to use: `sonnet`, `opus`, or `haiku`. If omitted, uses the default subagent model                          |
+| Field         | Required | Description                                                                                                                         |
+| :------------ | :------- | :---------------------------------------------------------------------------------------------------------------------------------- |
+| `description` | Yes      | Natural language description of when the subagent should be invoked                                                                 |
+| `prompt`      | Yes      | The system prompt that guides the subagent's behavior                                                                               |
+| `tools`       | No       | Array of specific tools the subagent can use (for example, `["Read", "Edit", "Bash"]`). If omitted, inherits all tools              |
+| `model`       | No       | Model alias to use: `sonnet`, `opus`, `haiku`, or `inherit`. If omitted, defaults to `inherit` (uses the main conversation's model) |
 
 Example:
 
@@ -149,8 +153,3 @@ For most use cases, `--append-system-prompt` or `--append-system-prompt-file` is
 * [Common workflows](/en/common-workflows) - Advanced workflows and patterns
 * [Settings](/en/settings) - Configuration options
 * [SDK documentation](https://docs.claude.com/en/docs/agent-sdk) - Programmatic usage and integrations
-
-
----
-
-> To find navigation and other pages in this documentation, fetch the llms.txt file at: https://code.claude.com/docs/llms.txt

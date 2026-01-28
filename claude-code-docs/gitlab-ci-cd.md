@@ -1,3 +1,7 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
 # Claude Code GitLab CI/CD
 
 > Learn about integrating Claude Code into your development workflow with GitLab CI/CD
@@ -87,7 +91,7 @@ claude:
       claude
       -p "${AI_FLOW_INPUT:-'Review this MR and implement the requested changes'}"
       --permission-mode acceptEdits
-      --allowedTools "Bash(*) Read(*) Edit(*) Write(*) mcp__gitlab"
+      --allowedTools "Bash Read Edit Write mcp__gitlab"
       --debug
 ```
 
@@ -262,7 +266,7 @@ claude:
       claude
       -p "${AI_FLOW_INPUT:-'Summarize recent changes and suggest improvements'}"
       --permission-mode acceptEdits
-      --allowedTools "Bash(*) Read(*) Edit(*) Write(*) mcp__gitlab"
+      --allowedTools "Bash Read Edit Write mcp__gitlab"
       --debug
   # Claude Code will use ANTHROPIC_API_KEY from CI/CD variables
 ```
@@ -308,7 +312,7 @@ claude-bedrock:
       claude
       -p "${AI_FLOW_INPUT:-'Implement the requested changes and open an MR'}"
       --permission-mode acceptEdits
-      --allowedTools "Bash(*) Read(*) Edit(*) Write(*) mcp__gitlab"
+      --allowedTools "Bash Read Edit Write mcp__gitlab"
       --debug
   variables:
     AWS_REGION: "us-west-2"
@@ -361,7 +365,7 @@ claude-vertex:
       claude
       -p "${AI_FLOW_INPUT:-'Review and update code as requested'}"
       --permission-mode acceptEdits
-      --allowedTools "Bash(*) Read(*) Edit(*) Write(*) mcp__gitlab"
+      --allowedTools "Bash Read Edit Write mcp__gitlab"
       --debug
   variables:
     CLOUD_ML_REGION: "us-east5"
@@ -460,8 +464,3 @@ You can guide Claude in two primary ways:
 
 1. **CLAUDE.md**: Define coding standards, security requirements, and project conventions. Claude reads this during runs and follows your rules.
 2. **Custom prompts**: Pass task-specific instructions via `prompt`/`prompt_file` in the job. Use different prompts for different jobs (for example, review, implement, refactor).
-
-
----
-
-> To find navigation and other pages in this documentation, fetch the llms.txt file at: https://code.claude.com/docs/llms.txt

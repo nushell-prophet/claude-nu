@@ -1,3 +1,7 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
 # Interactive mode
 
 > Complete reference for keyboard shortcuts, input modes, and interactive features in Claude Code sessions.
@@ -107,6 +111,7 @@ To create your own commands you can invoke with `/`, see [skills](/en/skills).
 | `/stats`                  | Visualize daily usage, session history, streaks, and model preferences                                                      |
 | `/status`                 | Open the Settings interface (Status tab) showing version, model, account, and connectivity                                  |
 | `/statusline`             | Set up Claude Code's status line UI                                                                                         |
+| `/copy`                   | Copy the last assistant response to clipboard                                                                               |
 | `/tasks`                  | List and manage background tasks                                                                                            |
 | `/teleport`               | Resume a remote session from claude.ai (subscribers only)                                                                   |
 | `/theme`                  | Change the color theme                                                                                                      |
@@ -152,6 +157,10 @@ Enable vim-style editing with `/vim` command or configure permanently via `/conf
 | `T{char}`       | Jump to just after previous occurrence of character |
 | `;`             | Repeat last f/F/t/T motion                          |
 | `,`             | Repeat last f/F/t/T motion in reverse               |
+
+<Note>
+  In vim normal mode, if the cursor is at the beginning or end of input and cannot move further, the arrow keys navigate command history instead.
+</Note>
 
 ### Editing (NORMAL mode)
 
@@ -261,6 +270,31 @@ Bash mode:
 
 This is useful for quick shell operations while maintaining conversation context.
 
+## Task list
+
+When working on complex, multi-step work, Claude creates a task list to track progress. Tasks appear in the status area of your terminal with indicators showing what's pending, in progress, or complete.
+
+* Press `Ctrl+T` to toggle the task list view. The display shows up to 10 tasks at a time
+* To see all tasks or clear them, ask Claude directly: "show me all tasks" or "clear all tasks"
+* Tasks persist across context compactions, helping Claude stay organized on larger projects
+* To share a task list across sessions, set `CLAUDE_CODE_TASK_LIST_ID` to use a named directory in `~/.claude/tasks/`: `CLAUDE_CODE_TASK_LIST_ID=my-project claude`
+* To revert to the previous TODO list, set `CLAUDE_CODE_ENABLE_TASKS=false`.
+
+## PR review status
+
+When working on a branch with an open pull request, Claude Code displays a clickable PR link in the footer (for example, "PR #446"). The link has a colored underline indicating the review state:
+
+* Green: approved
+* Yellow: pending review
+* Red: changes requested
+* Gray: draft
+
+`Cmd+click` (Mac) or `Ctrl+click` (Windows/Linux) the link to open the pull request in your browser. The status updates automatically every 60 seconds.
+
+<Note>
+  PR status requires the `gh` CLI to be installed and authenticated (`gh auth login`).
+</Note>
+
 ## See also
 
 * [Skills](/en/skills) - Custom prompts and workflows
@@ -268,8 +302,3 @@ This is useful for quick shell operations while maintaining conversation context
 * [CLI reference](/en/cli-reference) - Command-line flags and options
 * [Settings](/en/settings) - Configuration options
 * [Memory management](/en/memory) - Managing CLAUDE.md files
-
-
----
-
-> To find navigation and other pages in this documentation, fetch the llms.txt file at: https://code.claude.com/docs/llms.txt

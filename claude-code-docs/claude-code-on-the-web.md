@@ -1,3 +1,7 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
 # Claude Code on the web
 
 > Run Claude Code tasks asynchronously on secure cloud infrastructure
@@ -36,7 +40,7 @@ Claude Code on the web is available in research preview to:
 3. Install the Claude GitHub app in your repositories
 4. Select your default environment
 5. Submit your coding task
-6. Review changes and create a pull request in GitHub
+6. Review changes in diff view, iterate with comments, then create a pull request
 
 ## How it works
 
@@ -48,6 +52,20 @@ When you start a task on Claude Code on the web:
 4. **Task execution**: Claude analyzes code, makes changes, runs tests, and checks its work
 5. **Completion**: You're notified when finished and can create a PR with the changes
 6. **Results**: Changes are pushed to a branch, ready for pull request creation
+
+## Review changes with diff view
+
+Diff view lets you see exactly what Claude changed before creating a pull request. Instead of clicking "Create PR" to review changes in GitHub, view the diff directly in the app and iterate with Claude until the changes are ready.
+
+When Claude makes changes to files, a diff stats indicator appears showing the number of lines added and removed (for example, `+12 -1`). Select this indicator to open the diff viewer, which displays a file list on the left and the changes for each file on the right.
+
+From the diff view, you can:
+
+* Review changes file by file
+* Comment on specific changes to request modifications
+* Continue iterating with Claude based on what you see
+
+This lets you refine changes through multiple rounds of feedback without creating draft PRs or switching to GitHub.
 
 ## Moving tasks between web and terminal
 
@@ -283,6 +301,8 @@ When using "Limited" network access, the following domains are allowed by defaul
 
 * api.anthropic.com
 * statsig.anthropic.com
+* docs.claude.com
+* code.claude.com
 * claude.ai
 
 #### Version Control
@@ -290,7 +310,9 @@ When using "Limited" network access, the following domains are allowed by defaul
 * github.com
 * [www.github.com](http://www.github.com)
 * api.github.com
+* npm.pkg.github.com
 * raw\.githubusercontent.com
+* pkg-npm.githubusercontent.com
 * objects.githubusercontent.com
 * codeload.github.com
 * avatars.githubusercontent.com
@@ -312,6 +334,7 @@ When using "Limited" network access, the following domains are allowed by defaul
 * [www.docker.com](http://www.docker.com)
 * production.cloudflare.docker.com
 * download.docker.com
+* gcr.io
 * \*.gcr.io
 * ghcr.io
 * mcr.microsoft.com
@@ -388,6 +411,7 @@ When using "Limited" network access, the following domains are allowed by defaul
 
 * crates.io
 * [www.crates.io](http://www.crates.io)
+* index.crates.io
 * static.crates.io
 * rustup.rs
 * static.rust-lang.org
@@ -413,6 +437,9 @@ When using "Limited" network access, the following domains are allowed by defaul
 * gradle.org
 * [www.gradle.org](http://www.gradle.org)
 * services.gradle.org
+* plugins.gradle.org
+* kotlin.org
+* [www.kotlin.org](http://www.kotlin.org)
 * spring.io
 * repo.spring.io
 
@@ -486,10 +513,15 @@ When using "Limited" network access, the following domains are allowed by defaul
 * statsig.com
 * [www.statsig.com](http://www.statsig.com)
 * api.statsig.com
+* sentry.io
 * \*.sentry.io
+* http-intake.logs.datadoghq.com
+* \*.datadoghq.com
+* \*.datadoghq.eu
 
 #### Content Delivery & Mirrors
 
+* sourceforge.net
 * \*.sourceforge.net
 * packagecloud.io
 * \*.packagecloud.io
@@ -500,6 +532,10 @@ When using "Limited" network access, the following domains are allowed by defaul
 * [www.json-schema.org](http://www.json-schema.org)
 * json.schemastore.org
 * [www.schemastore.org](http://www.schemastore.org)
+
+#### Model Context Protocol
+
+* \*.modelcontextprotocol.io
 
 <Note>
   Domains marked with `*` indicate wildcard subdomain matching. For example, `*.gcr.io` allows access to any subdomain of `gcr.io`.
@@ -545,8 +581,3 @@ Claude Code on the web shares rate limits with all other Claude and Claude Code 
 * [Settings reference](/en/settings)
 * [Security](/en/security)
 * [Data usage](/en/data-usage)
-
-
----
-
-> To find navigation and other pages in this documentation, fetch the llms.txt file at: https://code.claude.com/docs/llms.txt

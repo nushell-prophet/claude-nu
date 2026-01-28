@@ -1,3 +1,7 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
 # Sandboxing
 
 > Learn how Claude Code's sandboxed bash tool provides filesystem and network isolation for safer, more autonomous agent execution.
@@ -51,12 +55,35 @@ Network access is controlled through a proxy server running outside the sandbox:
 
 The sandboxed bash tool leverages operating system security primitives:
 
-* **Linux**: Uses [bubblewrap](https://github.com/containers/bubblewrap) for isolation
 * **macOS**: Uses Seatbelt for sandbox enforcement
+* **Linux**: Uses [bubblewrap](https://github.com/containers/bubblewrap) for isolation
+* **WSL2**: Uses bubblewrap, same as Linux
+
+WSL1 is not supported because bubblewrap requires kernel features only available in WSL2.
 
 These OS-level restrictions ensure that all child processes spawned by Claude Code's commands inherit the same security boundaries.
 
 ## Getting started
+
+### Prerequisites
+
+On **macOS**, sandboxing works out of the box using the built-in Seatbelt framework.
+
+On **Linux and WSL2**, install the required packages first:
+
+<Tabs>
+  <Tab title="Ubuntu/Debian">
+    ```bash  theme={null}
+    sudo apt-get install bubblewrap socat
+    ```
+  </Tab>
+
+  <Tab title="Fedora">
+    ```bash  theme={null}
+    sudo dnf install bubblewrap socat
+    ```
+  </Tab>
+</Tabs>
 
 ### Enable sandboxing
 
@@ -66,7 +93,7 @@ You can enable sandboxing by running the `/sandbox` command:
 > /sandbox
 ```
 
-This opens a menu where you can choose between sandbox modes.
+This opens a menu where you can choose between sandbox modes. If required dependencies are missing (such as `bubblewrap` or `socat` on Linux), the menu displays installation instructions for your platform.
 
 ### Sandbox modes
 
@@ -209,7 +236,7 @@ For implementation details and source code, visit the [GitHub repository](https:
 
 * **Performance overhead**: Minimal, but some filesystem operations may be slightly slower
 * **Compatibility**: Some tools that require specific system access patterns may need configuration adjustments, or may even need to be run outside of the sandbox
-* **Platform support**: Currently supports Linux and macOS; Windows support planned
+* **Platform support**: Supports macOS, Linux, and WSL2. WSL1 is not supported. Native Windows support is planned.
 
 ## See also
 
@@ -217,8 +244,3 @@ For implementation details and source code, visit the [GitHub repository](https:
 * [IAM](/en/iam) - Permission configuration and access control
 * [Settings](/en/settings) - Complete configuration reference
 * [CLI reference](/en/cli-reference) - Command-line options
-
-
----
-
-> To find navigation and other pages in this documentation, fetch the llms.txt file at: https://code.claude.com/docs/llms.txt
