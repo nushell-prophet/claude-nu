@@ -1,4 +1,6 @@
 const output_dir = 'claude-code-docs'
+const skill_source = '~/.claude/skills/nushell-style'
+const skill_dest = 'skills/nushell-style'
 
 export def main [] { }
 
@@ -92,6 +94,42 @@ export def fetch-claude-docs [
             let date = date now | format date "%Y-%m-%d"
             git commit -m $"docs: update claude-code-docs \(($date)\)"
             print $"(ansi green)Committed documentation updates(ansi reset)"
+        } else {
+            print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
+        }
+    }
+}
+
+# Vendor nushell-style skill from ~/.claude/skills into this repo
+export def vendor-skill [
+    --no-commit # Skip creating a git commit after copying
+] {
+    let source = $skill_source | path expand
+    let dest = $skill_dest
+
+    # Ensure source exists
+    if not ($source | path exists) {
+        print $"(ansi red)Error: Source skill not found at ($source)(ansi reset)"
+        return
+    }
+
+    # Copy all skill files
+    let files = glob $"($source)/*.md"
+    $files | each {|f|
+        let name = $f | path basename
+        cp $f $"($dest)/($name)"
+        print $"(ansi green)✓(ansi reset) ($name)"
+    }
+
+    print $"\n(ansi attr_dimmed)Copied ($files | length) files to ($dest)(ansi reset)"
+
+    if not $no_commit {
+        let status = git status --porcelain $dest | str trim
+        if $status != "" {
+            git add $dest
+            let date = date now | format date "%Y-%m-%d"
+            git commit -m $"chore: vendor nushell-style skill \(($date)\)"
+            print $"(ansi green)Committed skill updates(ansi reset)"
         } else {
             print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
         }
