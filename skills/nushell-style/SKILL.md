@@ -1,6 +1,6 @@
 ---
 name: nushell-style
-description: Nushell code style guide for idiomatic patterns and formatting. Use when writing, reviewing, formatting, or refactoring Nushell (.nu) code. Covers pipelines, command choices, and best practices.
+description: Load this skill when editing, writing, or reviewing any .nu file. Provides idiomatic Nushell patterns, pipeline composition, command choices, and formatting conventions.
 ---
 
 # Nushell Code Style Guide
