@@ -1,6 +1,9 @@
 const output_dir = 'claude-code-docs'
 const skill_source = '~/.claude/skills/nushell-style'
 const skill_dest = 'skills/nushell-style'
+const nushell_docs_dir = 'nushell-docs'
+const nushell_docs_repo = 'https://github.com/nushell/nushell.github.io.git'
+const nushell_docs_folders = ['blog' 'book' 'cookbook']
 
 export def main [] { }
 
@@ -134,4 +137,32 @@ export def vendor-skill [
             print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
         }
     }
+}
+
+# Fetch Nushell documentation (book, cookbook, blog) via shallow sparse checkout
+export def 'main fetch-nushell-docs' [] {
+    let dest = $nushell_docs_dir
+
+    if ($dest | path exists) {
+        # Update existing checkout
+        print $"(ansi attr_dimmed)Updating nushell-docs...(ansi reset)"
+        cd $dest
+        git pull
+        cd -
+    } else {
+        # Fresh shallow sparse clone
+        print $"(ansi attr_dimmed)Cloning nushell.github.io \(shallow sparse\)...(ansi reset)"
+        git clone --depth 1 --filter=blob:none --sparse $nushell_docs_repo $dest
+        cd $dest
+        git sparse-checkout set ...$nushell_docs_folders
+        cd -
+    }
+
+    # Show what we have
+    let sizes = $nushell_docs_folders
+    | each {|f| {folder: $f size: (du $"($dest)/($f)" | get apparent | first)} }
+
+    print ""
+    print ($sizes | table)
+    print $"\n(ansi green)✓(ansi reset) Nushell docs ready at (ansi cyan)($dest)/(ansi reset)"
 }
