@@ -29,6 +29,21 @@ Returns structured JSON with error spans. See [debugging.md](debugging.md) for p
 
 ---
 
+## Conciseness for Advanced Users
+
+Write code that an experienced nushell user can quickly apprehend. Leverage implicit features:
+
+| Verbose | Concise | Why |
+|---------|---------|-----|
+| `update field {\|row\| $row.field \| str upcase}` | `update field { str upcase }` | Closure receives field value directly |
+| `each {\|x\| $x \| str trim}` | `each { str trim }` | `$in` implicit, pipeline flows |
+| `where {\|row\| $row.status == "active"}` | `where status == "active"` | `where` has field shorthand |
+| `$data \| each { $in \| process }` | `$data \| each { process }` | `$in` passed automatically to first command |
+
+**Principle:** If an advanced user knows how `update`, `each`, `where` work, they shouldn't need to parse redundant variable declarations.
+
+---
+
 ## Command Choices
 
 | Task | Preferred | Avoid |
