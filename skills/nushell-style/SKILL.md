@@ -68,6 +68,40 @@ Use `scan` for sequences with state: `use std/iter scan`
 
 ---
 
+## Script CLI Pattern
+
+For toolkit-style scripts with subcommands (like `nu toolkit.nu test`):
+
+```nushell
+# toolkit.nu
+export def main [] { }  # Entry point (required, even if empty)
+
+export def 'main test' [--json] {
+    # nu toolkit.nu test
+}
+
+export def 'main build' [] {
+    # nu toolkit.nu build
+}
+```
+
+**Key points:**
+- `def main []` — entry point when running `nu script.nu`
+- `def 'main subcommand' []` — defines `nu script.nu subcommand`
+- Must define `main` for subcommands to be accessible
+- Use `export def` if script is also used as a module
+
+**Execution:**
+```bash
+nu toolkit.nu           # runs main
+nu toolkit.nu test      # runs 'main test'
+nu toolkit.nu test --json  # with flags
+```
+
+→ See [Nushell Scripts docs](https://www.nushell.sh/book/scripts.html#subcommands)
+
+---
+
 ## Quick Reference
 
 ### Do
