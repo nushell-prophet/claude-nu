@@ -139,6 +139,32 @@ export def vendor-skill [
     }
 }
 
+# Install nushell-style skill to ~/.claude/skills (reverse of vendor-skill)
+export def 'main install-skill-globally' [] {
+    let source = $skill_dest
+    let dest = $skill_source | path expand
+
+    # Ensure source exists
+    if not ($source | path exists) {
+        print $"(ansi red)Error: Skill not found at ($source)(ansi reset)"
+        return
+    }
+
+    # Ensure destination directory exists
+    mkdir $dest
+
+    # Copy all skill files
+    let files = glob $"($source)/*.md"
+    $files | each {|f|
+        let name = $f | path basename
+        cp $f $"($dest)/($name)"
+        print $"(ansi green)✓(ansi reset) ($name)"
+    }
+
+    print $"\n(ansi attr_dimmed)Installed ($files | length) files to ($dest)(ansi reset)"
+    print $"(ansi green)✓(ansi reset) Skill ready at (ansi cyan)($dest)(ansi reset)"
+}
+
 # Fetch Nushell documentation (book, cookbook, blog) via shallow sparse checkout
 export def 'main fetch-nushell-docs' [] {
     let dest = $nushell_docs_dir
