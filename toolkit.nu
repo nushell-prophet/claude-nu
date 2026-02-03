@@ -1,6 +1,7 @@
 const output_dir = 'claude-code-docs'
-const skill_source = '~/.claude/skills/nushell-style'
-const skill_dest = 'skills/nushell-style'
+const skills_global_dir = '~/.claude/skills'
+const skills_local_dir = 'skills'
+const managed_skills = ['nushell-style' 'nushell-completions']
 const nushell_docs_dir = 'nushell-docs'
 const nushell_docs_repo = 'https://github.com/nushell/nushell.github.io.git'
 const nushell_docs_folders = ['blog' 'book' 'cookbook']
@@ -109,37 +110,43 @@ export def fetch-claude-docs [
     }
 }
 
-# Vendor nushell-style skill from ~/.claude/skills into this repo
-@example "Vendor skill with auto-commit" { nu toolkit.nu vendor-skill }
-@example "Vendor skill without committing" { nu toolkit.nu vendor-skill --no-commit }
-export def vendor-skill [
+# Vendor managed skills from ~/.claude/skills into this repo
+@example "Vendor all skills with auto-commit" { nu toolkit.nu vendor-skills }
+@example "Vendor skills without committing" { nu toolkit.nu vendor-skills --no-commit }
+export def 'main vendor-skills' [
     --no-commit # Skip creating a git commit after copying
 ] {
-    let source = $skill_source | path expand
-    let dest = $skill_dest
+    let global_dir = $skills_global_dir | path expand
+    let local_dir = $skills_local_dir
+    mut total_files = 0
 
-    # Ensure source exists
-    if not ($source | path exists) {
-        print $"(ansi red)Error: Source skill not found at ($source)(ansi reset)"
-        return
+    for skill in $managed_skills {
+        let source = $"($global_dir)/($skill)"
+        let dest = $"($local_dir)/($skill)"
+
+        if not ($source | path exists) {
+            print $"(ansi yellow)⚠(ansi reset) ($skill): not found at ($source)"
+            continue
+        }
+
+        mkdir $dest
+        let files = glob $"($source)/*.md"
+        $files | each {|f|
+            let name = $f | path basename
+            cp $f $"($dest)/($name)"
+            print $"(ansi green)✓(ansi reset) ($skill)/($name)"
+        }
+        $total_files = $total_files + ($files | length)
     }
 
-    # Copy all skill files
-    let files = glob $"($source)/*.md"
-    $files | each {|f|
-        let name = $f | path basename
-        cp $f $"($dest)/($name)"
-        print $"(ansi green)✓(ansi reset) ($name)"
-    }
-
-    print $"\n(ansi attr_dimmed)Copied ($files | length) files to ($dest)(ansi reset)"
+    print $"\n(ansi attr_dimmed)Copied ($total_files) files to ($local_dir)(ansi reset)"
 
     if not $no_commit {
-        let status = git status --porcelain $dest | str trim
+        let status = git status --porcelain $local_dir | str trim
         if $status != "" {
-            git add $dest
+            git add $local_dir
             let date = date now | format date "%Y-%m-%d"
-            git commit -m $"chore: vendor nushell-style skill \(($date)\)"
+            git commit -m $"chore: vendor skills \(($date)\)"
             print $"(ansi green)Committed skill updates(ansi reset)"
         } else {
             print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
@@ -147,31 +154,34 @@ export def vendor-skill [
     }
 }
 
-# Install nushell-style skill to ~/.claude/skills (reverse of vendor-skill)
-@example "Install skill globally" { nu toolkit.nu install-skill-globally }
-export def 'main install-skill-globally' [] {
-    let source = $skill_dest
-    let dest = $skill_source | path expand
+# Install managed skills to ~/.claude/skills (reverse of vendor-skills)
+@example "Install all skills globally" { nu toolkit.nu install-skills-globally }
+export def 'main install-skills-globally' [] {
+    let global_dir = $skills_global_dir | path expand
+    let local_dir = $skills_local_dir
+    mut total_files = 0
 
-    # Ensure source exists
-    if not ($source | path exists) {
-        print $"(ansi red)Error: Skill not found at ($source)(ansi reset)"
-        return
+    for skill in $managed_skills {
+        let source = $"($local_dir)/($skill)"
+        let dest = $"($global_dir)/($skill)"
+
+        if not ($source | path exists) {
+            print $"(ansi yellow)⚠(ansi reset) ($skill): not found at ($source)"
+            continue
+        }
+
+        mkdir $dest
+        let files = glob $"($source)/*.md"
+        $files | each {|f|
+            let name = $f | path basename
+            cp $f $"($dest)/($name)"
+            print $"(ansi green)✓(ansi reset) ($skill)/($name)"
+        }
+        $total_files = $total_files + ($files | length)
     }
 
-    # Ensure destination directory exists
-    mkdir $dest
-
-    # Copy all skill files
-    let files = glob $"($source)/*.md"
-    $files | each {|f|
-        let name = $f | path basename
-        cp $f $"($dest)/($name)"
-        print $"(ansi green)✓(ansi reset) ($name)"
-    }
-
-    print $"\n(ansi attr_dimmed)Installed ($files | length) files to ($dest)(ansi reset)"
-    print $"(ansi green)✓(ansi reset) Skill ready at (ansi cyan)($dest)(ansi reset)"
+    print $"\n(ansi attr_dimmed)Installed ($total_files) files to ($global_dir)(ansi reset)"
+    print $"(ansi green)✓(ansi reset) Skills ready at (ansi cyan)($global_dir)(ansi reset)"
 }
 
 # Fetch Nushell documentation (book, cookbook, blog) via shallow sparse checkout
