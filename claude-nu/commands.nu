@@ -288,7 +288,8 @@ export def parse-session-file []: path -> record {
 
     let summary = $records
     | where type? == "summary"
-    | get --optional 0.summary
+    | first
+    | get summary?
     | default ""
 
     let user_records = $records | where type? == "user"
@@ -442,7 +443,8 @@ export def parse-session [
 
     let sum = if ($all or $summary) {
         $records | where type? == "summary"
-        | get --optional 0.summary
+        | first
+        | get summary?
         | default ""
     } else { "" }
 
@@ -514,7 +516,8 @@ export def export-session [
     # Extract summary from summary record
     let summary = $records
     | where type? == "summary"
-    | get --optional 0.summary
+    | first
+    | get summary?
     | default ""
 
     # Determine topic: argument > summary > "session"
