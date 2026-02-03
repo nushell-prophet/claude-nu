@@ -8,6 +8,9 @@ const nushell_docs_folders = ['blog' 'book' 'cookbook']
 export def main [] { }
 
 # Run all tests
+@example "Run tests interactively" { nu toolkit.nu test }
+@example "Run tests for CI" { nu toolkit.nu test --fail }
+@example "Output JSON for tooling" { nu toolkit.nu test --json }
 export def 'main test' [
     --json # output results as JSON for external consumption
     --fail # exit with non-zero code if any tests fail (for CI)
@@ -37,6 +40,7 @@ export def 'main test' [
 }
 
 # Run unit tests using nutest
+@example "Run unit tests" { nu toolkit.nu test-unit }
 export def 'main test-unit' [
     --json # output results as JSON for external consumption
 ] {
@@ -71,6 +75,8 @@ def print-test-result [result: record] {
 }
 
 # Download Claude Code documentation pages from the sitemap
+@example "Fetch and commit docs" { nu toolkit.nu fetch-claude-docs }
+@example "Fetch without committing" { nu toolkit.nu fetch-claude-docs --no-commit }
 export def fetch-claude-docs [
     --no-commit # Skip creating a git commit after downloading
 ] {
@@ -104,6 +110,8 @@ export def fetch-claude-docs [
 }
 
 # Vendor nushell-style skill from ~/.claude/skills into this repo
+@example "Vendor skill with auto-commit" { nu toolkit.nu vendor-skill }
+@example "Vendor skill without committing" { nu toolkit.nu vendor-skill --no-commit }
 export def vendor-skill [
     --no-commit # Skip creating a git commit after copying
 ] {
@@ -140,6 +148,7 @@ export def vendor-skill [
 }
 
 # Install nushell-style skill to ~/.claude/skills (reverse of vendor-skill)
+@example "Install skill globally" { nu toolkit.nu install-skill-globally }
 export def 'main install-skill-globally' [] {
     let source = $skill_dest
     let dest = $skill_source | path expand
@@ -166,6 +175,7 @@ export def 'main install-skill-globally' [] {
 }
 
 # Fetch Nushell documentation (book, cookbook, blog) via shallow sparse checkout
+@example "Fetch/update Nushell docs" { nu toolkit.nu fetch-nushell-docs }
 export def 'main fetch-nushell-docs' [] {
     let dest = $nushell_docs_dir
 
