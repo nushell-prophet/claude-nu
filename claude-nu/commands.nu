@@ -212,7 +212,8 @@ export def extract-session-metadata []: record -> record {
 export def extract-thinking-level []: table -> string {
     get thinkingMetadata.level --optional
     | compact
-    | if ($in | is-empty) { "" } else { first }
+    | first
+    | default ""
 }
 
 # Extract first/last timestamps from user records
@@ -221,8 +222,8 @@ export def extract-timestamps []: table -> record {
     | compact
     | each { into datetime }
     {
-        first: ($ts | if ($in | is-empty) { null } else { first })
-        last: ($ts | if ($in | is-empty) { null } else { last })
+        first: ($ts | first)
+        last: ($ts | last)
     }
 }
 
@@ -287,7 +288,8 @@ export def parse-session-file []: path -> record {
 
     let summary = $records
     | where type? == "summary"
-    | if ($in | is-empty) { "" } else { first | get summary? | default "" }
+    | get --optional 0.summary
+    | default ""
 
     let user_records = $records | where type? == "user"
     let timestamps = $user_records | extract-timestamps
@@ -440,7 +442,8 @@ export def parse-session [
 
     let sum = if ($all or $summary) {
         $records | where type? == "summary"
-        | if ($in | is-empty) { "" } else { first | get summary? | default "" }
+        | get --optional 0.summary
+        | default ""
     } else { "" }
 
     let timestamps = if $need_timestamps { $user_records | extract-timestamps } else { {first: null last: null} }
@@ -511,7 +514,8 @@ export def export-session [
     # Extract summary from summary record
     let summary = $records
     | where type? == "summary"
-    | if ($in | is-empty) { "" } else { first | get summary? | default "" }
+    | get --optional 0.summary
+    | default ""
 
     # Determine topic: argument > summary > "session"
     let resolved_topic = $topic
