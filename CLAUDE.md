@@ -12,45 +12,52 @@ claude-nu is a Nushell module providing utilities for working with Claude Code s
 claude-nu/
 ├── claude-nu/           # Main module
 │   ├── mod.nu           # Module entry point, exports public commands
-│   └── commands.nu      # Command implementations (messages, completions)
-├── completions/
-│   └── claude.nu        # Nushell completions for `claude` CLI
+│   └── commands.nu      # Command implementations (messages, sessions, parse-session, export-session)
+├── completions/         # External command completions
+│   ├── claude.nu        # Completions for `claude` CLI
+│   └── *.nu             # Other CLI completions
+├── skills/              # Vendored Claude Code skills (managed via toolkit)
 ├── tests/               # Unit tests (nutest framework)
-│   └── test_commands.nu # Tests for command logic
-├── toolkit.nu           # Development tools (test, fetch-claude-docs)
-└── claude-code-docs/    # Downloaded Claude Code documentation (reference)
+├── toolkit.nu           # Development tools
+├── claude-code-docs/    # Downloaded Claude Code documentation
+└── nushell-docs/        # Shallow clone of Nushell docs (book, cookbook, blog)
 ```
 
-**Key components:**
-- `messages` command: Extracts user messages from Claude Code session files (JSONL in `~/.claude/projects/<path>/`)
-- `completions/claude.nu`: External command completions for the `claude` CLI with all flags and subcommands
-- Session files are per-project, path encoded as `-` separated segments
+**Key concepts:**
+- Session files: JSONL in `~/.claude/projects/<encoded-path>/` where path is `-` separated segments
+- The `parse-session` command uses lazy evaluation—only requested fields are computed
 
-## Usage
+## Commands
 
 ```nushell
 # Add to config.nu
 use /path/to/claude-nu
-source /path/to/completions/claude.nu
+use /path/to/completions/claude.nu *
 
-# Commands
-claude-nu messages              # Get user messages from current session
-claude-nu messages 'pattern'    # Filter by regex
-claude-nu messages --raw        # Get raw JSONL records
-claude-nu messages --all        # Include system messages
+# Core commands
+claude-nu messages              # User messages from current session
+claude-nu sessions              # All sessions with summaries
+claude-nu parse-session --all   # Low-level session parsing
+claude-nu export-session        # Export to markdown for git tracking
 ```
 
-## Testing
+## Development
 
 Uses [nutest](https://github.com/vyadh/nutest) framework (expected at `../nutest`).
 
 ```nushell
-nu toolkit.nu test          # Run all tests
-nu toolkit.nu test --json   # Output JSON for CI
-nu toolkit.nu test --fail   # Exit non-zero on failures (for CI)
-```
+nu toolkit.nu test              # Run all tests
+nu toolkit.nu test --fail       # Exit non-zero on failures (for CI)
+nu toolkit.nu test --json       # JSON output
 
-Test files use `@test` decorator and live in `tests/` directory.
+# Documentation management
+nu toolkit.nu fetch-claude-docs        # Download Claude Code docs
+nu toolkit.nu fetch-nushell-docs       # Sparse clone of Nushell docs
+
+# Skills management (skills/ ↔ ~/.claude/skills)
+nu toolkit.nu vendor-skills            # Copy from ~/.claude/skills to repo
+nu toolkit.nu install-skills-globally  # Copy from repo to ~/.claude/skills
+```
 
 ## Code Style
 
