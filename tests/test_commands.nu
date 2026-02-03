@@ -500,7 +500,7 @@ def "response length sums text content" [] {
 @test
 def "parse-session-file extracts all fields from session file" [] {
     # Create temp file with realistic session data
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"summary","summary":"Test session about file parsing"}'
@@ -535,7 +535,7 @@ def "parse-session-file extracts all fields from session file" [] {
 
 @test
 def "parse-session-file handles empty file" [] {
-    let temp_file = $nu.temp-path | path join $"test-empty-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-empty-(random uuid).jsonl"
 
     "" | save --force $temp_file
 
@@ -582,7 +582,7 @@ def "session flag works with windows-style paths" [] {
 @test
 def "messages command accepts full path via --session" [] {
     # Create temp session file
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":"Hello from path test"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -606,7 +606,7 @@ def "messages command accepts full path via --session" [] {
 
 @test
 def "parse-session extracts session_id from first record" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","sessionId":"abc-123-def","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -623,7 +623,7 @@ def "parse-session extracts session_id from first record" [] {
 
 @test
 def "parse-session extracts slug from first record" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","slug":"happy-coding-session","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -640,7 +640,7 @@ def "parse-session extracts slug from first record" [] {
 
 @test
 def "parse-session extracts version from first record" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","version":"2.1.11","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -657,7 +657,7 @@ def "parse-session extracts version from first record" [] {
 
 @test
 def "parse-session extracts cwd from first record" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","cwd":"/Users/test/project","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -674,7 +674,7 @@ def "parse-session extracts cwd from first record" [] {
 
 @test
 def "parse-session extracts git_branch from first record" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","gitBranch":"feature/new-feature","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -691,7 +691,7 @@ def "parse-session extracts git_branch from first record" [] {
 
 @test
 def "parse-session handles missing metadata with empty defaults" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -716,7 +716,7 @@ def "parse-session handles missing metadata with empty defaults" [] {
 
 @test
 def "parse-session extracts thinking_level from user records" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","thinkingMetadata":{"level":"high","disabled":false},"message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -733,7 +733,7 @@ def "parse-session extracts thinking_level from user records" [] {
 
 @test
 def "parse-session handles missing thinking metadata" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -754,7 +754,7 @@ def "parse-session handles missing thinking metadata" [] {
 
 @test
 def "parse-session extracts bash_commands list" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":"Run tests"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -775,7 +775,7 @@ def "parse-session extracts bash_commands list" [] {
 
 @test
 def "parse-session counts bash commands correctly" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":"Run tests"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -794,7 +794,7 @@ def "parse-session counts bash commands correctly" [] {
 
 @test
 def "parse-session extracts skill_invocations list" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":"Use skill"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -815,7 +815,7 @@ def "parse-session extracts skill_invocations list" [] {
 
 @test
 def "parse-session counts tool_errors from tool_result" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"123","is_error":false,"content":"success"}]}}'
@@ -834,7 +834,7 @@ def "parse-session counts tool_errors from tool_result" [] {
 
 @test
 def "parse-session counts ask_user_count" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":"Help me"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -854,7 +854,7 @@ def "parse-session counts ask_user_count" [] {
 
 @test
 def "parse-session detects plan_mode_used true" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":"Plan this"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -872,7 +872,7 @@ def "parse-session detects plan_mode_used true" [] {
 
 @test
 def "parse-session detects plan_mode_used false" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":"Just do it"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -894,7 +894,7 @@ def "parse-session detects plan_mode_used false" [] {
 
 @test
 def "parse-session counts turn_count excluding meta messages" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","isMeta":true,"message":{"content":"System info"}}'
@@ -914,7 +914,7 @@ def "parse-session counts turn_count excluding meta messages" [] {
 
 @test
 def "parse-session counts assistant_msg_count" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":"Q1"}}'
@@ -935,7 +935,7 @@ def "parse-session counts assistant_msg_count" [] {
 
 @test
 def "parse-session counts tool_call_count" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":"Do stuff"}}'
@@ -954,7 +954,7 @@ def "parse-session counts tool_call_count" [] {
 
 @test
 def "parse-session handles empty session for derived metrics" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     # Single record to avoid empty file edge case
     let lines = [
@@ -978,7 +978,7 @@ def "parse-session handles empty session for derived metrics" [] {
 
 @test
 def "parse-session --all includes all columns" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","sessionId":"test-id","slug":"test-slug","version":"1.0","cwd":"/test","gitBranch":"main","thinkingMetadata":{"level":"high"},"message":{"content":"@file.txt"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -1021,7 +1021,7 @@ def "parse-session --all includes all columns" [] {
 
 @test
 def "parse-session default columns are minimal" [] {
-    let temp_file = $nu.temp-path | path join $"test-session-(random uuid).jsonl"
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
         '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -1100,7 +1100,7 @@ def "extract-tool-results filters non-tool_result items" [] {
 
 @test
 def "sessions parses single file" [] {
-    let temp_dir = $nu.temp-path | path join $"test-sessions-(random uuid)"
+    let temp_dir = $nu.temp-dir | path join $"test-sessions-(random uuid)"
     mkdir $temp_dir
     let temp_file = $temp_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
 
@@ -1120,7 +1120,7 @@ def "sessions parses single file" [] {
 
 @test
 def "sessions parses directory of files" [] {
-    let temp_dir = $nu.temp-path | path join $"test-sessions-(random uuid)"
+    let temp_dir = $nu.temp-dir | path join $"test-sessions-(random uuid)"
     mkdir $temp_dir
 
     let file1 = $temp_dir | path join "11111111-1111-1111-1111-111111111111.jsonl"
@@ -1138,7 +1138,7 @@ def "sessions parses directory of files" [] {
 
 @test
 def "sessions ignores non-uuid files in directory" [] {
-    let temp_dir = $nu.temp-path | path join $"test-sessions-(random uuid)"
+    let temp_dir = $nu.temp-dir | path join $"test-sessions-(random uuid)"
     mkdir $temp_dir
 
     let valid_file = $temp_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
