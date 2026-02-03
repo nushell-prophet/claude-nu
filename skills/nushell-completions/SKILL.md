@@ -125,6 +125,21 @@ export extern "git push" [
 ]
 ```
 
+## Module Naming Rule
+
+When the file is named after the command (e.g., `chafa.nu`), the extern **must** be named `main`:
+
+```nu
+# File: chafa.nu
+# Import: use chafa.nu
+
+# ❌ WRONG - "Can't export known external named same as the module"
+export extern chafa [...]
+
+# ✅ CORRECT - `main` becomes the module's default command
+export extern main [...]
+```
+
 ## Completer Signature Options
 
 ```nu
