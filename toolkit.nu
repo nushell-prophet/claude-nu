@@ -5,6 +5,8 @@ const managed_skills = ['nushell-style' 'nushell-completions']
 const nushell_docs_dir = 'nushell-docs'
 const nushell_docs_repo = 'https://github.com/nushell/nushell.github.io.git'
 const nushell_docs_folders = ['blog' 'book' 'cookbook']
+const fixtures_sessions_dir = 'tests/fixtures/sessions'
+const uuid_jsonl_pattern = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
 
 export def main [] { }
 
@@ -211,4 +213,76 @@ export def 'main fetch-nushell-docs' [] {
     print ""
     print ($sizes | table)
     print $"\n(ansi green)✓(ansi reset) Nushell docs ready at (ansi cyan)($dest)/(ansi reset)"
+}
+
+# Vendor real session files as test fixtures (with obfuscated session IDs)
+@example "Vendor 3 most recent sessions" { nu toolkit.nu vendor-sessions }
+@example "Vendor 5 sessions" { nu toolkit.nu vendor-sessions --count 5 }
+@example "Vendor specific sessions" { nu toolkit.nu vendor-sessions abc123-... def456-... }
+export def 'main vendor-sessions' [
+    ...sessions: string # Session UUIDs to vendor (default: most recent)
+    --count (-n): int = 3 # Number of most recent sessions when no UUIDs given
+    --no-commit # Skip creating a git commit after copying
+] {
+    use claude-nu
+
+    let sessions_dir = claude-nu get-sessions-dir
+    if not ($sessions_dir | path exists) {
+        print $"(ansi red)✗(ansi reset) No sessions directory at ($sessions_dir)"
+        return
+    }
+
+    let source_files = if ($sessions | is-empty) {
+        let available = ls $sessions_dir
+        | where name =~ $uuid_jsonl_pattern
+        | sort-by modified --reverse
+
+        let to_take = [($available | length) $count] | math min
+        $available | first $to_take | get name
+    } else {
+        $sessions | each {|s|
+            if ($s | str ends-with '.jsonl') { $s }
+            else { $sessions_dir | path join $"($s).jsonl" }
+        }
+    }
+
+    mkdir $fixtures_sessions_dir
+
+    $source_files | each {|file|
+        if not ($file | path exists) {
+            print $"(ansi yellow)⚠(ansi reset) Not found: ($file | path basename)"
+            return null
+        }
+
+        let raw = open --raw $file
+        let old_uuid = $file | path basename | str replace '.jsonl' ''
+        let new_uuid = random uuid
+
+        # Replace filename UUID throughout the file
+        let obfuscated = $raw | str replace --all $old_uuid $new_uuid
+
+        # Also replace sessionId if it differs from the filename UUID
+        let session_id = $raw | lines | first | from json | get sessionId? | default ""
+        let obfuscated = if ($session_id != "" and $session_id != $old_uuid) {
+            let new_session_id = random uuid
+            $obfuscated | str replace --all $session_id $new_session_id
+        } else { $obfuscated }
+
+        let dest = $fixtures_sessions_dir | path join $"($new_uuid).jsonl"
+        $obfuscated | save --force $dest
+
+        let size = ls $dest | get size.0
+        print $"(ansi green)✓(ansi reset) ($old_uuid | str substring 0..8)… → ($new_uuid | str substring 0..8)… (($size))"
+    }
+
+    if not $no_commit {
+        let status = git status --porcelain $fixtures_sessions_dir | str trim
+        if $status != "" {
+            git add $fixtures_sessions_dir
+            git commit -m "test: vendor session fixtures"
+            print $"(ansi green)Committed session fixtures(ansi reset)"
+        } else {
+            print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
+        }
+    }
 }
