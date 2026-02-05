@@ -9,6 +9,7 @@ const SYSTEM_PREFIXES = [
     "<command-message>"
     "<local-command-caveat>"
     "<local-command-stdout>"
+    "<local-command-stderr>"
     "<bash-input>"
     "<bash-stdout>"
     "Caveat:"
@@ -444,15 +445,6 @@ export def parse-session [
 
     let records = open --raw $session_file | lines | each { from json }
 
-    # Handle empty session files
-    if ($records | is-empty) {
-        return {
-            path: $session_file
-            user_messages: []
-            mentioned_files: []
-        }
-    }
-
     # Extract base data
     let user_records = $records | where type? == "user"
     let assistant_records = $records | where type? == "assistant"
@@ -480,7 +472,7 @@ export def parse-session [
 
     let file_ops = if $need_file_ops { $all_tool_calls | extract-file-operations } else { {} }
     let agent_list = if ($all or $agents) { $all_tool_calls | extract-agents } else { [] }
-    let meta = if $need_meta { $records | first | extract-session-metadata } else { {} }
+    let meta = if $need_meta { $records | where type? != "summary" | first | default {} | extract-session-metadata } else { {} }
     let tool_stats = if $need_tool_stats {
         let tool_results = $user_records | extract-tool-results
         $all_tool_calls | extract-tool-stats $tool_results
