@@ -84,7 +84,7 @@ export def "nu-complete claude sessions" []: nothing -> record {
         let summary = $lines | get 0?.summary? | default "No summary"
         # Timestamps are on message records, not summary headers
         let timestamp = $lines
-        | where $it.timestamp? != null
+        | where timestamp? != null
         | get 0?.timestamp?
         | if ($in != null) { into datetime } else { $file.modified }
 
@@ -141,15 +141,11 @@ export def messages [
             where isMeta? != true
             | where {
                 let content = $in.message?.content?
-                let content_type = $content | describe
-                if $content_type =~ '^(list|table)' {
-                    false
-                } else if ($content | is-empty) {
-                    false
-                } else if $content_type != "string" {
-                    false
-                } else {
-                    $SYSTEM_PREFIXES | all { $content !~ $'^($in)' }
+                match ($content | describe) {
+                    "string" if ($content | is-not-empty) => {
+                        $SYSTEM_PREFIXES | all {|p| not ($content | str starts-with $p) }
+                    }
+                    _ => { false }
                 }
             }
         }
@@ -207,10 +203,9 @@ export def extract-text-content []: record -> string {
 
 # Helper to extract tool calls from assistant messages
 export def extract-tool-calls []: record -> table {
-    let content = $in.message?.content?
-    let content_type = $content | describe
-    if ($content_type =~ '^(list|table)') {
-        $content | where type? == "tool_use"
+    $in.message?.content?
+    | if ($in | describe) =~ '^(list|table)' {
+        where type? == "tool_use"
     } else { [] }
 }
 
@@ -337,19 +332,20 @@ export def parse-session-file []: path -> record {
     let file_ops = $all_tool_calls | extract-file-operations
     let agents = $all_tool_calls | extract-agents
 
-    $EMPTY_SESSION_SUMMARY
-    | update summary $summary
-    | update first_timestamp $timestamps.first
-    | update last_timestamp $timestamps.last
-    | update user_msg_count ($user_records | length)
-    | update user_msg_length $user_msg_length
-    | update response_length $response_length
-    | update agent_count ($agents | length)
-    | update agents $agents
-    | update mentioned_files $mentioned_files
-    | update read_files $file_ops.read_files
-    | update edited_files $file_ops.edited_files
-    | update path $file_path
+    $EMPTY_SESSION_SUMMARY | merge {
+        summary: $summary
+        first_timestamp: $timestamps.first
+        last_timestamp: $timestamps.last
+        user_msg_count: ($user_records | length)
+        user_msg_length: $user_msg_length
+        response_length: $response_length
+        agent_count: ($agents | length)
+        agents: $agents
+        mentioned_files: $mentioned_files
+        read_files: $file_ops.read_files
+        edited_files: $file_ops.edited_files
+        path: $file_path
+    }
 }
 
 # Parse Claude Code sessions for structured information
@@ -613,8 +609,7 @@ export def download-documentation [
 
     let urls = $sitemap_xml
     | get content.content
-    | each { get content | each { $in.content.0 } }
-    | each {|entry| $entry.0 }
+    | each { get content | each { $in.content.0 } | first }
     | where $it =~ 'docs/en/'
     | each { $in + '.md' }
 
