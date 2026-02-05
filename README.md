@@ -5,7 +5,7 @@ Nushell utilities for working with [Claude Code](https://claude.ai/code) session
 ## Features
 
 - **Session analysis** — Extract messages, metadata, and statistics from Claude Code sessions
-- **CLI completions** — Full tab completion for the `claude` command with all flags and subcommands
+- **CLI completions** — Tab completion for `claude`, `chafa`, and `zellij` commands
 - **Session picker** — Fuzzy-find sessions by UUID with timestamps and summaries
 
 ## Installation
@@ -95,7 +95,10 @@ claude-nu parse-session -s <uuid> # Specific session
 | `--bash-count` | Number of bash commands |
 | `--skill-invocations` | Skills used |
 | `--tool-errors` | Failed tool calls |
+| `--ask-user-count` | User questions asked |
+| `--plan-mode-used` | Whether plan mode was used |
 | `--turn-count` | User→assistant turns |
+| `--assistant-msg-count` | Assistant messages |
 | `--tool-call-count` | Total tool invocations |
 | `--all`, `-a` | Include everything |
 
@@ -108,6 +111,7 @@ claude-nu export-session                    # Uses session summary as topic
 claude-nu export-session "auth-refactor"    # Custom topic
 claude-nu export-session -s <uuid>          # Specific session
 claude-nu export-session -o ./docs          # Custom output directory
+claude-nu export-session --echo             # Print to stdout instead of file
 ```
 
 **Output format:** `docs/sessions/yyyymmdd+topic.md`
@@ -116,12 +120,13 @@ Filters out system-generated messages, keeping only user prompts and assistant r
 
 ## CLI Completions
 
-The completions file provides tab completion for the entire `claude` CLI:
+Completions are provided for multiple CLI tools:
 
-- All flags with descriptions
-- Subcommands (`mcp`, `plugin`, `update`, etc.)
-- Values for `--model`, `--output-format`, `--permission-mode`, etc.
-- **Session UUIDs** with timestamps and summaries for `--resume`
+| File | Command | Highlights |
+|------|---------|------------|
+| `completions/claude.nu` | `claude` | All flags, subcommands, session UUIDs for `--resume` |
+| `completions/chafa.nu` | `chafa` | Image viewer options |
+| `completions/zellij.nu` | `zellij` | Terminal multiplexer commands |
 
 Example:
 ```
@@ -141,12 +146,13 @@ nu toolkit.nu test --json   # JSON output for CI
 nu toolkit.nu test --fail   # Non-zero exit on failures
 ```
 
-### Documentation
-
-Fetch latest Claude Code docs for reference:
+### Toolkit
 
 ```nushell
-nu toolkit.nu fetch-claude-docs
+nu toolkit.nu fetch-claude-docs        # Download Claude Code docs
+nu toolkit.nu fetch-nushell-docs       # Sparse clone of Nushell docs
+nu toolkit.nu vendor-skills            # Copy skills from ~/.claude/skills to repo
+nu toolkit.nu install-skills-globally  # Copy skills from repo to ~/.claude/skills
 ```
 
 ## How it works

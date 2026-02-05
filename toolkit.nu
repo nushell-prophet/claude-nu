@@ -78,7 +78,7 @@ def print-test-result [result: record] {
 # Download Claude Code documentation pages from the sitemap
 @example "Fetch and commit docs" { nu toolkit.nu fetch-claude-docs }
 @example "Fetch without committing" { nu toolkit.nu fetch-claude-docs --no-commit }
-export def fetch-claude-docs [
+export def 'main fetch-claude-docs' [
     --no-commit # Skip creating a git commit after downloading
 ] {
     use claude-nu
