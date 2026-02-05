@@ -161,14 +161,12 @@ export def messages [
             }
         }
         # Drop assistant messages with no visible text
-        | if $with_responses {
-            where {|r|
-                match $r.type? {
-                    "assistant" => ($r | extract-text-content | str trim | is-not-empty)
-                    _ => true
-                }
+        | where {|r|
+            match $r.type? {
+                "assistant" => ($r | extract-text-content | str trim | is-not-empty)
+                _ => true
             }
-        } else { }
+        }
 
         let filtered = $messages
         | if $regex == null { } else {
@@ -203,13 +201,10 @@ export def messages [
                         }
                     }
                 }
-                if $with_responses {
-                    {role: $msg.type message: $message timestamp: ($msg.timestamp? | into datetime)}
-                } else {
-                    {message: $message timestamp: ($msg.timestamp? | into datetime)}
-                }
+                {role: $msg.type message: $message timestamp: ($msg.timestamp? | into datetime)}
             }
             | sort-by timestamp
+            | if $with_responses { } else { reject role }
         }
         | if $all_sessions {
             each { insert session $session_uuid }
