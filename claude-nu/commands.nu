@@ -609,7 +609,7 @@ export def download-documentation [
 
     let urls = $sitemap_xml
     | get content.content
-    | each { get content | each { $in.content.0 } | first }
+    | each { get content.0.content.0 }
     | where $it =~ 'docs/en/'
     | each { $in + '.md' }
 
