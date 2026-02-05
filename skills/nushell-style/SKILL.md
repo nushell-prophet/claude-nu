@@ -156,6 +156,7 @@ nu toolkit.nu test --json  # with flags
 
 ## Formatting Summary
 
+- Run `topiary format <file>` when available — it is the canonical formatter
 - Empty blocks: `{ }` with space
 - Closures: `{ expr }` with spaces
 - Flags: `--flag (-f)` with space
