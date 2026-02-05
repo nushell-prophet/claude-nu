@@ -200,7 +200,7 @@ export def 'main fetch-nushell-docs' [] {
         print $"(ansi attr_dimmed)Cloning nushell.github.io \(shallow sparse\)...(ansi reset)"
         git clone --depth 1 --filter=blob:none --sparse $nushell_docs_repo $dest
         cd $dest
-        git sparse-checkout set ...$nushell_docs_folders
+        git sparse-checkout set --no-cone ...($nushell_docs_folders | each { $'/($in)/*' })
         cd -
     }
 
