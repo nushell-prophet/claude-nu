@@ -114,7 +114,7 @@ export def messages [
     }
 
     # Parse session file
-    let messages = open $session_file
+    let messages = open --raw $session_file
     | lines
     | each { from json }
     | where type == "user"
