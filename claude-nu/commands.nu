@@ -104,65 +104,89 @@ export def "nu-complete claude sessions" []: nothing -> record {
 export def messages [
     regex?: string # Filter messages by regex pattern
     --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
-    --all (-a) # Include all message types (not just user-typed)
+    --all-sessions (-a) # Search across all project sessions
+    --include-system (-u) # Include system/meta messages (not just user-typed)
     --raw (-r) # Return raw message records instead of just content
 ]: nothing -> table {
-    let session_file = resolve-session-file $session
-
-    if not ($session_file | path exists) {
-        error make {msg: $"Session file not found: ($session_file)"}
-    }
-
-    # Parse session file
-    let messages = open --raw $session_file
-    | lines
-    | each { from json }
-    | where type == "user"
-    | if $all { } else {
-        where isMeta? != true
-        | where {
-            let content = $in.message?.content?
-            let content_type = $content | describe
-            if $content_type =~ '^(list|table)' {
-                false
-            } else if ($content | is-empty) {
-                false
-            } else if $content_type != "string" {
-                false
-            } else {
-                $SYSTEM_PREFIXES | all { $content !~ $'^($in)' }
-            }
+    let session_files = if $all_sessions {
+        if $session != null {
+            error make {msg: "--all-sessions and --session are mutually exclusive"}
         }
-    }
-
-    let filtered = $messages
-    | if $regex == null { } else {
-        where {
-            let content = $in.message?.content?
-            if ($content | describe) =~ '^(list|table)' {
-                ($content | get content --optional | str join "\n") =~ $regex
-            } else {
-                $content =~ $regex
-            }
+        let dir = get-sessions-dir
+        if not ($dir | path exists) {
+            error make {msg: "No sessions directory found for current project"}
         }
-    }
-
-    if $raw {
-        $filtered
+        ls $dir
+        | where name =~ $UUID_JSONL_PATTERN
+        | sort-by modified --reverse
+        | get name
     } else {
-        $filtered | each {|msg|
-            let content = $msg.message?.content?
-            let message = if ($content | describe) =~ '^(list|table)' {
-                $content | get content --optional | str join "\n"
-            } else {
-                $content
-            }
-            {
-                message: $message
-                timestamp: ($msg.timestamp? | into datetime)
+        [(resolve-session-file $session)]
+    }
+
+    $session_files
+    | each {|session_file|
+        if not ($session_file | path exists) {
+            error make {msg: $"Session file not found: ($session_file)"}
+        }
+
+        let session_uuid = $session_file | path basename | str replace '.jsonl' ''
+
+        # Parse and filter messages
+        let messages = open --raw $session_file
+        | lines
+        | each { from json }
+        | where type == "user"
+        | if $include_system { } else {
+            where isMeta? != true
+            | where {
+                let content = $in.message?.content?
+                let content_type = $content | describe
+                if $content_type =~ '^(list|table)' {
+                    false
+                } else if ($content | is-empty) {
+                    false
+                } else if $content_type != "string" {
+                    false
+                } else {
+                    $SYSTEM_PREFIXES | all { $content !~ $'^($in)' }
+                }
             }
         }
+
+        let filtered = $messages
+        | if $regex == null { } else {
+            where {
+                let content = $in.message?.content?
+                if ($content | describe) =~ '^(list|table)' {
+                    ($content | get content --optional | str join "\n") =~ $regex
+                } else {
+                    $content =~ $regex
+                }
+            }
+        }
+
+        if $raw {
+            $filtered
+        } else {
+            $filtered | each {|msg|
+                let content = $msg.message?.content?
+                let message = if ($content | describe) =~ '^(list|table)' {
+                    $content | get content --optional | str join "\n"
+                } else {
+                    $content
+                }
+                {
+                    message: $message
+                    timestamp: ($msg.timestamp? | into datetime)
+                }
+            }
+        }
+        | if $all_sessions {
+            each { insert session $session_uuid }
+        } else { }
     }
+    | flatten
 }
 
 # Helper to extract text content from a message
