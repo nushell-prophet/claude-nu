@@ -124,53 +124,53 @@ def "nu-complete chafa link" [] {
 
 # Main extern definition
 export extern main [
-    ...files: path                                        # Image files to display
-    --files: path                                         # Read file list from PATH (or "-" for stdin)
-    --files0: path                                        # Read NUL-separated file list from PATH
-    --help(-h)                                            # Show help
-    --probe: string@"nu-complete chafa probe"             # Probe terminal capabilities [auto, on, off, or timeout]
-    --version                                             # Show version
-    --verbose(-v)                                         # Be verbose
-    --format(-f): string@"nu-complete chafa format"       # Output format [iterm, kitty, sixels, symbols]
-    --optimize(-O): int                                   # Compression level [0-9], default 5
-    --relative: string@"nu-complete chafa bool"           # Use relative cursor positioning [on, off]
+    ...files: path # Image files to display
+    --files: path # Read file list from PATH (or "-" for stdin)
+    --files0: path # Read NUL-separated file list from PATH
+    --help (-h) # Show help
+    --probe: string@"nu-complete chafa probe" # Probe terminal capabilities [auto, on, off, or timeout]
+    --version # Show version
+    --verbose (-v) # Be verbose
+    --format (-f): string@"nu-complete chafa format" # Output format [iterm, kitty, sixels, symbols]
+    --optimize (-O): int # Compression level [0-9], default 5
+    --relative: string@"nu-complete chafa bool" # Use relative cursor positioning [on, off]
     --passthrough: string@"nu-complete chafa passthrough" # Graphics passthrough mode [auto, none, screen, tmux]
-    --polite: string@"nu-complete chafa bool"             # Polite mode [on, off]
-    --align: string                                       # Alignment (e.g. "top,left", "mid,mid")
-    --clear                                               # Clear screen before each file
-    --exact-size: string@"nu-complete chafa exact-size"   # Match input size exactly [auto, on, off]
-    --fit-width                                           # Fit to view width, may exceed height
-    --font-ratio: string                                  # Font width/height ratio (e.g. "1/2" or "0.5")
-    --grid: string                                        # Grid layout CxR (e.g. "4x3", "4", "auto")
-    -g                                                    # Alias for --grid auto
-    --label: string@"nu-complete chafa bool"              # Show filename labels [on, off]
-    -l                                                    # Alias for --label on
-    --link: string@"nu-complete chafa link"               # Clickable label hyperlinks [auto, on, off]
-    --margin-bottom: int                                  # Bottom margin rows (default 1)
-    --margin-right: int                                   # Right margin columns (default 0)
-    --scale: string                                       # Scale factor (number or "max")
-    --size(-s): string                                    # Max dimensions WxH in columns/rows
-    --stretch                                             # Stretch to fit, ignore aspect ratio
-    --view-size: string                                   # View size WxH in columns/rows
-    --animate: string@"nu-complete chafa bool"            # Allow animation [on, off]
-    --duration(-d): number                                # Display duration in seconds
-    --speed: string                                       # Animation speed (multiplier or "Nfps")
-    --watch                                               # Watch file for changes
-    --bg: string                                          # Background color (name or hex)
-    --colors(-c): string@"nu-complete chafa colors"       # Color mode [none, 2, 8, 16/8, 16, 240, 256, full]
+    --polite: string@"nu-complete chafa bool" # Polite mode [on, off]
+    --align: string # Alignment (e.g. "top,left", "mid,mid")
+    --clear # Clear screen before each file
+    --exact-size: string@"nu-complete chafa exact-size" # Match input size exactly [auto, on, off]
+    --fit-width # Fit to view width, may exceed height
+    --font-ratio: string # Font width/height ratio (e.g. "1/2" or "0.5")
+    --grid: string # Grid layout CxR (e.g. "4x3", "4", "auto")
+    -g # Alias for --grid auto
+    --label: string@"nu-complete chafa bool" # Show filename labels [on, off]
+    -l # Alias for --label on
+    --link: string@"nu-complete chafa link" # Clickable label hyperlinks [auto, on, off]
+    --margin-bottom: int # Bottom margin rows (default 1)
+    --margin-right: int # Right margin columns (default 0)
+    --scale: string # Scale factor (number or "max")
+    --size (-s): string # Max dimensions WxH in columns/rows
+    --stretch # Stretch to fit, ignore aspect ratio
+    --view-size: string # View size WxH in columns/rows
+    --animate: string@"nu-complete chafa bool" # Allow animation [on, off]
+    --duration (-d): number # Display duration in seconds
+    --speed: string # Animation speed (multiplier or "Nfps")
+    --watch # Watch file for changes
+    --bg: string # Background color (name or hex)
+    --colors (-c): string@"nu-complete chafa colors" # Color mode [none, 2, 8, 16/8, 16, 240, 256, full]
     --color-extractor: string@"nu-complete chafa color-extractor" # Color extraction [average, median]
     --color-space: string@"nu-complete chafa color-space" # Quantization color space [rgb, din99d]
-    --dither: string@"nu-complete chafa dither"           # Dither mode [none, ordered, diffusion, noise]
-    --dither-grain: string                                # Dither grain size WxH in 1/8ths [1,2,4,8]
-    --dither-intensity: number                            # Dither intensity multiplier [0.0-inf]
-    --fg: string                                          # Foreground color (name or hex)
-    --invert                                              # Swap foreground and background colors
-    --preprocess(-p): string@"nu-complete chafa bool"     # Image preprocessing [on, off]
-    --threshold(-t): number                               # Transparency threshold [0.0-1.0]
-    --threads: int                                        # Max CPU threads (-1 for all cores)
-    --work(-w): int                                       # Work intensity [1-9], default 5
-    --fg-only                                             # Use foreground colors only
-    --fill: string@"nu-complete chafa symbols"            # Fill/gradient symbols
-    --glyph-file: path                                    # Load glyphs from font file
-    --symbols: string@"nu-complete chafa symbols"         # Output symbol classes
+    --dither: string@"nu-complete chafa dither" # Dither mode [none, ordered, diffusion, noise]
+    --dither-grain: string # Dither grain size WxH in 1/8ths [1,2,4,8]
+    --dither-intensity: number # Dither intensity multiplier [0.0-inf]
+    --fg: string # Foreground color (name or hex)
+    --invert # Swap foreground and background colors
+    --preprocess (-p): string@"nu-complete chafa bool" # Image preprocessing [on, off]
+    --threshold (-t): number # Transparency threshold [0.0-1.0]
+    --threads: int # Max CPU threads (-1 for all cores)
+    --work (-w): int # Work intensity [1-9], default 5
+    --fg-only # Use foreground colors only
+    --fill: string@"nu-complete chafa symbols" # Fill/gradient symbols
+    --glyph-file: path # Load glyphs from font file
+    --symbols: string@"nu-complete chafa symbols" # Output symbol classes
 ]

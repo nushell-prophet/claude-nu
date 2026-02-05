@@ -125,11 +125,11 @@ def "system prefixes filter multiple message types correctly" [] {
     ]
 
     let test_messages = [
-        "Hello Claude"                    # Should pass
-        "<command-name>some command"      # Should be filtered
-        "<bash-stdout>output"             # Should be filtered
-        "Caveat: This is a warning"       # Should be filtered
-        "Regular message"                 # Should pass
+        "Hello Claude" # Should pass
+        "<command-name>some command" # Should be filtered
+        "<bash-stdout>output" # Should be filtered
+        "Caveat: This is a warning" # Should be filtered
+        "Regular message" # Should pass
     ]
 
     let filtered = $test_messages | where {|content|
@@ -265,11 +265,15 @@ def "extract-text-content returns string content directly" [] {
 
 @test
 def "extract-text-content extracts text from content array" [] {
-    let record = {message: {content: [
-        {type: "text" text: "First part"}
-        {type: "thinking" thinking: "internal thought"}
-        {type: "text" text: " second part"}
-    ]}}
+    let record = {
+        message: {
+            content: [
+                {type: "text" text: "First part"}
+                {type: "thinking" thinking: "internal thought"}
+                {type: "text" text: " second part"}
+            ]
+        }
+    }
     let result = $record | extract-text-content
 
     assert equal $result "First part second part"
@@ -297,11 +301,15 @@ def "extract-text-content handles null message" [] {
 
 @test
 def "extract-tool-calls returns tool_use items" [] {
-    let record = {message: {content: [
-        {type: "text" text: "Let me read that file"}
-        {type: "tool_use" name: "Read" input: {file_path: "/test.txt"}}
-        {type: "tool_use" name: "Edit" input: {file_path: "/test.txt" old_string: "a" new_string: "b"}}
-    ]}}
+    let record = {
+        message: {
+            content: [
+                {type: "text" text: "Let me read that file"}
+                {type: "tool_use" name: "Read" input: {file_path: "/test.txt"}}
+                {type: "tool_use" name: "Edit" input: {file_path: "/test.txt" old_string: "a" new_string: "b"}}
+            ]
+        }
+    }
     let result = $record | extract-tool-calls
 
     assert equal ($result | length) 2
@@ -319,10 +327,14 @@ def "extract-tool-calls returns empty for string content" [] {
 
 @test
 def "extract-tool-calls returns empty for no tool_use" [] {
-    let record = {message: {content: [
-        {type: "text" text: "Hello"}
-        {type: "thinking" thinking: "Hmm"}
-    ]}}
+    let record = {
+        message: {
+            content: [
+                {type: "text" text: "Hello"}
+                {type: "thinking" thinking: "Hmm"}
+            ]
+        }
+    }
     let result = $record | extract-tool-calls
 
     assert equal ($result | length) 0
@@ -363,7 +375,7 @@ def "mentioned files regex stops at angle brackets" [] {
 
     assert equal ($mentioned | length) 2
     assert equal ($mentioned | first) "file.txt"
-    assert equal ($mentioned | last) "path/to"  # stops at <
+    assert equal ($mentioned | last) "path/to" # stops at <
 }
 
 @test
@@ -376,10 +388,12 @@ def "agent extraction from Task tool calls" [] {
 
     let agents = $tool_calls
     | where name? == "Task"
-    | each {{
-        type: ($in.input?.subagent_type? | default "unknown")
-        description: ($in.input?.description? | default "")
-    }}
+    | each {
+        {
+            type: ($in.input?.subagent_type? | default "unknown")
+            description: ($in.input?.description? | default "")
+        }
+    }
 
     assert equal ($agents | length) 2
     assert equal ($agents | first | get type) "Explore"
@@ -392,7 +406,7 @@ def "read files extraction from tool calls" [] {
         {name: "Read" input: {file_path: "/a.txt"}}
         {name: "Edit" input: {file_path: "/b.txt"}}
         {name: "Read" input: {file_path: "/c.txt"}}
-        {name: "Read" input: {file_path: "/a.txt"}}  # duplicate
+        {name: "Read" input: {file_path: "/a.txt"}} # duplicate
     ]
 
     let read_files = $tool_calls
@@ -412,7 +426,7 @@ def "edited files extraction includes Edit and Write" [] {
         {name: "Read" input: {file_path: "/a.txt"}}
         {name: "Edit" input: {file_path: "/b.txt"}}
         {name: "Write" input: {file_path: "/c.txt"}}
-        {name: "Edit" input: {file_path: "/b.txt"}}  # duplicate
+        {name: "Edit" input: {file_path: "/b.txt"}} # duplicate
     ]
 
     let edited_files = $tool_calls
@@ -490,7 +504,7 @@ def "response length sums text content" [] {
     | each { str length }
     | if ($in | is-empty) { 0 } else { math sum }
 
-    assert equal $length 15  # 5 + 6 + 4
+    assert equal $length 15 # 5 + 6 + 4
 }
 
 # =============================================================================
