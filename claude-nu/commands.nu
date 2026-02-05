@@ -107,6 +107,7 @@ export def messages [
     --all-sessions (-a) # Search across all project sessions
     --include-system (-u) # Include system/meta messages (not just user-typed)
     --raw (-r) # Return raw message records instead of just content
+    --with-responses (-w) # Include assistant responses (text only, interleaved)
 ]: nothing -> table {
     let session_files = if $all_sessions {
         if $session != null {
@@ -136,28 +137,53 @@ export def messages [
         let messages = open --raw $session_file
         | lines
         | each { from json }
-        | where type == "user"
+        | if $with_responses {
+            where type in ["user" "assistant"]
+        } else {
+            where type == "user"
+        }
         | if $include_system { } else {
-            where isMeta? != true
-            | where {
-                let content = $in.message?.content?
-                match ($content | describe) {
-                    "string" if ($content | is-not-empty) => {
-                        $SYSTEM_PREFIXES | all {|p| not ($content | str starts-with $p) }
+            where {|r|
+                match $r.type? {
+                    "assistant" => true
+                    _ => {
+                        if $r.isMeta? == true { false } else {
+                            let content = $r.message?.content?
+                            match ($content | describe) {
+                                "string" if ($content | is-not-empty) => {
+                                    $SYSTEM_PREFIXES | all {|p| not ($content | str starts-with $p) }
+                                }
+                                _ => false
+                            }
+                        }
                     }
-                    _ => { false }
                 }
             }
         }
+        # Drop assistant messages with no visible text
+        | if $with_responses {
+            where {|r|
+                match $r.type? {
+                    "assistant" => ($r | extract-text-content | str trim | is-not-empty)
+                    _ => true
+                }
+            }
+        } else { }
 
         let filtered = $messages
         | if $regex == null { } else {
             where {
-                let content = $in.message?.content?
-                if ($content | describe) =~ '^(list|table)' {
-                    ($content | get content --optional | str join "\n") =~ $regex
-                } else {
-                    $content =~ $regex
+                let msg = $in
+                match $msg.type? {
+                    "assistant" => ($msg | extract-text-content | $in =~ $regex)
+                    _ => {
+                        let content = $msg.message?.content?
+                        if ($content | describe) =~ '^(list|table)' {
+                            ($content | get content --optional | str join "\n") =~ $regex
+                        } else {
+                            $content =~ $regex
+                        }
+                    }
                 }
             }
         }
@@ -166,15 +192,21 @@ export def messages [
             $filtered
         } else {
             $filtered | each {|msg|
-                let content = $msg.message?.content?
-                let message = if ($content | describe) =~ '^(list|table)' {
-                    $content | get content --optional | str join "\n"
-                } else {
-                    $content
+                let message = match $msg.type? {
+                    "assistant" => ($msg | extract-text-content)
+                    _ => {
+                        let content = $msg.message?.content?
+                        if ($content | describe) =~ '^(list|table)' {
+                            $content | get content --optional | str join "\n"
+                        } else {
+                            $content
+                        }
+                    }
                 }
-                {
-                    message: $message
-                    timestamp: ($msg.timestamp? | into datetime)
+                if $with_responses {
+                    {role: $msg.type message: $message timestamp: ($msg.timestamp? | into datetime)}
+                } else {
+                    {message: $message timestamp: ($msg.timestamp? | into datetime)}
                 }
             }
         }
