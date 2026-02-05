@@ -189,7 +189,7 @@ export def messages [
         }
 
         if $raw {
-            $filtered
+            $filtered | sort-by timestamp
         } else {
             $filtered | each {|msg|
                 let message = match $msg.type? {
@@ -209,6 +209,7 @@ export def messages [
                     {message: $message timestamp: ($msg.timestamp? | into datetime)}
                 }
             }
+            | sort-by timestamp
         }
         | if $all_sessions {
             each { insert session $session_uuid }
