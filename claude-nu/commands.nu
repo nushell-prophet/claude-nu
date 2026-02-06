@@ -378,7 +378,7 @@ export def parse-session-file []: path -> record {
     | if ($in | is-empty) { 0 } else { math sum }
 
     let mentioned_files = $user_records
-    | each { extract-text-content | parse --regex '@([^\s<>]+)' | get capture0? | default [] }
+    | each { extract-text-content | parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
     | flatten
     | uniq
 
@@ -483,7 +483,7 @@ export def parse-session [
     # Default columns
     let user_messages = $user_records | each { extract-text-content } | where $it != ""
     let mentioned_files = $user_records
-    | each { extract-text-content | parse --regex '@([^\s<>]+)' | get capture0? | default [] }
+    | each { extract-text-content | parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
     | flatten
     | uniq
 

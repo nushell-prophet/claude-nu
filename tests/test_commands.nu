@@ -353,7 +353,7 @@ def "mentioned files regex extracts @path patterns" [] {
     ]
 
     let mentioned = $texts
-    | each { parse --regex '@([^\s<>]+)' | get capture0? | default [] }
+    | each { parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
     | flatten
     | uniq
 
@@ -364,18 +364,38 @@ def "mentioned files regex extracts @path patterns" [] {
 }
 
 @test
-def "mentioned files regex stops at angle brackets" [] {
-    # @patterns stop at < or > characters
-    let text = "See @file.txt and @path/to<file"
+def "mentioned files regex rejects false positives" [] {
+    let texts = [
+        "claude@anthropic.com"       # email
+        "See @- and @-- revsets"     # jj revsets
+        '@"nu-complete sessions"'    # nushell annotation
+        "Use @example attribute"     # no extension
+        "End with @) or @:"          # punctuation
+    ]
 
-    let mentioned = $text
-    | parse --regex '@([^\s<>]+)'
-    | get capture0?
-    | default []
+    let mentioned = $texts
+    | each { parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
+    | flatten
 
-    assert equal ($mentioned | length) 2
-    assert equal ($mentioned | first) "file.txt"
-    assert equal ($mentioned | last) "path/to" # stops at <
+    assert equal ($mentioned | length) 0
+}
+
+@test
+def "mentioned files regex handles path prefixes" [] {
+    let texts = [
+        "Check @/absolute/path.rs"
+        "Also @./relative/file.nu"
+        "And @~/home/config.toml"
+    ]
+
+    let mentioned = $texts
+    | each { parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
+    | flatten
+
+    assert equal ($mentioned | length) 3
+    assert ("/absolute/path.rs" in $mentioned)
+    assert ("./relative/file.nu" in $mentioned)
+    assert ("~/home/config.toml" in $mentioned)
 }
 
 @test
