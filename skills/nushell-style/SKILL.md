@@ -106,11 +106,21 @@ export def 'main build' [] {
 - Must define `main` for subcommands to be accessible
 - Use `export def` if script is also used as a module
 
-**Execution:**
+**Execution differs between script mode and module mode:**
+
 ```bash
+# Script mode: `main` is stripped, subcommands are top-level
 nu toolkit.nu           # runs main
 nu toolkit.nu test      # runs 'main test'
 nu toolkit.nu test --json  # with flags
+```
+
+```nushell
+# Module mode: `main` stays in the command name
+use toolkit.nu
+toolkit                 # runs main
+toolkit main test       # runs 'main test' — note `main` is required
+toolkit main test --json
 ```
 
 → See [Nushell Scripts docs](https://www.nushell.sh/book/scripts.html#subcommands)
