@@ -32,8 +32,10 @@ const EMPTY_SESSION_SUMMARY = {
 }
 
 # Helper to get project sessions directory
-export def get-sessions-dir []: nothing -> path {
-    let project_path = $env.PWD | str replace --all '/' '-'
+export def get-sessions-dir [
+    project?: path # Project path (default: $env.PWD)
+]: nothing -> path {
+    let project_path = ($project | default $env.PWD) | path expand | str replace --all '/' '-'
     $env.HOME | path join ".claude" "projects" $project_path
 }
 
@@ -106,24 +108,48 @@ export def messages [
     regex?: string # Filter messages by regex pattern
     --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
     --all-sessions (-a) # Search across all project sessions
+    --project (-p): path # Project path to search in (default: current directory)
+    --all-projects # Search across all projects
     --include-system (-u) # Include system/meta messages (not just user-typed)
     --raw (-r) # Return raw message records instead of just content
     --with-responses (-w) # Include assistant responses (text only, interleaved)
 ]: nothing -> table {
-    let session_files = if $all_sessions {
+    let session_files = if $all_projects {
+        if $session != null {
+            error make {msg: "--all-projects and --session are mutually exclusive"}
+        }
+        if $project != null {
+            error make {msg: "--all-projects and --project are mutually exclusive"}
+        }
+        let projects_dir = $env.HOME | path join ".claude" "projects"
+        if not ($projects_dir | path exists) {
+            error make {msg: "No projects directory found"}
+        }
+        ls $projects_dir
+        | where type == dir
+        | each {|dir|
+            ls $dir.name
+            | where name =~ $UUID_JSONL_PATTERN
+            | sort-by modified --reverse
+            | if $all_sessions { } else { take 1 }
+            | get name
+        }
+        | flatten
+    } else if $all_sessions {
         if $session != null {
             error make {msg: "--all-sessions and --session are mutually exclusive"}
         }
-        let dir = get-sessions-dir
+        let dir = get-sessions-dir $project
         if not ($dir | path exists) {
-            error make {msg: "No sessions directory found for current project"}
+            error make {msg: $"Sessions directory not found: ($dir)"}
         }
         ls $dir
         | where name =~ $UUID_JSONL_PATTERN
         | sort-by modified --reverse
         | get name
     } else {
-        [(resolve-session-file $session)]
+        let dir = get-sessions-dir $project
+        [(resolve-session-file $session --sessions-dir $dir)]
     }
 
     $session_files
@@ -207,8 +233,12 @@ export def messages [
             | sort-by timestamp
             | if $with_responses { } else { reject role }
         }
-        | if $all_sessions {
+        | if ($all_sessions or $all_projects) {
             each { insert session $session_uuid }
+        } else { }
+        | if $all_projects {
+            let project_name = $session_file | path dirname | path basename
+            each { insert project $project_name }
         } else { }
     }
     | flatten
