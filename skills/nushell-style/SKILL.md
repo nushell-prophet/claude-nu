@@ -21,11 +21,11 @@ description: Load this skill when editing, writing, or reviewing any .nu file. P
 
 ## Agent Tip: Syntax Checking
 
-```nushell
-nu --ide-check 10 file.nu | lines | each { from json }
+```bash
+nu --ide-check 10 file.nu 2>&1 | nu --stdin -c 'lines | each { from json } | where type == "diagnostic"'
 ```
 
-Returns structured JSON with error spans. See [debugging.md](debugging.md) for parsing diagnostics.
+Runs from bash (as agents do). `--stdin` is required for the second `nu` to read piped input. See [debugging.md](debugging.md) for parsing diagnostics inside nushell.
 
 ---
 
