@@ -218,11 +218,11 @@ export def 'main fetch-nushell-docs' [] {
 # Vendor real session files as test fixtures (with obfuscated session IDs)
 @example "Vendor 3 most recent sessions" { nu toolkit.nu vendor-sessions }
 @example "Vendor 5 sessions" { nu toolkit.nu vendor-sessions --count 5 }
-@example "Vendor specific sessions" { nu toolkit.nu vendor-sessions abc123-... def456-... }
+@example "Vendor and commit" { nu toolkit.nu vendor-sessions --commit }
 export def 'main vendor-sessions' [
     ...sessions: string # Session UUIDs to vendor (default: most recent)
     --count (-n): int = 3 # Number of most recent sessions when no UUIDs given
-    --no-commit # Skip creating a git commit after copying
+    --commit # Also create a git commit after copying
 ] {
     use claude-nu
 
@@ -241,8 +241,9 @@ export def 'main vendor-sessions' [
         $available | first $to_take | get name
     } else {
         $sessions | each {|s|
-            if ($s | str ends-with '.jsonl') { $s }
-            else { $sessions_dir | path join $"($s).jsonl" }
+            if ($s | str ends-with '.jsonl') { $s } else {
+                $sessions_dir | path join $"($s).jsonl"
+            }
         }
     }
 
@@ -275,7 +276,7 @@ export def 'main vendor-sessions' [
         print $"(ansi green)✓(ansi reset) ($old_uuid | str substring 0..8)… → ($new_uuid | str substring 0..8)… (($size))"
     }
 
-    if not $no_commit {
+    if $commit {
         let status = git status --porcelain $fixtures_sessions_dir | str trim
         if $status != "" {
             git add $fixtures_sessions_dir
