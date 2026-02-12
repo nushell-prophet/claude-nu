@@ -614,26 +614,39 @@ export def export-session [
     | where {|r| $r.type != "user" or ($SYSTEM_PREFIXES | all {|p| not ($r.text | str starts-with $p) }) }
     | select type text
     | rename role content
+    # Merge consecutive same-role messages
+    | reduce --fold [] {|turn, acc|
+        let prev = $acc | last
+        if $prev != null and $prev.role == $turn.role {
+            $acc | upsert ($acc | length | $in - 1) {
+                role: $turn.role
+                content: $"($prev.content)\n\n($turn.content)"
+            }
+        } else { $acc | append $turn }
+    }
 
     # Format as markdown
-    let header = [
-        $"# ($resolved_topic | str replace --all '-' ' ' | str title-case)"
-        ""
-        $"**Date:** ($first_timestamp | into datetime | format date '%Y-%m-%d')"
-        $"**Summary:** ($summary)"
-        ""
-        "---"
-        ""
+    let session_id = $session_file | path basename | str replace '.jsonl' ''
+    let date_formatted = $first_timestamp | into datetime | format date '%Y-%m-%d'
+
+    let frontmatter = [
+        '---'
+        $"date: ($date_formatted)"
+        $"session: ($session_id)"
+        ...(if $summary != "" { [$"summary: ($summary)"] } else { [] })
+        '---'
     ] | str join "\n"
+
+    let title = $"# ($resolved_topic | str replace --all '-' ' ' | str title-case)"
 
     let body = $dialogue
     | each {|turn|
         let role = match $turn.role { "user" => "User" _ => "Assistant" }
         $"## ($role)\n\n($turn.content)"
     }
-    | str join "\n\n---\n\n"
+    | str join "\n\n"
 
-    let markdown = $header + $body
+    let markdown = [$frontmatter "" $title "" $body] | str join "\n"
 
     if $echo {
         $markdown
