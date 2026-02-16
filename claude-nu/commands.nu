@@ -113,8 +113,20 @@ export def messages [
     --include-system (-u) # Include system/meta messages (not just user-typed)
     --raw (-r) # Return raw message records instead of just content
     --with-responses (-w) # Include assistant responses (text only, interleaved)
-]: nothing -> table {
-    let session_files = if $all_projects {
+]: [nothing -> table, table -> table] {
+    let input = $in
+    let piped_files = resolve-piped-sessions $input
+
+    if $piped_files != null {
+        if $session != null { error make {msg: "Piped input conflicts with --session"} }
+        if $all_sessions { error make {msg: "Piped input conflicts with --all-sessions"} }
+        if $all_projects { error make {msg: "Piped input conflicts with --all-projects"} }
+        if $project != null { error make {msg: "Piped input conflicts with --project"} }
+    }
+
+    let session_files = if $piped_files != null {
+        $piped_files
+    } else if $all_projects {
         if $session != null {
             error make {msg: "--all-projects and --session are mutually exclusive"}
         }
@@ -233,7 +245,7 @@ export def messages [
             | sort-by timestamp
             | if $with_responses { } else { reject role }
         }
-        | if ($all_sessions or $all_projects) {
+        | if ($all_sessions or $all_projects or $piped_files != null) {
             each { insert session $session_uuid }
         } else { }
         | if $all_projects {
@@ -407,12 +419,29 @@ export def parse-session-file []: path -> record {
     }
 }
 
+# Extract session file paths from piped input
+# Returns null when input is not a table
+export def resolve-piped-sessions [input: any]: nothing -> any {
+    if ($input | describe) == "nothing" { return null }
+    let cols = $input | columns
+    if "path" in $cols {
+        $input | get path | compact | uniq
+    } else if "session" in $cols {
+        $input | get session | uniq | each {|s| resolve-session-file $s }
+    } else {
+        error make {msg: "Piped input must have 'path' or 'session' column"}
+    }
+}
+
 # Parse Claude Code sessions for structured information
 export def sessions [
     ...paths: path # Session files or directories to parse (default: current project sessions)
-]: nothing -> table {
+]: [nothing -> table, string -> table] {
+    let input = $in
     let target_paths = $paths
-    | if ($in | is-empty) { [(get-sessions-dir)] } else { }
+    | if ($in | is-empty) {
+        if ($input | describe) == "string" { [$input] } else { [(get-sessions-dir)] }
+    } else { }
 
     let session_files = $target_paths
     | each {|p|
@@ -466,93 +495,106 @@ export def parse-session [
     --assistant-msg-count # Include assistant_msg_count column
     --tool-call-count # Include tool_call_count column
     --all (-a) # Include all columns
-]: nothing -> record {
-    let session_file = resolve-session-file $session
+]: [nothing -> record, table -> table] {
+    let input = $in
+    let piped_files = resolve-piped-sessions $input
 
-    if not ($session_file | path exists) {
-        error make {msg: $"Session file not found: ($session_file)"}
+    if $piped_files != null and $session != null {
+        error make {msg: "Piped input conflicts with session argument"}
     }
 
-    let records = open --raw $session_file | lines | each { from json }
+    let parse_one = {|session_file|
+        if not ($session_file | path exists) {
+            error make {msg: $"Session file not found: ($session_file)"}
+        }
 
-    # Extract base data
-    let user_records = $records | where type? == "user"
-    let assistant_records = $records | where type? == "assistant"
-    let all_tool_calls = $assistant_records | each { extract-tool-calls } | flatten
+        let records = open --raw $session_file | lines | each { from json }
 
-    # Default columns
-    let user_messages = $user_records | each { extract-text-content } | where $it != ""
-    let mentioned_files = $user_records
-    | each { extract-text-content | parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
-    | flatten
-    | uniq
+        # Extract base data
+        let user_records = $records | where type? == "user"
+        let assistant_records = $records | where type? == "assistant"
+        let all_tool_calls = $assistant_records | each { extract-tool-calls } | flatten
 
-    let base = {
-        path: $session_file
-        user_messages: $user_messages
-        mentioned_files: $mentioned_files
+        # Default columns
+        let user_messages = $user_records | each { extract-text-content } | where $it != ""
+        let mentioned_files = $user_records
+        | each { extract-text-content | parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
+        | flatten
+        | uniq
+
+        let base = {
+            path: $session_file
+            user_messages: $user_messages
+            mentioned_files: $mentioned_files
+        }
+
+        # Lazy extraction - only compute when flags require it
+        let need_file_ops = $all or $edited_files or $read_files
+        let need_meta = $all or $session_id or $slug or $version or $cwd or $git_branch
+        let need_tool_stats = $all or $bash_commands or $bash_count or $skill_invocations or $tool_errors or $ask_user_count or $plan_mode_used
+        let need_metrics = $all or $turn_count or $assistant_msg_count or $tool_call_count
+        let need_timestamps = $all or $first_timestamp or $last_timestamp
+
+        let file_ops = if $need_file_ops { $all_tool_calls | extract-file-operations } else { {} }
+        let agent_list = if ($all or $agents) { $all_tool_calls | extract-agents } else { [] }
+        let meta = if $need_meta { $records | where type? != "summary" | first | default {} | extract-session-metadata } else { {} }
+        let tool_stats = if $need_tool_stats {
+            let tool_results = $user_records | extract-tool-results
+            $all_tool_calls | extract-tool-stats $tool_results
+        } else { {} }
+        let metrics = if $need_metrics {
+            $user_records | extract-derived-metrics $assistant_records $all_tool_calls
+        } else { {} }
+
+        let sum = if ($all or $summary) {
+            $records | where type? == "summary"
+            | first
+            | get summary?
+            | default ""
+        } else { "" }
+
+        let timestamps = if $need_timestamps { $user_records | extract-timestamps } else { {first: null last: null} }
+        let thinking = if ($all or $thinking_level) { $user_records | extract-thinking-level } else { "" }
+
+        # Build result record with optional columns (data-driven)
+        [
+            # File operations
+            {include: $edited_files field: edited_files value: $file_ops.edited_files?}
+            {include: $read_files field: read_files value: $file_ops.read_files?}
+            # Session info
+            {include: $summary field: summary value: $sum}
+            {include: $agents field: agents value: $agent_list}
+            {include: $first_timestamp field: first_timestamp value: $timestamps.first?}
+            {include: $last_timestamp field: last_timestamp value: $timestamps.last?}
+            # Session metadata
+            {include: $session_id field: session_id value: $meta.session_id?}
+            {include: $slug field: slug value: $meta.slug?}
+            {include: $version field: version value: $meta.version?}
+            {include: $cwd field: cwd value: $meta.cwd?}
+            {include: $git_branch field: git_branch value: $meta.git_branch?}
+            # Thinking
+            {include: $thinking_level field: thinking_level value: $thinking}
+            # Tool statistics
+            {include: $bash_commands field: bash_commands value: $tool_stats.bash_commands?}
+            {include: $bash_count field: bash_count value: $tool_stats.bash_count?}
+            {include: $skill_invocations field: skill_invocations value: $tool_stats.skill_invocations?}
+            {include: $tool_errors field: tool_errors value: $tool_stats.tool_errors?}
+            {include: $ask_user_count field: ask_user_count value: $tool_stats.ask_user_count?}
+            {include: $plan_mode_used field: plan_mode_used value: $tool_stats.plan_mode_used?}
+            # Derived metrics
+            {include: $turn_count field: turn_count value: $metrics.turn_count?}
+            {include: $assistant_msg_count field: assistant_msg_count value: $metrics.assistant_msg_count?}
+            {include: $tool_call_count field: tool_call_count value: $metrics.tool_call_count?}
+        ]
+        | where { $all or $in.include }
+        | reduce --fold $base {|it acc| $acc | insert $it.field $it.value }
     }
 
-    # Lazy extraction - only compute when flags require it
-    let need_file_ops = $all or $edited_files or $read_files
-    let need_meta = $all or $session_id or $slug or $version or $cwd or $git_branch
-    let need_tool_stats = $all or $bash_commands or $bash_count or $skill_invocations or $tool_errors or $ask_user_count or $plan_mode_used
-    let need_metrics = $all or $turn_count or $assistant_msg_count or $tool_call_count
-    let need_timestamps = $all or $first_timestamp or $last_timestamp
-
-    let file_ops = if $need_file_ops { $all_tool_calls | extract-file-operations } else { {} }
-    let agent_list = if ($all or $agents) { $all_tool_calls | extract-agents } else { [] }
-    let meta = if $need_meta { $records | where type? != "summary" | first | default {} | extract-session-metadata } else { {} }
-    let tool_stats = if $need_tool_stats {
-        let tool_results = $user_records | extract-tool-results
-        $all_tool_calls | extract-tool-stats $tool_results
-    } else { {} }
-    let metrics = if $need_metrics {
-        $user_records | extract-derived-metrics $assistant_records $all_tool_calls
-    } else { {} }
-
-    let sum = if ($all or $summary) {
-        $records | where type? == "summary"
-        | first
-        | get summary?
-        | default ""
-    } else { "" }
-
-    let timestamps = if $need_timestamps { $user_records | extract-timestamps } else { {first: null last: null} }
-    let thinking = if ($all or $thinking_level) { $user_records | extract-thinking-level } else { "" }
-
-    # Build result record with optional columns (data-driven)
-    [
-        # File operations
-        {include: $edited_files field: edited_files value: $file_ops.edited_files?}
-        {include: $read_files field: read_files value: $file_ops.read_files?}
-        # Session info
-        {include: $summary field: summary value: $sum}
-        {include: $agents field: agents value: $agent_list}
-        {include: $first_timestamp field: first_timestamp value: $timestamps.first?}
-        {include: $last_timestamp field: last_timestamp value: $timestamps.last?}
-        # Session metadata
-        {include: $session_id field: session_id value: $meta.session_id?}
-        {include: $slug field: slug value: $meta.slug?}
-        {include: $version field: version value: $meta.version?}
-        {include: $cwd field: cwd value: $meta.cwd?}
-        {include: $git_branch field: git_branch value: $meta.git_branch?}
-        # Thinking
-        {include: $thinking_level field: thinking_level value: $thinking}
-        # Tool statistics
-        {include: $bash_commands field: bash_commands value: $tool_stats.bash_commands?}
-        {include: $bash_count field: bash_count value: $tool_stats.bash_count?}
-        {include: $skill_invocations field: skill_invocations value: $tool_stats.skill_invocations?}
-        {include: $tool_errors field: tool_errors value: $tool_stats.tool_errors?}
-        {include: $ask_user_count field: ask_user_count value: $tool_stats.ask_user_count?}
-        {include: $plan_mode_used field: plan_mode_used value: $tool_stats.plan_mode_used?}
-        # Derived metrics
-        {include: $turn_count field: turn_count value: $metrics.turn_count?}
-        {include: $assistant_msg_count field: assistant_msg_count value: $metrics.assistant_msg_count?}
-        {include: $tool_call_count field: tool_call_count value: $metrics.tool_call_count?}
-    ]
-    | where { $all or $in.include }
-    | reduce --fold $base {|it acc| $acc | insert $it.field $it.value }
+    if $piped_files != null {
+        $piped_files | each {|f| do $parse_one $f }
+    } else {
+        do $parse_one (resolve-session-file $session)
+    }
 }
 
 # Sanitize topic string for use in filename
@@ -569,97 +611,114 @@ export def export-session [
     --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
     --output-dir (-o): path # Output directory (default: docs/sessions)
     --echo (-e) # Print markdown to stdout instead of saving to file
-]: nothing -> string {
-    let session_file = resolve-session-file $session
+]: [nothing -> string, table -> table] {
+    let input = $in
+    let piped_files = resolve-piped-sessions $input
     let out_dir = $output_dir | default "docs/sessions"
 
-    if not ($session_file | path exists) {
-        error make {msg: $"Session file not found: ($session_file)"}
+    if $piped_files != null {
+        if $session != null { error make {msg: "Piped input conflicts with --session"} }
+        if $topic != null { error make {msg: "Piped input conflicts with topic argument"} }
     }
 
-    let records = open --raw $session_file | lines | each { from json }
+    let export_one = {|session_file|
+        if not ($session_file | path exists) {
+            error make {msg: $"Session file not found: ($session_file)"}
+        }
 
-    if ($records | is-empty) {
-        error make {msg: "Session file is empty"}
+        let records = open --raw $session_file | lines | each { from json }
+
+        if ($records | is-empty) {
+            error make {msg: "Session file is empty"}
+        }
+
+        # Extract summary from summary record
+        let summary = $records
+        | where type? == "summary"
+        | first
+        | get summary?
+        | default ""
+
+        # Determine topic: argument > summary > "session"
+        let resolved_topic = $topic
+        | default (if $summary != "" { $summary } else { "session" })
+        | sanitize-topic
+
+        # Get date from first user record or now
+        let first_timestamp = $records
+        | where type? == "user"
+        | get timestamp --optional
+        | compact
+        | if ($in | is-empty) { [(date now | format date "%Y-%m-%dT%H:%M:%S")] } else { }
+        | first
+        let date_str = $first_timestamp | into datetime | format date "%Y%m%d"
+
+        # Extract dialogue: user messages and assistant responses
+        let dialogue = $records
+        | where type? in ["user" "assistant"]
+        | where isMeta? != true
+        | insert text { extract-text-content }
+        | where { $in.text | str trim | is-not-empty }
+        # Keep assistant messages; filter user messages starting with system prefixes
+        | where {|r| $r.type != "user" or ($SYSTEM_PREFIXES | all {|p| not ($r.text | str starts-with $p) }) }
+        | select type text
+        | rename role content
+        # Merge consecutive same-role messages
+        | reduce --fold [] {|turn, acc|
+            let prev = $acc | last
+            if $prev != null and $prev.role == $turn.role {
+                $acc | upsert ($acc | length | $in - 1) {
+                    role: $turn.role
+                    content: $"($prev.content)\n\n($turn.content)"
+                }
+            } else { $acc | append $turn }
+        }
+
+        # Format as markdown
+        let session_id = $session_file | path basename | str replace '.jsonl' ''
+        let date_formatted = $first_timestamp | into datetime | format date '%Y-%m-%d'
+
+        let frontmatter = [
+            '---'
+            $"date: ($date_formatted)"
+            $"session: ($session_id)"
+            ...(if $summary != "" { [$"summary: ($summary)"] } else { [] })
+            '---'
+        ] | str join "\n"
+
+        let title = $"# ($resolved_topic | str replace --all '-' ' ' | str title-case)"
+
+        let body = $dialogue
+        | each {|turn|
+            let role = match $turn.role { "user" => "User" _ => "Assistant" }
+            $"## ($role)\n\n($turn.content)"
+        }
+        | str join "\n\n"
+
+        let markdown = [$frontmatter "" $title "" $body] | str join "\n"
+
+        if $echo {
+            $markdown
+        } else {
+            # Ensure output directory exists
+            mkdir $out_dir
+
+            # Write file
+            let filename = $"($date_str)-($resolved_topic).md"
+            let filepath = $out_dir | path join $filename
+            $markdown | save -f $filepath
+
+            $filepath
+        }
     }
 
-    # Extract summary from summary record
-    let summary = $records
-    | where type? == "summary"
-    | first
-    | get summary?
-    | default ""
-
-    # Determine topic: argument > summary > "session"
-    let resolved_topic = $topic
-    | default (if $summary != "" { $summary } else { "session" })
-    | sanitize-topic
-
-    # Get date from first user record or now
-    let first_timestamp = $records
-    | where type? == "user"
-    | get timestamp --optional
-    | compact
-    | if ($in | is-empty) { [(date now | format date "%Y-%m-%dT%H:%M:%S")] } else { }
-    | first
-    let date_str = $first_timestamp | into datetime | format date "%Y%m%d"
-
-    # Extract dialogue: user messages and assistant responses
-    let dialogue = $records
-    | where type? in ["user" "assistant"]
-    | where isMeta? != true
-    | insert text { extract-text-content }
-    | where { $in.text | str trim | is-not-empty }
-    # Keep assistant messages; filter user messages starting with system prefixes
-    | where {|r| $r.type != "user" or ($SYSTEM_PREFIXES | all {|p| not ($r.text | str starts-with $p) }) }
-    | select type text
-    | rename role content
-    # Merge consecutive same-role messages
-    | reduce --fold [] {|turn, acc|
-        let prev = $acc | last
-        if $prev != null and $prev.role == $turn.role {
-            $acc | upsert ($acc | length | $in - 1) {
-                role: $turn.role
-                content: $"($prev.content)\n\n($turn.content)"
-            }
-        } else { $acc | append $turn }
-    }
-
-    # Format as markdown
-    let session_id = $session_file | path basename | str replace '.jsonl' ''
-    let date_formatted = $first_timestamp | into datetime | format date '%Y-%m-%d'
-
-    let frontmatter = [
-        '---'
-        $"date: ($date_formatted)"
-        $"session: ($session_id)"
-        ...(if $summary != "" { [$"summary: ($summary)"] } else { [] })
-        '---'
-    ] | str join "\n"
-
-    let title = $"# ($resolved_topic | str replace --all '-' ' ' | str title-case)"
-
-    let body = $dialogue
-    | each {|turn|
-        let role = match $turn.role { "user" => "User" _ => "Assistant" }
-        $"## ($role)\n\n($turn.content)"
-    }
-    | str join "\n\n"
-
-    let markdown = [$frontmatter "" $title "" $body] | str join "\n"
-
-    if $echo {
-        $markdown
+    if $piped_files != null {
+        $piped_files | each {|f|
+            let session_id = $f | path basename | str replace '.jsonl' ''
+            {session: $session_id filepath: (do $export_one $f)}
+        }
     } else {
-        # Ensure output directory exists
-        mkdir $out_dir
-
-        # Write file
-        let filename = $"($date_str)-($resolved_topic).md"
-        let filepath = $out_dir | path join $filename
-        $markdown | save -f $filepath
-
-        $filepath
+        do $export_one (resolve-session-file $session)
     }
 }
 
