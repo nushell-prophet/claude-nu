@@ -605,16 +605,13 @@ export def sanitize-topic []: string -> string {
     | str substring 0..<50
 }
 
-# Export session dialogue to markdown file
+# Export session dialogue to structured data with markdown
 export def export-session [
     topic?: string # Topic for filename (default: session summary)
     --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
-    --output-dir (-o): path # Output directory (default: docs/sessions)
-    --echo (-e) # Print markdown to stdout instead of saving to file
-]: [nothing -> string, table -> table] {
+]: [nothing -> record, table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
-    let out_dir = $output_dir | default "docs/sessions"
 
     if $piped_files != null {
         if $session != null { error make {msg: "Piped input conflicts with --session"} }
@@ -697,28 +694,60 @@ export def export-session [
 
         let markdown = [$frontmatter "" $title "" $body] | str join "\n"
 
-        if $echo {
-            $markdown
-        } else {
-            # Ensure output directory exists
-            mkdir $out_dir
-
-            # Write file
-            let filename = $"($date_str)-($resolved_topic).md"
-            let filepath = $out_dir | path join $filename
-            $markdown | save -f $filepath
-
-            $filepath
+        {
+            session: $session_id
+            date: $date_str
+            topic: $resolved_topic
+            markdown: $markdown
         }
     }
 
     if $piped_files != null {
-        $piped_files | each {|f|
-            let session_id = $f | path basename | str replace '.jsonl' ''
-            {session: $session_id filepath: (do $export_one $f)}
-        }
+        $piped_files | each {|f| do $export_one $f }
     } else {
         do $export_one (resolve-session-file $session)
+    }
+}
+
+# Save exported session markdown to files
+export def save-markdown [
+    --output-dir (-o): path # Output directory (default: docs/sessions)
+]: [record -> string, table -> table] {
+    let input = $in
+    let out_dir = $output_dir | default "docs/sessions"
+    let was_record = ($input | describe | str replace --regex '<.*' '') == "record"
+
+    # Normalize to table
+    let rows = if $was_record { [$input] } else { $input }
+    | insert filename {|r| $"($r.date)-($r.topic).md" }
+
+    # Detect collisions: filenames shared by multiple sessions
+    let collision_names = $rows
+    | group-by filename
+    | transpose key rows
+    | where { $in.rows | length | $in > 1 }
+    | get key
+
+    let rows = $rows
+    | update filename {|r|
+        if $r.filename in $collision_names {
+            $"($r.date)-($r.topic)-($r.session | str substring 0..5).md"
+        } else { }
+    }
+
+    mkdir $out_dir
+
+    let results = $rows
+    | each {|r|
+        let filepath = $out_dir | path join $r.filename
+        $r.markdown | save -f $filepath
+        {session: $r.session filepath: $filepath}
+    }
+
+    if $was_record {
+        $results | first | get filepath
+    } else {
+        $results
     }
 }
 

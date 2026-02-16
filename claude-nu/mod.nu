@@ -6,4 +6,4 @@
 #   claude-nu messages --all     # Include system messages
 #   claude-nu messages --raw     # Get raw message records
 
-export use commands.nu [ messages sessions parse-session get-sessions-dir resolve-piped-sessions export-session download-documentation ]
+export use commands.nu [ messages sessions parse-session get-sessions-dir resolve-piped-sessions export-session save-markdown download-documentation ]
