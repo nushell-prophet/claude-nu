@@ -9,6 +9,19 @@ const captures_dir = 'dotnu-captures'
 const fixtures_sessions_dir = 'tests/fixtures/sessions'
 const uuid_jsonl_pattern = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
 
+# Check if a path has uncommitted changes in its git repository
+def has-uncommitted-changes [path: path]: nothing -> bool {
+    if not ($path | path exists) { return false }
+
+    let dir = if ($path | path type) == 'dir' { $path } else { $path | path dirname }
+
+    let git_check = do { cd $dir; ^git rev-parse --git-dir } | complete
+    if $git_check.exit_code != 0 { return false }
+
+    let status = do { cd $dir; ^git status --porcelain -- $path } | complete
+    ($status.stdout | str trim | is-not-empty)
+}
+
 export def main [] { }
 
 # Run all tests
@@ -159,9 +172,25 @@ export def 'main vendor-skills' [
 
 # Install managed skills to ~/.claude/skills (reverse of vendor-skills)
 @example "Install all skills globally" { nu toolkit.nu install-skills-globally }
-export def 'main install-skills-globally' [] {
+@example "Force overwrite uncommitted changes" { nu toolkit.nu install-skills-globally --force }
+export def 'main install-skills-globally' [
+    --force # Overwrite even if destination has uncommitted changes
+] {
     let global_dir = $skills_global_dir | path expand
     let local_dir = $skills_local_dir
+
+    if not $force {
+        let dirty = $managed_skills
+        | each { $"($global_dir)/($in)" }
+        | where { has-uncommitted-changes $in }
+        if ($dirty | is-not-empty) {
+            print $"(ansi yellow)⚠(ansi reset) Uncommitted changes in destination:"
+            $dirty | each { print $"  ($in)" }
+            print $"\n  Use (ansi cyan)--force(ansi reset) to overwrite"
+            return
+        }
+    }
+
     mut total_files = 0
 
     for skill in $managed_skills {
