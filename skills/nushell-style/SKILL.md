@@ -112,22 +112,32 @@ export def 'main build' [] {
 - Must define `main` for subcommands to be accessible
 - Use `export def` if script is also used as a module
 
-**Execution differs between script mode and module mode:**
+### Script mode vs module mode
 
-```bash
-# Script mode: `main` is stripped, subcommands are top-level
-nu toolkit.nu           # runs main
-nu toolkit.nu test      # runs 'main test'
-nu toolkit.nu test --json  # with flags
-```
+`main` is stripped in script mode but **stays** in module mode. `export` is irrelevant in script mode but **required** in module mode.
+
+| How you run | Calls `def "main test"` | `export` needed? |
+|---|---|---|
+| `nu toolkit.nu test` | ✓ `main` stripped | No |
+| `use toolkit.nu; toolkit main test` | ✓ `main` stays | Yes |
+| `use toolkit.nu *; main test` | ✓ bare names | Yes |
+
+**⚠ Common agent mistake** — using `use` (module mode) but calling with script-mode syntax:
 
 ```nushell
-# Module mode: `main` stays in the command name
+# WRONG: script-mode syntax after module-mode import
 use toolkit.nu
-toolkit                 # runs main
-toolkit main test       # runs 'main test' — note `main` is required
-toolkit main test --json
+toolkit test              # Error: extra positional argument
+
+# CORRECT: include `main` in the command path
+use toolkit.nu
+toolkit main test         # ✓
+
+# OR: just use script mode
+# nu toolkit.nu test      # ✓
 ```
+
+When in doubt, prefer script mode (`nu script.nu subcommand`) — it's simpler and avoids the `main` path issue.
 
 → See [Nushell Scripts docs](https://www.nushell.sh/book/scripts.html#subcommands)
 
