@@ -1,14 +1,34 @@
 # Testing Infrastructure
 
-## Running Nushell Snippets from Bash
+## Running Nushell from Bash (Agent Escaping)
 
-When testing nushell code from bash (common for AI agents), avoid `nu -c '...'` due to escaping issues with `!=`, nested quotes, and special characters.
+**⚠ `nu -c` is broken for `!=` and `!~`** — the Bash tool escapes `!` → `\!` before the shell sees it. Both single and double quotes are affected. This is not a bash issue — it happens at the tool level.
 
-**Use a temp file instead:**
+```bash
+# BROKEN: Bash tool turns != into \!=
+nu -c 'where status != "done"'     # → \!= → parse error
+nu -c "where name !~ 'test'"       # → \!~ → parse error
+
+# SAFE: operators without ! work fine
+nu -c 'where status == "done"'     # ✓
+nu -c 'where name =~ "test"'       # ✓
+nu -c '"x" not-in ["y"]'           # ✓
+```
+
+**Fix 1 — inline heredoc** (preferred for short snippets):
+
+```bash
+nu -c "$(cat << 'EOF'
+if ($data | length) != 0 { print "has data" }
+$data | where name !~ "skip"
+EOF
+)"
+```
+
+**Fix 2 — temp file** (preferred for longer code):
 
 ```bash
 cat > /tmp/test.nu << 'EOF'
-# No escaping needed - write nushell code directly
 let data = [{a: 1}, {a: 2}]
 if ($data | length) != 0 {
     print "has data"
@@ -18,25 +38,7 @@ EOF
 nu /tmp/test.nu
 ```
 
-**Why this works:**
-- `<< 'EOF'` (quoted) prevents bash variable expansion
-- Nushell operators like `!=`, `=~` pass through unchanged
-- Nested quotes and string interpolation work naturally
-
-**Problematic patterns to avoid:**
-
-```bash
-# BAD: escaping nightmare
-nu -c 'if $x != null { print "yes" }'  # != gets mangled
-nu -c "print $\"value: ($x)\""          # interpolation conflicts
-
-# GOOD: temp file approach
-cat > /tmp/test.nu << 'EOF'
-if $x != null { print "yes" }
-print $"value: ($x)"
-EOF
-nu /tmp/test.nu
-```
+Both use quoted heredoc (`<< 'EOF'`) which bypasses the escaping entirely.
 
 ## Unit Tests with nutest
 

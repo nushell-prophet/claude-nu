@@ -33,6 +33,20 @@ nu -c 'let c = open --raw FILE; let l = $c | lines; nu --ide-check 10 FILE | lin
 
 Both run from bash. See [debugging.md](references/debugging.md) for the full nushell command.
 
+## Agent Tip: `!=` and `!~` in Bash
+
+**⚠ `nu -c` breaks `!=` and `!~`** — the Bash tool escapes `!` → `\!` regardless of quoting. Use a heredoc wrapper:
+
+```bash
+nu -c "$(cat << 'EOF'
+if $x != null { print "yes" }
+$data | where name !~ "skip"
+EOF
+)"
+```
+
+Or use a temp file for longer code. See [testing.md](references/testing.md) for details.
+
 ---
 
 ## Conciseness for Advanced Users
