@@ -145,14 +145,11 @@ export def 'main vendor-skills' [
             continue
         }
 
-        mkdir $dest
-        let files = glob $"($source)/*.md"
-        $files | each {|f|
-            let name = $f | path basename
-            cp $f $"($dest)/($name)"
-            print $"(ansi green)✓(ansi reset) ($skill)/($name)"
-        }
-        $total_files = $total_files + ($files | length)
+        if ($dest | path exists) { rm -rf $dest }
+        cp -r $source $dest
+        let file_count = glob $"($dest)/**/*" | where ($it | path type) == 'file' | length
+        print $"(ansi green)✓(ansi reset) ($skill) \(($file_count) files\)"
+        $total_files = $total_files + $file_count
     }
 
     print $"\n(ansi attr_dimmed)Copied ($total_files) files to ($local_dir)(ansi reset)"
@@ -202,14 +199,11 @@ export def 'main install-skills-globally' [
             continue
         }
 
-        mkdir $dest
-        let files = glob $"($source)/*.md"
-        $files | each {|f|
-            let name = $f | path basename
-            cp $f $"($dest)/($name)"
-            print $"(ansi green)✓(ansi reset) ($skill)/($name)"
-        }
-        $total_files = $total_files + ($files | length)
+        if ($dest | path exists) { rm -rf $dest }
+        cp -r $source $dest
+        let file_count = glob $"($dest)/**/*" | where ($it | path type) == 'file' | length
+        print $"(ansi green)✓(ansi reset) ($skill) \(($file_count) files\)"
+        $total_files = $total_files + $file_count
     }
 
     print $"\n(ansi attr_dimmed)Installed ($total_files) files to ($global_dir)(ansi reset)"
