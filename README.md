@@ -2,11 +2,16 @@
 
 Nushell utilities for working with [Claude Code](https://claude.ai/code) sessions and CLI.
 
-## Features
+> Work in progress — features are added as needed. If you use Nushell with Claude Code, you might find something useful here.
 
-- **Session analysis** — Extract messages, metadata, and statistics from Claude Code sessions
-- **CLI completions** — Tab completion for `claude`, `chafa`, and `zellij` commands
-- **Session picker** — Fuzzy-find sessions by UUID with timestamps and summaries
+## Highlights
+
+- **Search past sessions** — Find what you asked Claude last week with `messages 'pattern' --all-projects`
+- **Session analytics** — See what Claude actually did: files touched, tools called, agents spawned, errors hit
+- **Smart session picker** — `claude --resume <TAB>` shows age, size, and summary instead of raw UUIDs
+- **Export to markdown** — Keep session history in git with YAML frontmatter
+- **Dynamic script completions** — `nu` completions that parse any .nu script's subcommands at tab-time
+- **Vendored Claude Code skills** — Reusable Nushell style guide and completions guide for Claude Code agents
 
 ## Installation
 
@@ -23,6 +28,10 @@ Add to your `config.nu`:
 # From the repo directory (or use full paths like ~/git/claude-nu)
 use claude-nu
 use completions/claude.nu *
+use completions/nu.nu *
+use completions/zellij.nu *
+use completions/chafa.nu *
+use completions/sandbox-exec.nu *
 ```
 
 ## Commands
@@ -124,14 +133,23 @@ Completions are provided for multiple CLI tools:
 
 | File | Command | Highlights |
 |------|---------|------------|
-| `completions/claude.nu` | `claude` | All flags, subcommands, session UUIDs for `--resume` |
-| `completions/chafa.nu` | `chafa` | Image viewer options |
-| `completions/zellij.nu` | `zellij` | Terminal multiplexer commands |
+| `completions/claude.nu` | `claude` | 50+ flags, MCP/plugin subcommands, session picker for `--resume` |
+| `completions/nu.nu` | `nu` | Parses .nu scripts at tab-time to offer their subcommands and flags |
+| `completions/zellij.nu` | `zellij` | 100+ actions, live session/layout completers |
+| `completions/chafa.nu` | `chafa` | 35+ completers for image rendering options |
+| `completions/sandbox-exec.nu` | `sandbox-exec` | macOS sandbox profiles from `/usr/share/sandbox/` |
 
-Example:
+**Session picker example:**
 ```
 claude --resume <TAB>
-# Shows: abc123... (2 hours ago, 15KB: Implement user auth...)
+# abc123… │ 2 hours ago │ 15KB │ Implement user auth…
+# def456… │ yesterday   │ 42KB │ Fix database migration…
+```
+
+**Dynamic script completions:**
+```
+nu toolkit.nu <TAB>
+# test │ vendor-skills │ fetch-claude-docs │ …
 ```
 
 ## Development
