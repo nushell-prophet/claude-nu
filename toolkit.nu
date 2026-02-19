@@ -304,7 +304,7 @@ export def 'main update-captures' [] {
         return
     }
 
-    $captures | each {|f|
+    for f in $captures {
         print $"(ansi attr_dimmed)Updating ($f | path basename)…(ansi reset)"
         dotnu embeds-update $f
         print $"(ansi green)✓(ansi reset) ($f | path basename)"

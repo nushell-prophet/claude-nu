@@ -3,10 +3,10 @@
 
 nu --help | print $in
 # => The nushell language and shell.
-# =>
+# => 
 # => Usage:
-# =>   > nu {flags} (script file) ...(script args)
-# =>
+# =>   > nu {flags} (script file) ...(script args) 
+# => 
 # => Flags:
 # =>   -h, --help: Display the help message for this command
 # =>   -c, --commands <string>: run the given commands and then exit
@@ -40,14 +40,20 @@ nu --help | print $in
 # =>   --stdin: redirect standard input to a command (with `-c`) or a script file
 # =>   --testbin <string>: run internal test binary
 # =>   --experimental-options <list<string>>: enable or disable experimental options, use `"all"` to set all active options
-# =>
+# => 
 # => Parameters:
 # =>   script file <path>: name of the optional script file to run (optional)
 # =>   ...script args <string>: parameters to the script file
-# =>
+# => 
 # => Examples:
 # =>   Run a script
 # =>   > nu myfile.nu
-# =>
+# => 
 # =>   Run nushell interactively (as a shell or REPL)
 # =>   > nu
+
+# =>
+# =>
+# =>
+# =>
+# =>
