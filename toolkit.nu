@@ -289,6 +289,30 @@ export def 'main vendor-sessions' [
     }
 }
 
+# Check .nu file for static errors, showing line content for each diagnostic
+@example "Check a file" { nu toolkit.nu check commands.nu }
+export def 'main check' [file: path] {
+    let content = open --raw $file
+    let source_lines = $content | lines
+
+    nu --ide-check 10 $file
+    | lines
+    | each { from json }
+    | where type == "diagnostic"
+    | each {|d|
+        let before = $content | str substring 0..<$d.span.start
+        let line_num = $before | split row "\n" | length
+        {
+            line: $line_num
+            severity: $d.severity
+            message: $d.message
+            source: ($source_lines | get ($line_num - 1) | str trim)
+            span: ($content | str substring $d.span.start..<$d.span.end)
+        }
+    }
+    | uniq
+}
+
 # Update dotnu capture files (requires dotnu module in scope)
 @example "Update all captures" { nu toolkit.nu update-captures }
 export def 'main update-captures' [] {
