@@ -10,12 +10,12 @@ description: Load this skill when editing, writing, or reviewing any .nu file. P
 | File | Topic |
 |------|-------|
 | **This file** | Quick reference tables, do/don't checklists |
-| [patterns.md](patterns.md) | Pipeline composition, command examples, code structure |
-| [formatting.md](formatting.md) | Topiary conventions, spacing, declarations |
-| [debugging.md](debugging.md) | `--ide-check` for agents, diagnostic parsing |
-| [nuon.md](nuon.md) | NUON format, data serialization, config files |
-| [testing.md](testing.md) | nutest framework, snapshots, coverage |
-| [toolkit.md](toolkit.md) | toolkit.nu, repo utilities, commit conventions |
+| [patterns.md](references/patterns.md) | Pipeline composition, command examples, code structure |
+| [formatting.md](references/formatting.md) | Topiary conventions, spacing, declarations |
+| [debugging.md](references/debugging.md) | `--ide-check` for agents, diagnostic parsing |
+| [nuon.md](references/nuon.md) | NUON format, data serialization, config files |
+| [testing.md](references/testing.md) | nutest framework, snapshots, coverage |
+| [toolkit.md](references/toolkit.md) | toolkit.nu, repo utilities, commit conventions |
 
 ---
 
@@ -31,7 +31,7 @@ With line numbers and source context (replace `FILE` with path):
 nu -c 'let c = open --raw FILE; let l = $c | lines; nu --ide-check 10 FILE | lines | each { from json } | where type == "diagnostic" | each {|d| let n = ($c | str substring 0..<$d.span.start | split row "\n" | length); {line: $n, message: $d.message, source: ($l | get ($n - 1) | str trim), span: ($c | str substring $d.span.start..<$d.span.end)}} | uniq'
 ```
 
-Both run from bash. See [debugging.md](debugging.md) for the full nushell command.
+Both run from bash. See [debugging.md](references/debugging.md) for the full nushell command.
 
 ---
 
@@ -85,7 +85,7 @@ Use empty `{ }` for the branch that should pass through unchanged:
 ### Stateful Transforms
 Use `scan` for sequences with state: `use std/iter scan`
 
-→ See [patterns.md](patterns.md) for detailed examples.
+→ See [patterns.md](references/patterns.md) for detailed examples.
 
 ---
 
@@ -179,4 +179,4 @@ toolkit main test --json
 - Records: multi-line, no trailing comma
 - Variables: `let x =` (no `$` on left)
 
-→ See [formatting.md](formatting.md) for full conventions.
+→ See [formatting.md](references/formatting.md) for full conventions.
