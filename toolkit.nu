@@ -5,6 +5,7 @@ const managed_skills = ['nushell-style' 'nushell-completions']
 const nushell_docs_dir = 'nushell-docs'
 const nushell_docs_repo = 'https://github.com/nushell/nushell.github.io.git'
 const nushell_docs_folders = ['blog' 'book' 'cookbook']
+const captures_dir = 'dotnu-captures'
 const fixtures_sessions_dir = 'tests/fixtures/sessions'
 const uuid_jsonl_pattern = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
 
@@ -285,5 +286,27 @@ export def 'main vendor-sessions' [
         } else {
             print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
         }
+    }
+}
+
+# Update dotnu capture files (requires dotnu module in scope)
+@example "Update all captures" { nu toolkit.nu update-captures }
+export def 'main update-captures' [] {
+    if not (scope modules | where name == dotnu | is-not-empty) {
+        print $"(ansi red)✗(ansi reset) dotnu module not in scope"
+        print "  Add `use dotnu/` or ensure dotnu is in NU_LIB_DIRS"
+        return
+    }
+
+    let captures = glob $'($captures_dir)/*.nu'
+    if ($captures | is-empty) {
+        print $"(ansi attr_dimmed)No capture files in ($captures_dir)/(ansi reset)"
+        return
+    }
+
+    $captures | each {|f|
+        print $"(ansi attr_dimmed)Updating ($f | path basename)…(ansi reset)"
+        dotnu embeds-update $f
+        print $"(ansi green)✓(ansi reset) ($f | path basename)"
     }
 }
