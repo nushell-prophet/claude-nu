@@ -1,0 +1,53 @@
+# Capture `nu --help` output for tracking flag changes via git diff.
+# Update with: `dotnu embeds-update dotnu-captures/nu--help.nu`
+
+nu --help | print $in
+# => The nushell language and shell.
+# =>
+# => Usage:
+# =>   > nu {flags} (script file) ...(script args)
+# =>
+# => Flags:
+# =>   -h, --help: Display the help message for this command
+# =>   -c, --commands <string>: run the given commands and then exit
+# =>   -e, --execute <string>: run the given commands and then enter an interactive shell
+# =>   -I, --include-path <string>: set the NU_LIB_DIRS for the given script (delimited by char record_sep (''))
+# =>   -i, --interactive: start as an interactive shell
+# =>   -l, --login: start as a login shell
+# =>   -m, --table-mode <string>: the table mode to use. rounded is default.
+# =>   --error-style <string>: the error style to use (fancy or plain). default: fancy
+# =>   --no-newline: print the result for --commands(-c) without a newline
+# =>   -n, --no-config-file: start with no config file and no env file
+# =>   --no-history: disable reading and writing to command history
+# =>   --no-std-lib: start with no standard library
+# =>   -t, --threads <int>: threads to use for parallel commands
+# =>   -v, --version: print the version
+# =>   --config <path>: start with an alternate config file
+# =>   --env-config <path>: start with an alternate environment config file
+# =>   --lsp: start nu's language server protocol
+# =>   --ide-goto-def <int>: go to the definition of the item at the given position
+# =>   --ide-hover <int>: give information about the item at the given position
+# =>   --ide-complete <int>: list completions for the item at the given position
+# =>   --ide-check <int>: run a diagnostic check on the given source and limit number of errors returned to provided number
+# =>   --ide-ast: generate the ast on the given source
+# =>   --mcp: start nu's model context protocol server
+# =>   --plugin-config <path>: start with an alternate plugin registry file
+# =>   --plugins <list<path>>: list of plugin executable files to load, separately from the registry file
+# =>   --log-level <string>: log level for diagnostic logs (error, warn, info, debug, trace). Off by default
+# =>   --log-target <string>: set the target for the log to output. stdout, stderr(default), mixed or file
+# =>   --log-include <list<string>>: set the Rust module prefixes to include in the log output. default: [nu]
+# =>   --log-exclude <list<string>>: set the Rust module prefixes to exclude from the log output
+# =>   --stdin: redirect standard input to a command (with `-c`) or a script file
+# =>   --testbin <string>: run internal test binary
+# =>   --experimental-options <list<string>>: enable or disable experimental options, use `"all"` to set all active options
+# =>
+# => Parameters:
+# =>   script file <path>: name of the optional script file to run (optional)
+# =>   ...script args <string>: parameters to the script file
+# =>
+# => Examples:
+# =>   Run a script
+# =>   > nu myfile.nu
+# =>
+# =>   Run nushell interactively (as a shell or REPL)
+# =>   > nu
