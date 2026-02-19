@@ -25,7 +25,13 @@ description: Load this skill when editing, writing, or reviewing any .nu file. P
 nu --ide-check 10 file.nu | nu --stdin -c 'lines | each { from json } | where type == "diagnostic"'
 ```
 
-Runs from bash (as agents do). `--stdin` is required for the second `nu` to read piped input. See [debugging.md](debugging.md) for parsing diagnostics inside nushell.
+With line numbers and source context (replace `FILE` with path):
+
+```bash
+nu -c 'let c = open --raw FILE; let l = $c | lines; nu --ide-check 10 FILE | lines | each { from json } | where type == "diagnostic" | each {|d| let n = ($c | str substring 0..<$d.span.start | split row "\n" | length); {line: $n, message: $d.message, source: ($l | get ($n - 1) | str trim), span: ($c | str substring $d.span.start..<$d.span.end)}} | uniq'
+```
+
+Both run from bash. See [debugging.md](debugging.md) for the full nushell command.
 
 ---
 
