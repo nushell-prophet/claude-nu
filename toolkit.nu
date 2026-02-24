@@ -22,6 +22,21 @@ def has-uncommitted-changes [path: path]: nothing -> bool {
     ($status.stdout | str trim | is-not-empty)
 }
 
+# Find nutest module path, or null if not available
+def find-nutest [] {
+    for dir in ($env.NU_LIB_DIRS? | default []) {
+        let candidate = $dir | path join 'nutest'
+        if ($candidate | path exists) {
+            return ($candidate | path expand)
+        }
+    }
+
+    let sibling = '../nutest/nutest' | path expand
+    if ($sibling | path exists) { return $sibling }
+
+    null
+}
+
 export def main [] { }
 
 # Run all tests
@@ -61,13 +76,26 @@ export def 'main test' [
 export def 'main test-unit' [
     --json # output results as JSON for external consumption
 ] {
-    use ../nutest/nutest
+    let nutest_path = find-nutest
+    if $nutest_path == null {
+        print $"(ansi red)✗(ansi reset) nutest not found in NU_LIB_DIRS or at ../nutest"
+        print $"  Install: (ansi attr_dimmed)git clone https://github.com/vyadh/nutest ../nutest(ansi reset)"
+        if $json { return '[]' } else { return [] }
+    }
 
-    # Get detailed table from nutest
-    let results = nutest run-tests --path tests/ --returns table --display nothing
+    let tests_path = 'tests' | path expand
+    let result = do {
+        ^nu -c $"use ($nutest_path); nutest run-tests --path ($tests_path) --returns table --display nothing | to json --raw"
+    } | complete
 
-    # Convert to flat table format
-    let flat = $results
+    if $result.exit_code != 0 {
+        print $"(ansi red)✗(ansi reset) nutest failed"
+        if ($result.stderr | str trim | is-not-empty) { print $result.stderr }
+        if $json { return '[]' } else { return [] }
+    }
+
+    let flat = $result.stdout
+    | from json
     | each {|row|
         let status = if $row.result == 'PASS' { 'passed' } else { 'failed' }
         {type: 'unit' name: $row.test status: $status file: null}
