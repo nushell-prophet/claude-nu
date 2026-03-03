@@ -11,7 +11,7 @@ Nushell utilities for working with [Claude Code](https://claude.ai/code) session
 - **Smart session picker** — `claude --resume <TAB>` shows age, size, and summary instead of raw UUIDs
 - **Export to markdown** — Keep session history in git with YAML frontmatter
 - **Dynamic script completions** — `nu` completions that parse any .nu script's subcommands at tab-time
-- **Vendored Claude Code skills** — Reusable Nushell style guide and completions guide for Claude Code agents
+- **Claude Code skills** — Opinionated Nushell style guide and completions guide, distributed via [plugin marketplace](https://github.com/nushell-prophet/nushell-skills)
 
 ## Installation
 
@@ -155,9 +155,22 @@ nu toolkit.nu <TAB>
 # test │ vendor-skills │ fetch-claude-docs │ …
 ```
 
-### Creating new completions with Claude Code
+### Claude Code Skills
 
-The repo ships a `nushell-completions` skill (`skills/nushell-completions/`) that teaches Claude Code how to write idiomatic Nushell completions — inline lists, custom completers, context-aware signatures, `extern` definitions, matching options, and module naming rules. Point Claude Code at a command's `--help` output or man page and it will produce a ready-to-use completion file. All completions in this repo were built that way.
+Nushell-specific skills for Claude Code are distributed as a plugin marketplace:
+
+```
+/plugin marketplace add nushell-prophet/nushell-skills
+/plugin install nushell-completions@nushell-skills
+/plugin install nushell-style@nushell-skills
+```
+
+| Plugin | What it does |
+|--------|-------------|
+| `nushell-completions` | Teaches Claude Code to write Nushell completions — inline lists, custom completers, `extern` definitions, module naming rules. Point it at `--help` output and it produces a ready-to-use completion file. |
+| `nushell-style` | Opinionated Nushell style guide — pipeline patterns, command choices, formatting conventions, testing patterns. Activates automatically when editing `.nu` files. |
+
+All completions in this repo were built with the `nushell-completions` skill.
 
 ## How it works
 

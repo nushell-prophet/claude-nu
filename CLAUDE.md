@@ -19,11 +19,8 @@ claude-nu/
 │   ├── zellij.nu        # zellij (100+ actions, live session completers)
 │   ├── chafa.nu         # chafa image viewer (35+ completers)
 │   └── sandbox-exec.nu  # macOS sandbox-exec
-├── skills/              # Vendored Claude Code skills (managed via toolkit)
-│   ├── nushell-style/   # Nushell code style guide with 6 reference docs
-│   └── nushell-completions/  # Completions implementation patterns
 ├── tests/               # 60+ tests (nutest framework)
-├── toolkit.nu           # Dev tools: test, fetch-docs, vendor-skills, vendor-sessions, check
+├── toolkit.nu           # Dev tools: test, fetch-docs, vendor-sessions, check
 ├── claude-code-docs/    # Downloaded Claude Code documentation (60+ pages)
 └── nushell-docs/        # Sparse clone of Nushell docs (book, cookbook, blog)
 ```
@@ -64,17 +61,13 @@ nu toolkit.nu check                    # Static syntax checking with diagnostics
 nu toolkit.nu fetch-claude-docs        # Download Claude Code docs (sitemap-based, parallel)
 nu toolkit.nu fetch-nushell-docs       # Sparse clone of Nushell docs
 
-# Skills management (skills/ ↔ ~/.claude/skills)
-nu toolkit.nu vendor-skills            # Copy from ~/.claude/skills to repo
-nu toolkit.nu install-skills-globally  # Copy from repo to ~/.claude/skills
-
 # Test fixtures
 nu toolkit.nu vendor-sessions         # Obfuscate real sessions for safe sharing
 ```
 
 ## Code Style
 
-Follow the nushell-style skill (`~/.claude/skills/nushell-style`). Key patterns:
+Follow the nushell-style skill (install via `/plugin install nushell-style@nushell-skills`). Key patterns:
 
 - Leading `|` on continuation lines, aligned with `let`
 - Empty `{ }` for pass-through branches: `| if $cond { } else { transform }`

@@ -1,7 +1,4 @@
 const output_dir = 'claude-code-docs'
-const skills_global_dir = '~/.claude/skills'
-const skills_local_dir = 'skills'
-const managed_skills = ['nushell-style' 'nushell-completions']
 const nushell_docs_dir = 'nushell-docs'
 const nushell_docs_repo = 'https://github.com/nushell/nushell.github.io.git'
 const nushell_docs_folders = ['blog' 'book' 'cookbook']
@@ -152,90 +149,6 @@ export def 'main fetch-claude-docs' [
             print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
         }
     }
-}
-
-# Vendor managed skills from ~/.claude/skills into this repo
-@example "Vendor all skills with auto-commit" { nu toolkit.nu vendor-skills }
-@example "Vendor skills without committing" { nu toolkit.nu vendor-skills --no-commit }
-export def 'main vendor-skills' [
-    --no-commit # Skip creating a git commit after copying
-] {
-    let global_dir = $skills_global_dir | path expand
-    let local_dir = $skills_local_dir
-    mut total_files = 0
-
-    for skill in $managed_skills {
-        let source = $"($global_dir)/($skill)"
-        let dest = $"($local_dir)/($skill)"
-
-        if not ($source | path exists) {
-            print $"(ansi yellow)⚠(ansi reset) ($skill): not found at ($source)"
-            continue
-        }
-
-        if ($dest | path exists) { rm -rf $dest }
-        cp -r $source $dest
-        let file_count = glob $"($dest)/**/*" | where ($it | path type) == 'file' | length
-        print $"(ansi green)✓(ansi reset) ($skill) \(($file_count) files\)"
-        $total_files = $total_files + $file_count
-    }
-
-    print $"\n(ansi attr_dimmed)Copied ($total_files) files to ($local_dir)(ansi reset)"
-
-    if not $no_commit {
-        let status = git status --porcelain $local_dir | str trim
-        if $status != "" {
-            git add $local_dir
-            let date = date now | format date "%Y-%m-%d"
-            git commit -m $"chore: vendor skills \(($date)\)"
-            print $"(ansi green)Committed skill updates(ansi reset)"
-        } else {
-            print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
-        }
-    }
-}
-
-# Install managed skills to ~/.claude/skills (reverse of vendor-skills)
-@example "Install all skills globally" { nu toolkit.nu install-skills-globally }
-@example "Force overwrite uncommitted changes" { nu toolkit.nu install-skills-globally --force }
-export def 'main install-skills-globally' [
-    --force # Overwrite even if destination has uncommitted changes
-] {
-    let global_dir = $skills_global_dir | path expand
-    let local_dir = $skills_local_dir
-
-    if not $force {
-        let dirty = $managed_skills
-        | each { $"($global_dir)/($in)" }
-        | where { has-uncommitted-changes $in }
-        if ($dirty | is-not-empty) {
-            print $"(ansi yellow)⚠(ansi reset) Uncommitted changes in destination:"
-            $dirty | each { print $"  ($in)" }
-            print $"\n  Use (ansi cyan)--force(ansi reset) to overwrite"
-            return
-        }
-    }
-
-    mut total_files = 0
-
-    for skill in $managed_skills {
-        let source = $"($local_dir)/($skill)"
-        let dest = $"($global_dir)/($skill)"
-
-        if not ($source | path exists) {
-            print $"(ansi yellow)⚠(ansi reset) ($skill): not found at ($source)"
-            continue
-        }
-
-        if ($dest | path exists) { rm -rf $dest }
-        cp -r $source $dest
-        let file_count = glob $"($dest)/**/*" | where ($it | path type) == 'file' | length
-        print $"(ansi green)✓(ansi reset) ($skill) \(($file_count) files\)"
-        $total_files = $total_files + $file_count
-    }
-
-    print $"\n(ansi attr_dimmed)Installed ($total_files) files to ($global_dir)(ansi reset)"
-    print $"(ansi green)✓(ansi reset) Skills ready at (ansi cyan)($global_dir)(ansi reset)"
 }
 
 # Fetch Nushell documentation (book, cookbook, blog) via shallow sparse checkout
