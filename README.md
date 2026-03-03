@@ -122,36 +122,6 @@ claude-nu export-session --echo             # Print to stdout instead of file
 
 Filters out system-generated messages, keeping only user prompts and assistant responses.
 
-## Development
-
-### Testing
-
-Uses [nutest](https://github.com/vyadh/nutest) framework (expected at `../nutest`).
-
-```nushell
-nu toolkit.nu test          # Run all tests
-nu toolkit.nu test --json   # JSON output for CI
-nu toolkit.nu test --fail   # Non-zero exit on failures
-```
-
-### Toolkit
-
-```nushell
-nu toolkit.nu fetch-claude-docs        # Download Claude Code docs
-nu toolkit.nu fetch-nushell-docs       # Sparse clone of Nushell docs
-nu toolkit.nu vendor-skills            # Copy skills from ~/.claude/skills to repo
-nu toolkit.nu install-skills-globally  # Copy skills from repo to ~/.claude/skills
-```
-
-## How it works
-
-Claude Code stores session data as JSONL files in `~/.claude/projects/<encoded-path>/`. Each file contains:
-- Session metadata (summary, timestamps, git branch)
-- User messages and assistant responses
-- Tool calls and results
-
-This module parses these files to extract useful information for analysis, debugging, and workflow automation.
-
 ## CLI Completions
 
 The repo includes hand-crafted completions for several CLI tools. Add any combination to your `config.nu`:
@@ -188,6 +158,36 @@ nu toolkit.nu <TAB>
 ### Creating new completions with Claude Code
 
 The repo ships a `nushell-completions` skill (`skills/nushell-completions/`) that teaches Claude Code how to write idiomatic Nushell completions — inline lists, custom completers, context-aware signatures, `extern` definitions, matching options, and module naming rules. Point Claude Code at a command's `--help` output or man page and it will produce a ready-to-use completion file. All completions in this repo were built that way.
+
+## How it works
+
+Claude Code stores session data as JSONL files in `~/.claude/projects/<encoded-path>/`. Each file contains:
+- Session metadata (summary, timestamps, git branch)
+- User messages and assistant responses
+- Tool calls and results
+
+This module parses these files to extract useful information for analysis, debugging, and workflow automation.
+
+## Development
+
+### Testing
+
+Uses [nutest](https://github.com/vyadh/nutest) framework (expected at `../nutest`).
+
+```nushell
+nu toolkit.nu test          # Run all tests
+nu toolkit.nu test --json   # JSON output for CI
+nu toolkit.nu test --fail   # Non-zero exit on failures
+```
+
+### Toolkit
+
+```nushell
+nu toolkit.nu fetch-claude-docs        # Download Claude Code docs
+nu toolkit.nu fetch-nushell-docs       # Sparse clone of Nushell docs
+nu toolkit.nu vendor-skills            # Copy skills from ~/.claude/skills to repo
+nu toolkit.nu install-skills-globally  # Copy skills from repo to ~/.claude/skills
+```
 
 ## License
 
