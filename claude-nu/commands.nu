@@ -31,6 +31,14 @@ const EMPTY_SESSION_SUMMARY = {
     path: null
 }
 
+# Default output directory for Claude Code documentation
+const CLAUDE_DOCS_DIR = 'claude-code-docs'
+
+# Nushell documentation settings
+const NUSHELL_DOCS_DIR = 'nushell-docs'
+const NUSHELL_DOCS_REPO = 'https://github.com/nushell/nushell.github.io.git'
+const NUSHELL_DOCS_FOLDERS = ['blog' 'book' 'cookbook']
+
 # Helper to get project sessions directory
 export def get-sessions-dir [
     project?: path # Project path (default: $env.PWD)
@@ -780,4 +788,66 @@ export def download-documentation [
             {url: $url status: "failed" dest: $dest_path error: ($e.msg? | default "unknown error")}
         }
     }
+}
+
+# Download Claude Code documentation pages from the sitemap, print results, and optionally commit
+@example "Fetch docs" { claude-nu fetch-claude-docs }
+@example "Fetch and commit" { claude-nu fetch-claude-docs --commit }
+export def fetch-claude-docs [
+    --commit # Create a git commit after downloading
+]: nothing -> nothing {
+    let results = download-documentation --output-dir $CLAUDE_DOCS_DIR
+
+    # Print results
+    $results | each {|r|
+        let icon = if $r.status == "ok" { $"(ansi green)✓(ansi reset)" } else { $"(ansi red)✗(ansi reset)" }
+        print $"($icon) ($r.url)"
+    }
+
+    # Summary
+    let ok = $results | where status == "ok" | length
+    let failed = $results | where status == "failed" | length
+    print $"\n(ansi green_bold)($ok) ok(ansi reset), (ansi red_bold)($failed) failed(ansi reset)"
+
+    if $commit {
+        # Stage and commit if there are changes
+        let status = git status --porcelain $CLAUDE_DOCS_DIR | str trim
+        if $status != "" {
+            git add $CLAUDE_DOCS_DIR
+            let date = date now | format date "%Y-%m-%d"
+            git commit -m $"docs: update claude-code-docs \(($date)\)"
+            print $"(ansi green)Committed documentation updates(ansi reset)"
+        } else {
+            print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
+        }
+    }
+}
+
+# Fetch Nushell documentation (book, cookbook, blog) via shallow sparse checkout
+@example "Fetch/update Nushell docs" { claude-nu fetch-nushell-docs }
+export def fetch-nushell-docs []: nothing -> nothing {
+    let dest = $NUSHELL_DOCS_DIR
+
+    if ($dest | path exists) {
+        # Update existing checkout
+        print $"(ansi attr_dimmed)Updating nushell-docs...(ansi reset)"
+        cd $dest
+        git pull
+        cd -
+    } else {
+        # Fresh shallow sparse clone
+        print $"(ansi attr_dimmed)Cloning nushell.github.io \(shallow sparse\)...(ansi reset)"
+        git clone --depth 1 --filter=blob:none --sparse $NUSHELL_DOCS_REPO $dest
+        cd $dest
+        git sparse-checkout set --no-cone ...($NUSHELL_DOCS_FOLDERS | each { $'/($in)/*' })
+        cd -
+    }
+
+    # Show what we have
+    let sizes = $NUSHELL_DOCS_FOLDERS
+    | each {|f| {folder: $f size: (du $"($dest)/($f)" | get apparent | first)} }
+
+    print ""
+    print ($sizes | table)
+    print $"\n(ansi green)✓(ansi reset) Nushell docs ready at (ansi cyan)($dest)/(ansi reset)"
 }
