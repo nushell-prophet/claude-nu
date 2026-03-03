@@ -27,11 +27,6 @@ Add to your `config.nu`:
 ```nushell
 # From the repo directory (or use full paths like ~/git/claude-nu)
 use claude-nu
-use completions/claude.nu *
-use completions/nu.nu *
-use completions/zellij.nu *
-use completions/chafa.nu *
-use completions/sandbox-exec.nu *
 ```
 
 ## Commands
@@ -127,31 +122,6 @@ claude-nu export-session --echo             # Print to stdout instead of file
 
 Filters out system-generated messages, keeping only user prompts and assistant responses.
 
-## CLI Completions
-
-Completions are provided for multiple CLI tools:
-
-| File | Command | Highlights |
-|------|---------|------------|
-| `completions/claude.nu` | `claude` | 50+ flags, MCP/plugin subcommands, session picker for `--resume` |
-| `completions/nu.nu` | `nu` | Parses .nu scripts at tab-time to offer their subcommands and flags |
-| `completions/zellij.nu` | `zellij` | 100+ actions, live session/layout completers |
-| `completions/chafa.nu` | `chafa` | 35+ completers for image rendering options |
-| `completions/sandbox-exec.nu` | `sandbox-exec` | macOS sandbox profiles from `/usr/share/sandbox/` |
-
-**Session picker example:**
-```
-claude --resume <TAB>
-# abc123… │ 2 hours ago │ 15KB │ Implement user auth…
-# def456… │ yesterday   │ 42KB │ Fix database migration…
-```
-
-**Dynamic script completions:**
-```
-nu toolkit.nu <TAB>
-# test │ vendor-skills │ fetch-claude-docs │ …
-```
-
 ## Development
 
 ### Testing
@@ -181,6 +151,43 @@ Claude Code stores session data as JSONL files in `~/.claude/projects/<encoded-p
 - Tool calls and results
 
 This module parses these files to extract useful information for analysis, debugging, and workflow automation.
+
+## CLI Completions
+
+The repo includes hand-crafted completions for several CLI tools. Add any combination to your `config.nu`:
+
+```nushell
+use completions/claude.nu *
+use completions/nu.nu *
+use completions/zellij.nu *
+use completions/chafa.nu *
+use completions/sandbox-exec.nu *
+```
+
+| File | Command | Highlights |
+|------|---------|------------|
+| `completions/claude.nu` | `claude` | 50+ flags, MCP/plugin subcommands, session picker for `--resume` |
+| `completions/nu.nu` | `nu` | Parses .nu scripts at tab-time to offer their subcommands and flags |
+| `completions/zellij.nu` | `zellij` | 100+ actions, live session/layout completers |
+| `completions/chafa.nu` | `chafa` | 35+ completers for image rendering options |
+| `completions/sandbox-exec.nu` | `sandbox-exec` | macOS sandbox profiles from `/usr/share/sandbox/` |
+
+**Session picker example:**
+```
+claude --resume <TAB>
+# abc123… │ 2 hours ago │ 15KB │ Implement user auth…
+# def456… │ yesterday   │ 42KB │ Fix database migration…
+```
+
+**Dynamic script completions:**
+```
+nu toolkit.nu <TAB>
+# test │ vendor-skills │ fetch-claude-docs │ …
+```
+
+### Creating new completions with Claude Code
+
+The repo ships a `nushell-completions` skill (`skills/nushell-completions/`) that teaches Claude Code how to write idiomatic Nushell completions — inline lists, custom completers, context-aware signatures, `extern` definitions, matching options, and module naming rules. Point Claude Code at a command's `--help` output or man page and it will produce a ready-to-use completion file. All completions in this repo were built that way.
 
 ## License
 
