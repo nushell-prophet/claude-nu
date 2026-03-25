@@ -66,8 +66,8 @@ export def resolve-session-file [
     }
 
     let files = ls $dir
-    | where name =~ $UUID_JSONL_PATTERN
-    | sort-by modified --reverse
+        | where name =~ $UUID_JSONL_PATTERN
+        | sort-by modified --reverse
 
     if ($files | is-empty) {
         error make {msg: "No session files found"}
@@ -85,25 +85,25 @@ export def "nu-complete claude sessions" []: nothing -> record {
     }
 
     let completions = ls $sessions_dir
-    | where name =~ $UUID_JSONL_PATTERN
-    | each {|file|
-        let uuid = $file.name | path basename | str replace '.jsonl' ''
-        let size = $file.size | into string
-        let lines = try {
-            open --raw $file.name | lines | first 5 | each { from json }
-        } catch { [] }
-        let summary = $lines | get 0?.summary? | default "No summary"
-        # Timestamps are on message records, not summary headers
-        let timestamp = $lines
-        | where timestamp? != null
-        | get 0?.timestamp?
-        | if ($in != null) { into datetime } else { $file.modified }
+        | where name =~ $UUID_JSONL_PATTERN
+        | each {|file|
+            let uuid = $file.name | path basename | str replace '.jsonl' ''
+            let size = $file.size | into string
+            let lines = try {
+                open --raw $file.name | lines | first 5 | each { from json }
+            } catch { [] }
+            let summary = $lines | get 0?.summary? | default "No summary"
+            # Timestamps are on message records, not summary headers
+            let timestamp = $lines
+                | where timestamp? != null
+                | get 0?.timestamp?
+                | if ($in != null) { into datetime } else { $file.modified }
 
-        let age = $timestamp | date humanize
-        {value: $uuid description: $"($age), ($size): ($summary)" timestamp: $timestamp}
-    }
-    | sort-by timestamp --reverse
-    | select value description
+            let age = $timestamp | date humanize
+            {value: $uuid description: $"($age), ($size): ($summary)" timestamp: $timestamp}
+        }
+        | sort-by timestamp --reverse
+        | select value description
 
     {
         options: {sort: false}
@@ -121,7 +121,7 @@ export def messages [
     --include-system (-u) # Include system/meta messages (not just user-typed)
     --raw (-r) # Return raw message records instead of just content
     --with-responses (-w) # Include assistant responses (text only, interleaved)
-]: [nothing -> table, table -> table] {
+]: [nothing -> table table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
 
@@ -182,56 +182,56 @@ export def messages [
 
         # Parse and filter messages
         let messages = open --raw $session_file
-        | lines
-        | each { from json }
-        | if $with_responses {
-            where type in ["user" "assistant"]
-        } else {
-            where type == "user"
-        }
-        | if $include_system { } else {
-            where {|r|
-                match $r.type? {
-                    "assistant" => true
-                    _ => {
-                        if $r.isMeta? == true { false } else {
-                            let content = $r.message?.content?
-                            match ($content | describe) {
-                                "string" if ($content | is-not-empty) => {
-                                    $SYSTEM_PREFIXES | all {|p| not ($content | str starts-with $p) }
+            | lines
+            | each { from json }
+            | if $with_responses {
+                where type in ["user" "assistant"]
+            } else {
+                where type == "user"
+            }
+            | if $include_system { } else {
+                where {|r|
+                    match $r.type? {
+                        "assistant" => true
+                        _ => {
+                            if $r.isMeta? == true { false } else {
+                                let content = $r.message?.content?
+                                match ($content | describe) {
+                                    "string" if ($content | is-not-empty) => {
+                                        $SYSTEM_PREFIXES | all {|p| not ($content | str starts-with $p) }
+                                    }
+                                    _ => false
                                 }
-                                _ => false
                             }
                         }
                     }
                 }
             }
-        }
-        # Drop assistant messages with no visible text
-        | where {|r|
-            match $r.type? {
-                "assistant" => ($r | extract-text-content | str trim | is-not-empty)
-                _ => true
+            # Drop assistant messages with no visible text
+            | where {|r|
+                match $r.type? {
+                    "assistant" => ($r | extract-text-content | str trim | is-not-empty)
+                    _ => true
+                }
             }
-        }
 
         let filtered = $messages
-        | if $regex == null { } else {
-            where {
-                let msg = $in
-                match $msg.type? {
-                    "assistant" => ($msg | extract-text-content | $in =~ $regex)
-                    _ => {
-                        let content = $msg.message?.content?
-                        if ($content | describe) =~ '^(list|table)' {
-                            ($content | get content --optional | str join "\n") =~ $regex
-                        } else {
-                            $content =~ $regex
+            | if $regex == null { } else {
+                where {
+                    let msg = $in
+                    match $msg.type? {
+                        "assistant" => ($msg | extract-text-content | $in =~ $regex)
+                        _ => {
+                            let content = $msg.message?.content?
+                            if ($content | describe) =~ '^(list|table)' {
+                                ($content | get content --optional | str join "\n") =~ $regex
+                            } else {
+                                $content =~ $regex
+                            }
                         }
                     }
                 }
             }
-        }
 
         if $raw {
             $filtered | sort-by timestamp
@@ -257,8 +257,7 @@ export def messages [
             each { insert session $session_uuid }
         } else { }
         | if $all_projects {
-            let project_name = $session_file | path dirname | path basename
-            each { insert project $project_name }
+            insert project ($session_file | path dirname | path basename)
         } else { }
     }
     | flatten
@@ -317,8 +316,8 @@ export def extract-thinking-level []: table -> string {
 # Extract first/last timestamps from user records
 export def extract-timestamps []: table -> record {
     let ts = get timestamp --optional
-    | compact
-    | each { into datetime }
+        | compact
+        | each { into datetime }
     {
         first: ($ts | first)
         last: ($ts | last)
@@ -385,27 +384,27 @@ export def parse-session-file []: path -> record {
     let records = $lines | each { from json }
 
     let summary = $records
-    | where type? == "summary"
-    | first
-    | get summary?
-    | default ""
+        | where type? == "summary"
+        | first
+        | get summary?
+        | default ""
 
     let user_records = $records | where type? == "user"
     let timestamps = $user_records | extract-timestamps
 
     let user_msg_length = $user_records
-    | each { extract-text-content | str length }
-    | if ($in | is-empty) { 0 } else { math sum }
+        | each { extract-text-content | str length }
+        | if ($in | is-empty) { 0 } else { math sum }
 
     let mentioned_files = $user_records
-    | each { extract-text-content | parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
-    | flatten
-    | uniq
+        | each { extract-text-content | parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
+        | flatten
+        | uniq
 
     let assistant_records = $records | where type? == "assistant"
     let response_length = $assistant_records
-    | each { extract-text-content | str length }
-    | if ($in | is-empty) { 0 } else { math sum }
+        | each { extract-text-content | str length }
+        | if ($in | is-empty) { 0 } else { math sum }
 
     let all_tool_calls = $assistant_records | each { extract-tool-calls } | flatten
     let file_ops = $all_tool_calls | extract-file-operations
@@ -444,24 +443,24 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
 # Parse Claude Code sessions for structured information
 export def sessions [
     ...paths: path # Session files or directories to parse (default: current project sessions)
-]: [nothing -> table, string -> table] {
+]: [nothing -> table string -> table] {
     let input = $in
     let target_paths = $paths
-    | if ($in | is-empty) {
-        if ($input | describe) == "string" { [$input] } else { [(get-sessions-dir)] }
-    } else { }
+        | if ($in | is-empty) {
+            if ($input | describe) == "string" { [$input] } else { [(get-sessions-dir)] }
+        } else { }
 
     let session_files = $target_paths
-    | each {|p|
-        if not ($p | path exists) {
-            error make {msg: $"Path not found: ($p)"}
+        | each {|p|
+            if not ($p | path exists) {
+                error make {msg: $"Path not found: ($p)"}
+            }
+            if ($p | path type) == "dir" {
+                glob ($p | path join "*.jsonl")
+            } else { [$p] }
         }
-        if ($p | path type) == "dir" {
-            glob ($p | path join "*.jsonl")
-        } else { [$p] }
-    }
-    | flatten
-    | where $it =~ $UUID_JSONL_PATTERN
+        | flatten
+        | where $it =~ $UUID_JSONL_PATTERN
 
     if ($session_files | is-empty) {
         error make {msg: "No session files found"}
@@ -503,7 +502,7 @@ export def parse-session [
     --assistant-msg-count # Include assistant_msg_count column
     --tool-call-count # Include tool_call_count column
     --all (-a) # Include all columns
-]: [nothing -> record, table -> table] {
+]: [nothing -> record table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
 
@@ -526,9 +525,9 @@ export def parse-session [
         # Default columns
         let user_messages = $user_records | each { extract-text-content } | where $it != ""
         let mentioned_files = $user_records
-        | each { extract-text-content | parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
-        | flatten
-        | uniq
+            | each { extract-text-content | parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
+            | flatten
+            | uniq
 
         let base = {
             path: $session_file
@@ -617,7 +616,7 @@ export def sanitize-topic []: string -> string {
 export def export-session [
     topic?: string # Topic for filename (default: session summary)
     --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
-]: [nothing -> record, table -> table] {
+]: [nothing -> record table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
 
@@ -639,45 +638,45 @@ export def export-session [
 
         # Extract summary from summary record
         let summary = $records
-        | where type? == "summary"
-        | first
-        | get summary?
-        | default ""
+            | where type? == "summary"
+            | first
+            | get summary?
+            | default ""
 
         # Determine topic: argument > summary > "session"
         let resolved_topic = $topic
-        | default (if $summary != "" { $summary } else { "session" })
-        | sanitize-topic
+            | default (if $summary != "" { $summary } else { "session" })
+            | sanitize-topic
 
         # Get date from first user record or now
         let first_timestamp = $records
-        | where type? == "user"
-        | get timestamp --optional
-        | compact
-        | if ($in | is-empty) { [(date now | format date "%Y-%m-%dT%H:%M:%S")] } else { }
-        | first
+            | where type? == "user"
+            | get timestamp --optional
+            | compact
+            | if ($in | is-empty) { [(date now | format date "%Y-%m-%dT%H:%M:%S")] } else { }
+            | first
         let date_str = $first_timestamp | into datetime | format date "%Y%m%d"
 
         # Extract dialogue: user messages and assistant responses
         let dialogue = $records
-        | where type? in ["user" "assistant"]
-        | where isMeta? != true
-        | insert text { extract-text-content }
-        | where { $in.text | str trim | is-not-empty }
-        # Keep assistant messages; filter user messages starting with system prefixes
-        | where {|r| $r.type != "user" or ($SYSTEM_PREFIXES | all {|p| not ($r.text | str starts-with $p) }) }
-        | select type text
-        | rename role content
-        # Merge consecutive same-role messages
-        | reduce --fold [] {|turn, acc|
-            let prev = $acc | last
-            if $prev != null and $prev.role == $turn.role {
-                $acc | upsert ($acc | length | $in - 1) {
-                    role: $turn.role
-                    content: $"($prev.content)\n\n($turn.content)"
-                }
-            } else { $acc | append $turn }
-        }
+            | where type? in ["user" "assistant"]
+            | where isMeta? != true
+            | insert text { extract-text-content }
+            | where { $in.text | str trim | is-not-empty }
+            # Keep assistant messages; filter user messages starting with system prefixes
+            | where {|r| $r.type != "user" or ($SYSTEM_PREFIXES | all {|p| not ($r.text | str starts-with $p) }) }
+            | select type text
+            | rename role content
+            # Merge consecutive same-role messages
+            | reduce --fold [] {|turn acc|
+                let prev = $acc | last
+                if $prev != null and $prev.role == $turn.role {
+                    $acc | upsert ($acc | length | $in - 1) {
+                        role: $turn.role
+                        content: $"($prev.content)\n\n($turn.content)"
+                    }
+                } else { $acc | append $turn }
+            }
 
         # Format as markdown
         let session_id = $session_file | path basename | str replace '.jsonl' ''
@@ -694,11 +693,11 @@ export def export-session [
         let title = $"# ($resolved_topic | str replace --all '-' ' ' | str title-case)"
 
         let body = $dialogue
-        | each {|turn|
-            let role = match $turn.role { "user" => "User" _ => "Assistant" }
-            $"## ($role)\n\n($turn.content)"
-        }
-        | str join "\n\n"
+            | each {|turn|
+                let role = match $turn.role { "user" => "User" _ => "Assistant" }
+                $"## ($role)\n\n($turn.content)"
+            }
+            | str join "\n\n"
 
         let markdown = [$frontmatter "" $title "" $body] | str join "\n"
 
@@ -720,37 +719,37 @@ export def export-session [
 # Save exported session markdown to files
 export def save-markdown [
     --output-dir (-o): path # Output directory (default: docs/sessions)
-]: [record -> string, table -> table] {
+]: [record -> string table -> table] {
     let input = $in
     let out_dir = $output_dir | default "docs/sessions"
     let was_record = ($input | describe | str replace --regex '<.*' '') == "record"
 
     # Normalize to table
     let rows = if $was_record { [$input] } else { $input }
-    | insert filename {|r| $"($r.date)-($r.topic).md" }
+        | insert filename {|r| $"($r.date)-($r.topic).md" }
 
     # Detect collisions: filenames shared by multiple sessions
     let collision_names = $rows
-    | group-by filename
-    | transpose key rows
-    | where { $in.rows | length | $in > 1 }
-    | get key
+        | group-by filename
+        | transpose key rows
+        | where { $in.rows | length | $in > 1 }
+        | get key
 
     let rows = $rows
-    | update filename {|r|
-        if $r.filename in $collision_names {
-            $"($r.date)-($r.topic)-($r.session | str substring 0..5).md"
-        } else { }
-    }
+        | update filename {|r|
+            if $r.filename in $collision_names {
+                $"($r.date)-($r.topic)-($r.session | str substring 0..5).md"
+            } else { }
+        }
 
     mkdir $out_dir
 
     let results = $rows
-    | each {|r|
-        let filepath = $out_dir | path join $r.filename
-        $r.markdown | save -f $filepath
-        {session: $r.session filepath: $filepath}
-    }
+        | each {|r|
+            let filepath = $out_dir | path join $r.filename
+            $r.markdown | save -f $filepath
+            {session: $r.session filepath: $filepath}
+        }
 
     if $was_record {
         $results | first | get filepath
@@ -767,10 +766,10 @@ export def download-documentation [
     let sitemap_xml = http get https://code.claude.com/docs/sitemap.xml
 
     let urls = $sitemap_xml
-    | get content.content
-    | each { get content.0.content.0 }
-    | where $it =~ 'docs/en/'
-    | each { $in + '.md' }
+        | get content.content
+        | each { get content.0.content.0 }
+        | where $it =~ 'docs/en/'
+        | each { $in + '.md' }
 
     # Ensure output directory exists
     mkdir $output_dir
@@ -845,7 +844,7 @@ export def fetch-nushell-docs []: nothing -> nothing {
 
     # Show what we have
     let sizes = $NUSHELL_DOCS_FOLDERS
-    | each {|f| {folder: $f size: (du $"($dest)/($f)" | get apparent | first)} }
+        | each {|f| {folder: $f size: (du $"($dest)/($f)" | get apparent | first)} }
 
     print ""
     print ($sizes | table)
