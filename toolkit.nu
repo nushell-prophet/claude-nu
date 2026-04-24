@@ -88,11 +88,11 @@ export def 'main test-unit' [
     }
 
     let flat = $result.stdout
-    | from json
-    | each {|row|
-        let status = if $row.result == 'PASS' { 'passed' } else { 'failed' }
-        {type: 'unit' name: $row.test status: $status file: null}
-    }
+        | from json
+        | each {|row|
+            let status = if $row.result == 'PASS' { 'passed' } else { 'failed' }
+            {type: 'unit' name: $row.test status: $status file: null}
+        }
 
     if not $json {
         $flat | each {|r| print-test-result $r }
@@ -148,8 +148,8 @@ export def 'main vendor-sessions' [
 
     let source_files = if ($sessions | is-empty) {
         let available = ls $sessions_dir
-        | where name =~ $uuid_jsonl_pattern
-        | sort-by modified --reverse
+            | where name =~ $uuid_jsonl_pattern
+            | sort-by modified --reverse
 
         let to_take = [($available | length) $count] | math min
         $available | first $to_take | get name

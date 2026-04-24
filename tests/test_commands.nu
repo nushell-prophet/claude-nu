@@ -133,8 +133,8 @@ def "system prefixes filter multiple message types correctly" [] {
     ]
 
     let filtered = $test_messages | where {|content|
-        $system_prefixes | all { $content !~ $'^($in)' }
-    }
+            $system_prefixes | all { $content !~ $'^($in)' }
+        }
 
     assert equal ($filtered | length) 2
     assert equal ($filtered | first) "Hello Claude"
@@ -353,9 +353,9 @@ def "mentioned files regex extracts @path patterns" [] {
     ]
 
     let mentioned = $texts
-    | each { parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
-    | flatten
-    | uniq
+        | each { parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
+        | flatten
+        | uniq
 
     assert equal ($mentioned | length) 3
     assert ("src/main.rs" in $mentioned)
@@ -366,16 +366,16 @@ def "mentioned files regex extracts @path patterns" [] {
 @test
 def "mentioned files regex rejects false positives" [] {
     let texts = [
-        "claude@anthropic.com"       # email
-        "See @- and @-- revsets"     # jj revsets
-        '@"nu-complete sessions"'    # nushell annotation
-        "Use @example attribute"     # no extension
-        "End with @) or @:"          # punctuation
+        "claude@anthropic.com" # email
+        "See @- and @-- revsets" # jj revsets
+        '@"nu-complete sessions"' # nushell annotation
+        "Use @example attribute" # no extension
+        "End with @) or @:" # punctuation
     ]
 
     let mentioned = $texts
-    | each { parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
-    | flatten
+        | each { parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
+        | flatten
 
     assert equal ($mentioned | length) 0
 }
@@ -389,8 +389,8 @@ def "mentioned files regex handles path prefixes" [] {
     ]
 
     let mentioned = $texts
-    | each { parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
-    | flatten
+        | each { parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
+        | flatten
 
     assert equal ($mentioned | length) 3
     assert ("/absolute/path.rs" in $mentioned)
@@ -407,13 +407,13 @@ def "agent extraction from Task tool calls" [] {
     ]
 
     let agents = $tool_calls
-    | where name? == "Task"
-    | each {
-        {
-            type: ($in.input?.subagent_type? | default "unknown")
-            description: ($in.input?.description? | default "")
+        | where name? == "Task"
+        | each {
+            {
+                type: ($in.input?.subagent_type? | default "unknown")
+                description: ($in.input?.description? | default "")
+            }
         }
-    }
 
     assert equal ($agents | length) 2
     assert equal ($agents | first | get type) "Explore"
@@ -430,10 +430,10 @@ def "read files extraction from tool calls" [] {
     ]
 
     let read_files = $tool_calls
-    | where name? == "Read"
-    | each { $in.input?.file_path? }
-    | compact
-    | uniq
+        | where name? == "Read"
+        | each { $in.input?.file_path? }
+        | compact
+        | uniq
 
     assert equal ($read_files | length) 2
     assert ("/a.txt" in $read_files)
@@ -450,10 +450,10 @@ def "edited files extraction includes Edit and Write" [] {
     ]
 
     let edited_files = $tool_calls
-    | where { ($in.name? == "Edit") or ($in.name? == "Write") }
-    | each { $in.input?.file_path? }
-    | compact
-    | uniq
+        | where { ($in.name? == "Edit") or ($in.name? == "Write") }
+        | each { $in.input?.file_path? }
+        | compact
+        | uniq
 
     assert equal ($edited_files | length) 2
     assert ("/b.txt" in $edited_files)
@@ -470,7 +470,7 @@ def "session uuid regex matches valid patterns" [] {
     ]
 
     let session_files = $files
-    | where { $in =~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$' }
+        | where { $in =~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$' }
 
     assert equal ($session_files | length) 2
 }
@@ -483,8 +483,8 @@ def "summary extraction handles missing summary record" [] {
     ]
 
     let summary = $records
-    | where type? == "summary"
-    | if ($in | is-empty) { "" } else { first | get summary? | default "" }
+        | where type? == "summary"
+        | if ($in | is-empty) { "" } else { first | get summary? | default "" }
 
     assert equal $summary ""
 }
@@ -497,8 +497,8 @@ def "summary extraction gets summary from record" [] {
     ]
 
     let summary = $records
-    | where type? == "summary"
-    | if ($in | is-empty) { "" } else { first | get summary? | default "" }
+        | where type? == "summary"
+        | if ($in | is-empty) { "" } else { first | get summary? | default "" }
 
     assert equal $summary "Test session summary"
 }
@@ -508,8 +508,8 @@ def "timestamp extraction handles empty user records" [] {
     let user_records = []
 
     let timestamps = $user_records
-    | each { $in.timestamp? }
-    | compact
+        | each { $in.timestamp? }
+        | compact
 
     let first_ts = $timestamps | if ($in | is-empty) { null } else { first }
 
@@ -521,8 +521,8 @@ def "response length sums text content" [] {
     let response_texts = ["Hello" "World!" "Test"]
 
     let length = $response_texts
-    | each { str length }
-    | if ($in | is-empty) { 0 } else { math sum }
+        | each { str length }
+        | if ($in | is-empty) { 0 } else { math sum }
 
     assert equal $length 15 # 5 + 6 + 4
 }
