@@ -66,7 +66,6 @@ export extern main [
     --no-config-file (-n) # Start with no config file and no env file
     --no-history # Disable reading and writing to command history
     --no-std-lib # Start with no standard library
-    --threads (-t): int # Threads to use for parallel commands
     --version (-v) # Print the version
     --config: string # Start with an alternate config file
     --env-config: string # Start with an alternate environment config file
