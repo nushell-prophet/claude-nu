@@ -298,6 +298,19 @@ export def extract-tool-results []: table -> table {
     | flatten
 }
 
+# Extract a session summary string from records.
+# Why: 2.1.x sessions rarely carry a `summary` record; the canonical short
+# summary now lives in `ai-title.aiTitle`. Prefer the legacy `summary`
+# record when present, fall back to `ai-title.aiTitle`.
+export def extract-summary []: table -> string {
+    let records = $in
+    let from_summary = $records | where type? == "summary" | get 0?.summary?
+    if ($from_summary | is-not-empty) {
+        return $from_summary
+    }
+    $records | where type? == "ai-title" | get 0?.aiTitle? | default ""
+}
+
 # Extract session metadata from records, walking each one to find each field.
 # Why: in 2.1.x first record can be permission-mode (sessionId only) or
 # file-history-snapshot (no metadata). A "first non-summary record" lookup
@@ -397,11 +410,7 @@ export def parse-session-file []: path -> record {
 
     let records = $lines | each { from json }
 
-    let summary = $records
-        | where type? == "summary"
-        | first
-        | get summary?
-        | default ""
+    let summary = $records | extract-summary
 
     let user_records = $records | where type? == "user"
     let timestamps = $user_records | extract-timestamps
@@ -568,10 +577,7 @@ export def parse-session [
         } else { {} }
 
         let sum = if ($all or $summary) {
-            $records | where type? == "summary"
-            | first
-            | get summary?
-            | default ""
+            $records | extract-summary
         } else { "" }
 
         let timestamps = if $need_timestamps { $user_records | extract-timestamps } else { {first: null last: null} }
@@ -650,12 +656,7 @@ export def export-session [
             error make {msg: "Session file is empty"}
         }
 
-        # Extract summary from summary record
-        let summary = $records
-            | where type? == "summary"
-            | first
-            | get summary?
-            | default ""
+        let summary = $records | extract-summary
 
         # Determine topic: argument > summary > "session"
         let resolved_topic = $topic

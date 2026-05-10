@@ -1375,3 +1375,42 @@ def "parse-session metadata still works for older user-first fixture" [] {
     assert (($result.cwd | str length) > 0)
     assert equal $result.version "2.1.129"
 }
+
+@test
+def "parse-session falls back to ai-title aiTitle when no summary record" [] {
+    # All vendored fixtures lack a summary record but have ai-title
+    let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
+    let result = parse-session $p --summary
+    assert (($result.summary | str length) > 0)
+}
+
+@test
+def "parse-session uses summary record when present in preference to ai-title" [] {
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
+    let lines = [
+        '{"type":"summary","summary":"Real summary record"}'
+        '{"type":"ai-title","aiTitle":"AI title fallback"}'
+        '{"type":"user","sessionId":"x","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --summary
+    rm $temp_file
+
+    assert equal $result.summary "Real summary record"
+}
+
+@test
+def "parse-session-file falls back to ai-title aiTitle for summary" [] {
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
+    let lines = [
+        '{"type":"ai-title","aiTitle":"My AI title"}'
+        '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = $temp_file | parse-session-file
+    rm $temp_file
+
+    assert equal $result.summary "My AI title"
+}
