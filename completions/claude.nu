@@ -18,9 +18,9 @@ const input_formats = [
 
 const permission_modes = [
     {value: "acceptEdits" description: "Accept all edit operations"}
+    {value: "auto" description: "Auto mode classifier decides"}
     {value: "bypassPermissions" description: "Bypass all permission checks"}
     {value: "default" description: "Default permission handling"}
-    {value: "delegate" description: "Delegate permission decisions"}
     {value: "dontAsk" description: "Don't ask for permissions"}
     {value: "plan" description: "Plan mode"}
 ]
