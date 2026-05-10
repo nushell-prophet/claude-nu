@@ -119,7 +119,7 @@ export extern main [
     --add-dir: string # Additional directories to allow tool access to
     --ide # Auto-connect to IDE on startup
     --strict-mcp-config # Only use MCP servers from --mcp-config
-    --session-id: string # Use specific session ID (must be valid UUID)
+    --session-id: string@"nu-complete claude sessions" # Use specific session ID (must be valid UUID)
     --setting-sources: string # Comma-separated setting sources (user, project, local)
     --plugin-dir: string # Load plugins from directories
     --plugin-url: string # Fetch a plugin .zip from a URL for this session only (repeatable)
