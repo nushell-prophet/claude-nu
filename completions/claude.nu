@@ -160,6 +160,9 @@ export extern "claude mcp add" [
     --transport (-t): string@$mcp_transports # Transport type (stdio, sse, http)
     --env (-e): string # Set environment variables (KEY=value)
     --header (-H): string # Set WebSocket headers
+    --callback-port: int # Fixed port for OAuth callback (for servers requiring pre-registered redirect URIs)
+    --client-id: string # OAuth client ID for HTTP/SSE servers
+    --client-secret # Prompt for OAuth client secret (or set MCP_CLIENT_SECRET env var)
     --help (-h) # Display help for command
 ]
 
@@ -182,6 +185,7 @@ export extern "claude mcp add-json" [
     name: string # Server name
     json: string # JSON configuration string
     --scope (-s): string@$mcp_scopes # Configuration scope
+    --client-secret # Prompt for OAuth client secret (or set MCP_CLIENT_SECRET env var)
     --help (-h) # Display help for command
 ]
 
