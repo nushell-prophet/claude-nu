@@ -1414,3 +1414,34 @@ def "parse-session-file falls back to ai-title aiTitle for summary" [] {
 
     assert equal $result.summary "My AI title"
 }
+
+@test
+def "parse-session derives plan_mode_used true from permission-mode record" [] {
+    # Why: 2.1.x replaced EnterPlanMode tool calls with top-level
+    # permission-mode records carrying permissionMode value
+    let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
+    let result = parse-session $p --plan-mode-used
+    assert equal $result.plan_mode_used true
+}
+
+@test
+def "parse-session plan_mode_used false when no plan in permission-mode" [] {
+    let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
+    let result = parse-session $p --plan-mode-used
+    assert equal $result.plan_mode_used false
+}
+
+@test
+def "parse-session plan_mode_used still detects legacy EnterPlanMode tool" [] {
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"plan this"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"EnterPlanMode","input":{}}]}}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --plan-mode-used
+    rm $temp_file
+
+    assert equal $result.plan_mode_used true
+}

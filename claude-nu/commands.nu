@@ -570,7 +570,11 @@ export def parse-session [
         let meta = if $need_meta { $records | extract-session-metadata } else { {} }
         let tool_stats = if $need_tool_stats {
             let tool_results = $user_records | extract-tool-results
-            $all_tool_calls | extract-tool-stats $tool_results
+            let stats = $all_tool_calls | extract-tool-stats $tool_results
+            # Why: 2.1.x replaced EnterPlanMode tool calls with top-level
+            # permission-mode records. Treat either signal as plan-mode.
+            let from_records = $records | where type? == "permission-mode" | get permissionMode? | any { $in == "plan" }
+            $stats | upsert plan_mode_used ($stats.plan_mode_used or $from_records)
         } else { {} }
         let metrics = if $need_metrics {
             $user_records | extract-derived-metrics $assistant_records $all_tool_calls
