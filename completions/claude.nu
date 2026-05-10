@@ -251,6 +251,30 @@ export extern "claude plugin update" [
     --help (-h) # Display help for command
 ]
 
+# ===== Auth Commands =====
+
+export extern "claude auth" [
+    --help (-h) # Display help for command
+]
+
+export extern "claude auth login" [
+    --claudeai # Use Claude subscription (default)
+    --console # Use Anthropic Console (API usage billing) instead of Claude subscription
+    --email: string # Pre-populate email address on the login page
+    --sso # Force SSO login flow
+    --help (-h) # Display help for command
+]
+
+export extern "claude auth logout" [
+    --help (-h) # Display help for command
+]
+
+export extern "claude auth status" [
+    --json # Output as JSON (default)
+    --text # Output as human-readable text
+    --help (-h) # Display help for command
+]
+
 # ===== Other Commands =====
 
 export extern "claude setup-token" [
