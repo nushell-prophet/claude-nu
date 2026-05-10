@@ -6,7 +6,7 @@ const error_styles = [fancy plain]
 const log_levels = [error warn info debug trace]
 const log_targets = [stdout stderr mixed file]
 
-def parse-script-commands [script: string] {
+export def parse-script-commands [script: string] {
     ast --flatten (open $script --raw)
     | where { $in.shape != shape_flag }
     | window 3 --remainder
@@ -23,7 +23,7 @@ def parse-script-commands [script: string] {
     | update name { str replace 'main ' '' }
 }
 
-def "nu-complete nu subcommands" [context: string] {
+export def "nu-complete nu subcommands" [context: string] {
     let script = $context
         | split row -r '\s+'
         | skip 1
@@ -40,13 +40,20 @@ def "nu-complete nu subcommands" [context: string] {
         | skip 1
         | where { not ($in | str starts-with '-') and not ($in | str ends-with '.nu') }
 
-    let matches = $typed_args | where { $in in $subcmd_names }
+    # Why: subcommand names can be multi-word ("bar baz" from `def "main bar baz"`).
+    # Join typed args and find the longest name that prefixes the joined string,
+    # otherwise multi-word subcommands never match and flag completion breaks.
+    let joined = $typed_args | str join ' '
+    let matched_name = $subcmd_names
+        | where { |n| $joined == $n or ($joined | str starts-with $"($n) ") }
+        | sort-by { str length } --reverse
+        | get 0?
 
-    if ($matches | is-empty) {
+    if $matched_name == null {
         $subcmd_names
     } else {
         $cmds
-        | where name == ($matches | last)
+        | where name == $matched_name
         | get flags.0
         | each { $"--($in)" }
     }
