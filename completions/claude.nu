@@ -275,6 +275,25 @@ export extern "claude auth status" [
     --help (-h) # Display help for command
 ]
 
+# ===== Auto Mode Commands =====
+
+export extern "claude auto-mode" [
+    --help (-h) # Display help for command
+]
+
+export extern "claude auto-mode config" [
+    --help (-h) # Display help for command
+]
+
+export extern "claude auto-mode critique" [
+    --model: string@$models # Override which model is used
+    --help (-h) # Display help for command
+]
+
+export extern "claude auto-mode defaults" [
+    --help (-h) # Display help for command
+]
+
 # ===== Other Commands =====
 
 export extern "claude setup-token" [
