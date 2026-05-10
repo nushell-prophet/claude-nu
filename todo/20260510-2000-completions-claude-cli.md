@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 created: 20260510-2000
 updated: 20260510-2000
 ---
@@ -96,3 +96,70 @@ sessions` works correctly — gaps are purely in surface coverage.
 ## Affected files
 
 - `completions/claude.nu` only
+
+## Completed (2026-05-10)
+
+Verified live against `claude --help` and every relevant
+`claude <sub> --help` for CLI 2.1.138 (the same version the audit
+captured — no drift in 5 days).
+
+Done in 10 atomic commits, one logical change per commit:
+
+1. Added missing top-level flags to `extern claude`: `--bare`, `--brief`,
+   `--debug-file`, `--effort` (string only at this step),
+   `--exclude-dynamic-system-prompt-sections`, `--file`, `--from-pr`,
+   `--include-hook-events`, `-n/--name`, `--plugin-url`,
+   `--remote-control`, `--remote-control-session-name-prefix`, `--tmux`,
+   `-w/--worktree`.
+2. Fixed `--permission-mode` enum: dropped `delegate`, added `auto`.
+3. Added `effort_levels` const and wired `--effort` to it.
+4. Added `claude auth` family: `auth`, `auth login` (`--claudeai`,
+   `--console`, `--email`, `--sso`), `auth logout`, `auth status`
+   (`--json`, `--text`).
+5. Added `claude auto-mode` family: `auto-mode`, `config`,
+   `critique --model`, `defaults`.
+6. Added `claude project` family: `project`, `project purge [path]`
+   with `--all`, `--dry-run`, `-i/--interactive`, `-y/--yes`.
+7. Added `claude ultrareview [target]` with `--json` and
+   `--timeout <minutes>`.
+8. Filled `claude plugin` gaps: new externs for `list`, `prune`,
+   `tag`; flags on `disable` (`-a/--all`, optional positional),
+   `uninstall` (`--keep-data`, `--prune`, `-y/--yes`); new
+   `plugin_update_scopes` const including `managed` for
+   `plugin update -s`; `--scope` and `--sparse` on
+   `marketplace add`; `--json` on `marketplace list`.
+9. Added OAuth flags to `claude mcp add` (`--callback-port`,
+   `--client-id`, `--client-secret`) and `claude mcp add-json`
+   (`--client-secret`).
+10. Wired `--session-id` to the existing
+    `nu-complete claude sessions` completer.
+
+Verified after every commit:
+`nu -c "source completions/claude.nu; scope commands | where name =~ '^claude' | length"`
+went from 25 to 39 externs without errors. Final
+`nu toolkit.nu test` run: 103 passed, 0 failed.
+
+### Skipped (deliberate, autonomous decision)
+
+- **Subcommand aliases** (`plugins`, `plugin i`, `plugin remove`,
+  `plugin autoremove`, `plugin marketplace rm`, `update|upgrade`):
+  doubles the maintenance surface and the audit marked them cosmetic.
+  Users who type the canonical names get full completion; alias users
+  fall back to no completion, which the CLI already documents.
+- **Model snapshot list refresh** (`claude-opus-4-5-20251101`,
+  `claude-sonnet-4-5-20250929`): model strings drift fast and the
+  upstream `--help` example references `claude-sonnet-4-6` already.
+  Better fetched dynamically in a separate task — out of scope here.
+- **Variadic typing tightening** (`--add-dir`, `--mcp-config`,
+  `--allowed-tools`, etc. as scalar `string`): the audit tagged this
+  cosmetic and not blocking. Nushell externs accept multiple values
+  via repeated flag invocations regardless of the declared type, so
+  tab completion still works.
+- **`Requires Nushell 0.108+` header note**: cosmetic; current pinned
+  version is 0.112.2 but the file loads cleanly.
+
+### Discrepancies between todo and live `--help`
+
+None. Every flag, subcommand, scope value, and enum item the audit
+listed matched what `claude --help` and `claude <sub> --help` reported
+on 2026-05-10 against the same CLI version (2.1.138).
