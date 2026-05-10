@@ -70,11 +70,13 @@ const tools = [
 export extern main [
     prompt?: string # Your prompt
     --debug (-d): string # Enable debug mode with optional category filtering
+    --debug-file: string # Write debug logs to a specific file path (implicitly enables debug mode)
     --verbose # Override verbose mode setting from config
     --print (-p) # Print response and exit (useful for pipes)
     --output-format: string@$output_formats # Output format (only with --print)
     --json-schema: string # JSON Schema for structured output validation
     --include-partial-messages # Include partial message chunks (with --print and stream-json)
+    --include-hook-events # Include all hook lifecycle events (only with --output-format=stream-json)
     --input-format: string@$input_formats # Input format (only with --print)
     --mcp-debug # [DEPRECATED] Enable MCP debug mode
     --dangerously-skip-permissions # Bypass all permission checks
@@ -91,9 +93,11 @@ export extern main [
     --continue (-c) # Continue the most recent conversation
     --resume (-r): string@"nu-complete claude sessions" # Resume conversation by session ID or open picker
     --fork-session # Create new session ID when resuming
+    --from-pr: string # Resume a session linked to a PR by PR number/URL (optional value)
     --no-session-persistence # Disable session persistence (with --print)
     --model: string@$models # Model for the current session
     --agent: string # Agent for the current session
+    --agents: string # JSON object defining custom agents
     --betas: string # Beta headers for API requests
     --fallback-model: string@$models # Fallback model when default is overloaded
     --settings: string # Path to settings JSON file or JSON string
@@ -101,12 +105,22 @@ export extern main [
     --ide # Auto-connect to IDE on startup
     --strict-mcp-config # Only use MCP servers from --mcp-config
     --session-id: string # Use specific session ID (must be valid UUID)
-    --agents: string # JSON object defining custom agents
     --setting-sources: string # Comma-separated setting sources (user, project, local)
     --plugin-dir: string # Load plugins from directories
+    --plugin-url: string # Fetch a plugin .zip from a URL for this session only (repeatable)
     --disable-slash-commands # Disable all slash commands
     --chrome # Enable Claude in Chrome integration
     --no-chrome # Disable Claude in Chrome integration
+    --bare # Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, prefetches, keychain reads, CLAUDE.md auto-discovery
+    --brief # Enable SendUserMessage tool for agent-to-user communication
+    --exclude-dynamic-system-prompt-sections # Move per-machine sections out of the system prompt for cache reuse
+    --effort: string # Effort level for the current session (low, medium, high, xhigh, max)
+    --file: string # File resources to download at startup (file_id:relative_path)
+    --name (-n): string # Set a display name for this session
+    --remote-control: string # Start an interactive session with Remote Control enabled (optionally named)
+    --remote-control-session-name-prefix: string # Prefix for auto-generated Remote Control session names
+    --tmux # Create a tmux session for the worktree (requires --worktree)
+    --worktree (-w): string # Create a new git worktree for this session (optionally specify a name)
     --version (-v) # Output the version number
     --help (-h) # Display help for command
 ]
