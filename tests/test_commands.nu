@@ -1243,6 +1243,63 @@ def "sessions --all-projects rejects explicit paths" [] {
     assert $failed
 }
 
+@test
+def "sessions enumerates subagent files alongside top-level sessions" [] {
+    # Why: 2.1.138+ stores subagent transcripts at
+    # `<dir>/<uuid>/subagents/agent-*.jsonl`; they must be discoverable.
+    let parent_uuid = "b370af1e-c96f-46a2-a3fe-66b16f38bc03"
+    let result = null | sessions $FIXTURES_SESSIONS_DIR
+
+    let subagent_rows = $result | where parent_session_id == $parent_uuid
+    assert (($subagent_rows | length) > 0)
+
+    let top_level = $result | where parent_session_id == null
+    assert (($top_level | length) > 0)
+}
+
+@test
+def "sessions adds parent_session_id column to every row" [] {
+    let result = null | sessions $FIXTURES_SESSIONS_DIR
+    let cols = $result | columns
+    assert ("parent_session_id" in $cols)
+}
+
+@test
+def "discover-session-files yields null parent for top-level files" [] {
+    let temp_dir = $nu.temp-dir | path join $"test-discover-(random uuid)"
+    mkdir $temp_dir
+
+    let top_file = $temp_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
+    "" | save --force $top_file
+
+    let result = discover-session-files $temp_dir
+
+    rm -rf $temp_dir
+
+    assert equal ($result | length) 1
+    assert equal $result.0.parent_session_id null
+    assert equal $result.0.path $top_file
+}
+
+@test
+def "discover-session-files extracts parent UUID from subagent path" [] {
+    let temp_dir = $nu.temp-dir | path join $"test-discover-(random uuid)"
+    let parent_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    let subagents_dir = $temp_dir | path join $parent_uuid "subagents"
+    mkdir $subagents_dir
+
+    let agent_file = $subagents_dir | path join "agent-deadbeef1234.jsonl"
+    "" | save --force $agent_file
+
+    let result = discover-session-files $temp_dir
+
+    rm -rf $temp_dir
+
+    let agent_rows = $result | where parent_session_id == $parent_uuid
+    assert equal ($agent_rows | length) 1
+    assert equal $agent_rows.0.path $agent_file
+}
+
 # =============================================================================
 # nu-complete claude sessions tests
 # =============================================================================

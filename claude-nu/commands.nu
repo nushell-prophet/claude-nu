@@ -3,6 +3,10 @@
 # UUID pattern for session files
 const UUID_JSONL_PATTERN = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
 
+# Subagent JSONL pattern (Claude Code 2.1.138+ layout:
+# `<project>/<session-uuid>/subagents/agent-<id>.jsonl`)
+const AGENT_JSONL_PATTERN = 'agent-[0-9a-f]+\.jsonl$'
+
 # System-generated message prefixes to filter out
 const SYSTEM_PREFIXES = [
     "<command-name>"
@@ -470,6 +474,26 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
     }
 }
 
+# Discover session files inside a single directory.
+# Returns rows {path, parent_session_id} where parent_session_id is the
+# parent session UUID for subagent files (basename of `<uuid>/subagents/`),
+# null for top-level session files.
+export def discover-session-files [dir: path]: nothing -> table {
+    let top_level = glob ($dir | path join "*.jsonl")
+        | where $it =~ $UUID_JSONL_PATTERN
+        | each {|p| {path: $p parent_session_id: null} }
+
+    let subagent_files = glob ($dir | path join "*/subagents/*.jsonl")
+        | where $it =~ $AGENT_JSONL_PATTERN
+        | each {|p|
+            # Why: layout is `<dir>/<uuid>/subagents/agent-*.jsonl`,
+            # so the parent UUID is two levels up from the file.
+            {path: $p parent_session_id: ($p | path dirname | path dirname | path basename)}
+        }
+
+    $top_level | append $subagent_files
+}
+
 # Parse Claude Code sessions for structured information
 export def sessions [
     ...paths: path # Session files or directories to parse (default: current project sessions)
@@ -494,23 +518,29 @@ export def sessions [
         } else { }
     }
 
-    let session_files = $target_paths
+    let session_rows = $target_paths
         | each {|p|
             if not ($p | path exists) {
                 error make {msg: $"Path not found: ($p)"}
             }
             if ($p | path type) == "dir" {
-                glob ($p | path join "*.jsonl")
-            } else { [$p] }
+                discover-session-files $p
+            } else {
+                # Why: explicit file paths skip the layout-based parent
+                # discovery — caller already pointed us at the file.
+                [{path: $p parent_session_id: null}]
+            }
         }
         | flatten
-        | where $it =~ $UUID_JSONL_PATTERN
+        | where { $in.path =~ $UUID_JSONL_PATTERN or $in.path =~ $AGENT_JSONL_PATTERN }
 
-    if ($session_files | is-empty) {
+    if ($session_rows | is-empty) {
         error make {msg: "No session files found"}
     }
 
-    $session_files | each { parse-session-file }
+    $session_rows | each {|row|
+        $row.path | parse-session-file | insert parent_session_id $row.parent_session_id
+    }
 }
 
 # Parse session file into raw data with selectable columns
