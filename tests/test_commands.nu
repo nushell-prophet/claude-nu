@@ -1211,6 +1211,38 @@ def "sessions errors on non-existent path" [] {
     assert $result
 }
 
+@test
+def "sessions --all-projects iterates every project dir" [] {
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let projects_dir = $fake_home | path join ".claude" "projects"
+    let proj_a = $projects_dir | path join "-fake-proj-a"
+    let proj_b = $projects_dir | path join "-fake-proj-b"
+    mkdir $proj_a $proj_b
+
+    '{"type":"summary","summary":"From A"}'
+        | save --force ($proj_a | path join "11111111-1111-1111-1111-111111111111.jsonl")
+    '{"type":"summary","summary":"From B"}'
+        | save --force ($proj_b | path join "22222222-2222-2222-2222-222222222222.jsonl")
+
+    let result = with-env {HOME: $fake_home} { sessions --all-projects }
+
+    rm -rf $fake_home
+
+    assert equal ($result | length) 2
+    let summaries = $result | get summary | sort
+    assert equal $summaries ["From A" "From B"]
+}
+
+@test
+def "sessions --all-projects rejects explicit paths" [] {
+    let failed = try {
+        sessions "/some/path" --all-projects
+        false
+    } catch { true }
+
+    assert $failed
+}
+
 # =============================================================================
 # nu-complete claude sessions tests
 # =============================================================================

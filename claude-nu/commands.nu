@@ -473,12 +473,26 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
 # Parse Claude Code sessions for structured information
 export def sessions [
     ...paths: path # Session files or directories to parse (default: current project sessions)
+    --all-projects # Enumerate sessions across every project under ~/.claude/projects
 ]: [nothing -> table string -> table] {
     let input = $in
-    let target_paths = $paths
+
+    if $all_projects and ($paths | is-not-empty) {
+        error make {msg: "--all-projects and explicit paths are mutually exclusive"}
+    }
+
+    let target_paths = if $all_projects {
+        let projects_dir = $env.HOME | path join ".claude" "projects"
+        if not ($projects_dir | path exists) {
+            error make {msg: "No projects directory found"}
+        }
+        ls $projects_dir | where type == dir | get name
+    } else {
+        $paths
         | if ($in | is-empty) {
             if ($input | describe) == "string" { [$input] } else { [(get-sessions-dir)] }
         } else { }
+    }
 
     let session_files = $target_paths
         | each {|p|
