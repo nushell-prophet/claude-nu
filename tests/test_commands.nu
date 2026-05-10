@@ -4,6 +4,16 @@ use std/testing *
 # Import all functions from commands.nu (including internals not re-exported via mod.nu)
 use ../claude-nu/commands.nu *
 
+# Vendored real-session fixtures covering Claude Code 2.1.x record shapes
+# Each fixture's first record type and special properties are documented inline.
+const FIXTURE_PERMMODE_AGENT = '99bf0e5b-212c-4891-abb2-6bc585af2ea0.jsonl' # first: permission-mode, has Agent, mode "plan"
+const FIXTURE_FHS_TASKFAMILY = 'ae3bbbf7-0554-45f7-9653-6ca09689be50.jsonl' # first: file-history-snapshot, has TaskCreate/TaskUpdate/TaskStop
+const FIXTURE_PERMMODE_AGENT2 = 'b370af1e-c96f-46a2-a3fe-66b16f38bc03.jsonl' # first: permission-mode, has Agent
+const FIXTURE_FHS_AGENT = 'b9ce8986-5d19-4ff5-9285-e0ed06464b6c.jsonl' # first: file-history-snapshot, has Agent + TaskCreate/Update
+const FIXTURE_USER_FIRST = 'ef27ae6d-c8d1-4ce8-b0ff-bcfff3954193.jsonl' # 2.1.129 format, first: user
+
+const FIXTURES_SESSIONS_DIR = path self fixtures/sessions
+
 # =============================================================================
 # Tests for get-sessions-dir path transformation logic
 # =============================================================================
@@ -1268,4 +1278,40 @@ def "sanitize-topic preserves numbers" [] {
 def "sanitize-topic handles unicode" [] {
     let result = "café résumé" | sanitize-topic
     assert equal $result "caf-r-sum"
+}
+
+# =============================================================================
+# Tests against vendored real-session fixtures (Claude Code 2.1.x)
+# =============================================================================
+
+@test
+def "extract-agents recognizes Agent tool name in 2.1.x" [] {
+    let tool_calls = [
+        {name: "Agent" input: {subagent_type: "Explore" description: "Find files"}}
+        {name: "Read" input: {file_path: "/test.txt"}}
+        {name: "Agent" input: {subagent_type: "general-purpose" description: "Audit"}}
+    ]
+    let agents = $tool_calls | extract-agents
+
+    assert equal ($agents | length) 2
+    assert equal ($agents | first | get type) "Explore"
+    assert equal ($agents | last | get type) "general-purpose"
+}
+
+@test
+def "extract-agents still recognizes legacy Task tool name" [] {
+    let tool_calls = [
+        {name: "Task" input: {subagent_type: "Explore" description: "Old name"}}
+        {name: "Agent" input: {subagent_type: "general-purpose" description: "New name"}}
+    ]
+    let agents = $tool_calls | extract-agents
+
+    assert equal ($agents | length) 2
+}
+
+@test
+def "parse-session finds agents in Agent-tool fixture" [] {
+    let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
+    let result = parse-session $p --agents
+    assert (($result.agents | length) > 0)
 }

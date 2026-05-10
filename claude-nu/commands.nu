@@ -334,8 +334,10 @@ export def extract-file-operations []: table -> record {
 }
 
 # Extract agent info from tool calls
+# Why: 2.1.x renamed `Task` to `Agent`; both share input shape.
+# TaskCreate/Update/Stop are TODO-list ops with different schema, not agents.
 export def extract-agents []: table -> table {
-    where name? == "Task"
+    where name? in ["Task" "Agent"]
     | each {
         {
             type: ($in.input?.subagent_type? | default "unknown")
