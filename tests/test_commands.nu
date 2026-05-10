@@ -1315,3 +1315,63 @@ def "parse-session finds agents in Agent-tool fixture" [] {
     let result = parse-session $p --agents
     assert (($result.agents | length) > 0)
 }
+
+@test
+def "extract-session-metadata walks records to find each field" [] {
+    # Why: in 2.1.x first record can be permission-mode (sessionId only) or
+    # file-history-snapshot (no metadata). Each field comes from the first
+    # record that actually carries it.
+    let records = [
+        {type: "permission-mode" sessionId: "sess-abc" permissionMode: "auto"}
+        {type: "file-history-snapshot" snapshot: {}}
+        {type: "user" sessionId: "sess-abc" cwd: "/project" version: "2.1.138" gitBranch: "main" slug: "my-slug" message: {content: "hi"}}
+    ]
+    let meta = $records | extract-session-metadata
+
+    assert equal $meta.session_id "sess-abc"
+    assert equal $meta.cwd "/project"
+    assert equal $meta.version "2.1.138"
+    assert equal $meta.git_branch "main"
+    assert equal $meta.slug "my-slug"
+}
+
+@test
+def "extract-session-metadata returns empty defaults when no records carry a field" [] {
+    let records = [
+        {type: "permission-mode" sessionId: "sess-x" permissionMode: "auto"}
+    ]
+    let meta = $records | extract-session-metadata
+
+    assert equal $meta.session_id "sess-x"
+    assert equal $meta.cwd ""
+    assert equal $meta.version ""
+    assert equal $meta.git_branch ""
+    assert equal $meta.slug ""
+}
+
+@test
+def "parse-session metadata works for file-history-snapshot-first fixture" [] {
+    let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_TASKFAMILY
+    let result = parse-session $p --session-id --cwd --version --git-branch
+    assert (($result.session_id | str length) > 0)
+    assert (($result.cwd | str length) > 0)
+    assert (($result.version | str length) > 0)
+}
+
+@test
+def "parse-session metadata works for permission-mode-first fixture" [] {
+    let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
+    let result = parse-session $p --session-id --cwd --version --git-branch
+    assert (($result.session_id | str length) > 0)
+    assert (($result.cwd | str length) > 0)
+    assert (($result.version | str length) > 0)
+}
+
+@test
+def "parse-session metadata still works for older user-first fixture" [] {
+    let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST
+    let result = parse-session $p --session-id --cwd --version --git-branch
+    assert (($result.session_id | str length) > 0)
+    assert (($result.cwd | str length) > 0)
+    assert equal $result.version "2.1.129"
+}

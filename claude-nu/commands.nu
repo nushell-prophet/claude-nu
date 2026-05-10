@@ -298,11 +298,23 @@ export def extract-tool-results []: table -> table {
     | flatten
 }
 
-# Extract session metadata from first record
-export def extract-session-metadata []: record -> record {
-    select --optional sessionId slug version cwd gitBranch
-    | default "" sessionId slug version cwd gitBranch
-    | rename --column {sessionId: session_id gitBranch: git_branch}
+# Extract session metadata from records, walking each one to find each field.
+# Why: in 2.1.x first record can be permission-mode (sessionId only) or
+# file-history-snapshot (no metadata). A "first non-summary record" lookup
+# returns mostly empty fields; instead pull each field from the first record
+# that actually carries it.
+export def extract-session-metadata []: table -> record {
+    let records = $in
+    let pick = {|field|
+        $records | get $field --optional | compact | first | default ""
+    }
+    {
+        session_id: (do $pick "sessionId")
+        slug: (do $pick "slug")
+        version: (do $pick "version")
+        cwd: (do $pick "cwd")
+        git_branch: (do $pick "gitBranch")
+    }
 }
 
 # Extract thinking level from user records
@@ -546,7 +558,7 @@ export def parse-session [
 
         let file_ops = if $need_file_ops { $all_tool_calls | extract-file-operations } else { {} }
         let agent_list = if ($all or $agents) { $all_tool_calls | extract-agents } else { [] }
-        let meta = if $need_meta { $records | where type? != "summary" | first | default {} | extract-session-metadata } else { {} }
+        let meta = if $need_meta { $records | extract-session-metadata } else { {} }
         let tool_stats = if $need_tool_stats {
             let tool_results = $user_records | extract-tool-results
             $all_tool_calls | extract-tool-stats $tool_results
