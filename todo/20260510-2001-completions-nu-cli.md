@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 created: 20260510-2001
 updated: 20260510-2001
 ---
@@ -68,3 +68,33 @@ names from real scripts including `def "main foo"`,
 
 - `completions/nu.nu` (lines 38–52, 55–89)
 - `tests/test_commands.nu` or new `tests/test_completions.nu`
+
+## Completed
+
+Verified against nu 0.112.2 — all three discrepancies still real
+(`--threads` rejected; `--mcp-transport` / `--mcp-port` / `--log-file`
+present in `--help`).
+
+- Dropped stale `--threads (-t)` from `extern main`.
+- Added `--mcp-transport: string`, `--mcp-port: int`, `--log-file: path`.
+- Fixed multi-word subcommand matching via longest-prefix match against
+  `subcmd_names` over the joined `typed_args` string. Exported the
+  internal `parse-script-commands` and `nu-complete nu subcommands` so
+  they are unit-testable. Added `tests/fixtures/multiword-subcommand.nu`
+  and `tests/test_completions.nu` (6 cases: name/flag extraction, flag
+  completion for single-word and multi-word subcommands, no-args fallback,
+  longest-prefix preference).
+- Verified `parse-script-commands toolkit.nu` still discovers the same
+  subcommands and `nu-complete nu subcommands 'nu toolkit.nu test '`
+  returns `--json --fail`.
+
+### Skipped (per todo's "cosmetic" / "by design" notes)
+
+- Variadic / `path` type tightening on `--log-include`, `--log-exclude`,
+  `--config`, `--env-config`, `--plugin-config`, `--plugins`,
+  `--experimental-options`. Functional today; left for a separate pass to
+  keep this commit series focused on bugs and missing flags.
+- Short-flag `-x` extraction from script signatures — `--(\w[\w-]*)` regex
+  by design.
+
+Test count: 103 → 109.
