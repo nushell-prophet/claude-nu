@@ -1445,3 +1445,67 @@ def "parse-session plan_mode_used still detects legacy EnterPlanMode tool" [] {
 
     assert equal $result.plan_mode_used true
 }
+
+@test
+def "extract-tool-stats counts new task-family tool names" [] {
+    let tool_calls = [
+        {name: "TaskCreate" input: {subject: "X" description: "y" activeForm: "z"}}
+        {name: "TaskCreate" input: {subject: "X" description: "y" activeForm: "z"}}
+        {name: "TaskUpdate" input: {taskId: "1" status: "completed"}}
+        {name: "TaskStop" input: {}}
+        {name: "Monitor" input: {}}
+        {name: "ToolSearch" input: {query: "x" max_results: 5}}
+    ]
+    let stats = $tool_calls | extract-tool-stats []
+
+    assert equal $stats.task_create_count 2
+    assert equal $stats.task_update_count 1
+    assert equal $stats.task_stop_count 1
+    assert equal $stats.monitor_count 1
+    assert equal $stats.tool_search_count 1
+}
+
+@test
+def "extract-tool-stats keeps backward-compat columns" [] {
+    let tool_calls = [
+        {name: "Bash" input: {command: "ls"}}
+        {name: "Skill" input: {skill: "x"}}
+        {name: "AskUserQuestion" input: {questions: []}}
+    ]
+    let stats = $tool_calls | extract-tool-stats []
+
+    assert equal $stats.bash_count 1
+    assert equal ($stats.bash_commands | length) 1
+    assert equal ($stats.skill_invocations | length) 1
+    assert equal $stats.ask_user_count 1
+}
+
+@test
+def "parse-session counts new tool names from fixture" [] {
+    let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_TASKFAMILY
+    let result = parse-session $p --task-create-count --task-update-count --task-stop-count
+    # ae3bbbf7 fixture has TaskCreate, TaskUpdate, TaskStop calls
+    assert ($result.task_create_count > 0)
+    assert ($result.task_update_count > 0)
+    assert ($result.task_stop_count > 0)
+}
+
+@test
+def "parse-session --all includes new tool-stat columns" [] {
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Monitor","input":{}}]}}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = parse-session $temp_file --all
+    let cols = $result | columns
+    rm $temp_file
+
+    assert ("task_create_count" in $cols)
+    assert ("task_update_count" in $cols)
+    assert ("task_stop_count" in $cols)
+    assert ("monitor_count" in $cols)
+    assert ("tool_search_count" in $cols)
+}

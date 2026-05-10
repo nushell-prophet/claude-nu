@@ -372,6 +372,8 @@ export def extract-agents []: table -> table {
 }
 
 # Extract tool statistics from tool calls and results
+# Why: tool catalog grew in 2.1.x; count newly-added names so users can see
+# whether/how often they appear in a session.
 export def extract-tool-stats [
     tool_results: table
 ]: table -> record {
@@ -384,6 +386,11 @@ export def extract-tool-stats [
         tool_errors: ($tool_results | where is_error? == true | length)
         ask_user_count: ($tool_calls | where name? == "AskUserQuestion" | length)
         plan_mode_used: ($tool_calls | where name? == "EnterPlanMode" | is-not-empty)
+        task_create_count: ($tool_calls | where name? == "TaskCreate" | length)
+        task_update_count: ($tool_calls | where name? == "TaskUpdate" | length)
+        task_stop_count: ($tool_calls | where name? == "TaskStop" | length)
+        monitor_count: ($tool_calls | where name? == "Monitor" | length)
+        tool_search_count: ($tool_calls | where name? == "ToolSearch" | length)
     }
 }
 
@@ -520,6 +527,11 @@ export def parse-session [
     --tool-errors # Include tool_errors column (count of failed tool calls)
     --ask-user-count # Include ask_user_count column
     --plan-mode-used # Include plan_mode_used column (bool)
+    --task-create-count # Include task_create_count column (TaskCreate calls)
+    --task-update-count # Include task_update_count column (TaskUpdate calls)
+    --task-stop-count # Include task_stop_count column (TaskStop calls)
+    --monitor-count # Include monitor_count column (Monitor calls)
+    --tool-search-count # Include tool_search_count column (ToolSearch calls)
     # Derived metrics
     --turn-count # Include turn_count column (user→assistant turns)
     --assistant-msg-count # Include assistant_msg_count column
@@ -561,7 +573,7 @@ export def parse-session [
         # Lazy extraction - only compute when flags require it
         let need_file_ops = $all or $edited_files or $read_files
         let need_meta = $all or $session_id or $slug or $version or $cwd or $git_branch
-        let need_tool_stats = $all or $bash_commands or $bash_count or $skill_invocations or $tool_errors or $ask_user_count or $plan_mode_used
+        let need_tool_stats = $all or $bash_commands or $bash_count or $skill_invocations or $tool_errors or $ask_user_count or $plan_mode_used or $task_create_count or $task_update_count or $task_stop_count or $monitor_count or $tool_search_count
         let need_metrics = $all or $turn_count or $assistant_msg_count or $tool_call_count
         let need_timestamps = $all or $first_timestamp or $last_timestamp
 
@@ -612,6 +624,11 @@ export def parse-session [
             {include: $tool_errors field: tool_errors value: $tool_stats.tool_errors?}
             {include: $ask_user_count field: ask_user_count value: $tool_stats.ask_user_count?}
             {include: $plan_mode_used field: plan_mode_used value: $tool_stats.plan_mode_used?}
+            {include: $task_create_count field: task_create_count value: $tool_stats.task_create_count?}
+            {include: $task_update_count field: task_update_count value: $tool_stats.task_update_count?}
+            {include: $task_stop_count field: task_stop_count value: $tool_stats.task_stop_count?}
+            {include: $monitor_count field: monitor_count value: $tool_stats.monitor_count?}
+            {include: $tool_search_count field: tool_search_count value: $tool_stats.tool_search_count?}
             # Derived metrics
             {include: $turn_count field: turn_count value: $metrics.turn_count?}
             {include: $assistant_msg_count field: assistant_msg_count value: $metrics.assistant_msg_count?}
