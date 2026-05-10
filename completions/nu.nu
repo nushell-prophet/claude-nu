@@ -76,10 +76,13 @@ export extern main [
     --ide-check: int # Run a diagnostic check on the given source
     --ide-ast # Generate the ast on the given source
     --mcp # Start nu's model context protocol server
+    --mcp-transport: string # Transport to use for MCP server (stdio or http)
+    --mcp-port: int # Port for MCP HTTP transport (default 8080)
     --plugin-config: string # Start with an alternate plugin registry file
     --plugins: string # List of plugin executable files to load
     --log-level: string@$log_levels # Log level for diagnostic logs
     --log-target: string@$log_targets # Set the target for the log to output
+    --log-file: path # Custom log file path (requires --log-target file)
     --log-include: string # Set the Rust module prefixes to include in the log output
     --log-exclude: string # Set the Rust module prefixes to exclude from the log output
     --stdin # Redirect standard input to a command or script file
