@@ -1598,3 +1598,88 @@ def "parse-session --all includes new tool-stat columns" [] {
     assert ("monitor_count" in $cols)
     assert ("tool_search_count" in $cols)
 }
+
+# =============================================================================
+# Tests for export-session --tools flag (tool_use/tool_result rendering)
+# =============================================================================
+
+@test
+def "export-session default omits tool blocks" [] {
+    let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
+    let md = export-session --session $p | get markdown
+
+    # No blockquote placeholders should leak when --tools is absent
+    assert not ($md | str contains "> [")
+    # Tool names from the fixture must not appear as headings or placeholders
+    assert not ($md | str contains "> [Bash:")
+    assert not ($md | str contains "> [Read:")
+    assert not ($md | str contains "> [result")
+}
+
+@test
+def "export-session --tools renders tool_use as one-line blockquote" [] {
+    let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
+    let md = export-session --session $p --tools | get markdown
+
+    # Real fixture has Bash and Read tool calls
+    assert ($md | str contains "> [Bash:")
+    assert ($md | str contains "> [Read:")
+}
+
+@test
+def "export-session --tools renders tool_result placeholder with char count" [] {
+    let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
+    let md = export-session --session $p --tools | get markdown
+
+    assert ($md =~ '> \[result(?: error)?: \d+ chars\]')
+}
+
+@test
+def "export-session --tools truncates long tool inputs to ~120 chars" [] {
+    let temp_file = $nu.temp-dir | path join $"test-export-(random uuid).jsonl"
+    let long_cmd = "echo " + (0..200 | each { "x" } | str join "")
+    let lines = [
+        ('{"type":"user","message":{"content":"do thing"},"timestamp":"2024-01-15T10:00:00Z"}')
+        ('{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"' + $long_cmd + '"}}]}}')
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let md = export-session --session $temp_file --tools | get markdown
+    rm $temp_file
+
+    # The placeholder line shouldn't blow past ~130 chars including marker
+    let placeholder = $md | lines | where { $in | str starts-with "> [Bash:" } | first
+    assert (($placeholder | str length) < 140)
+    assert ($placeholder | str ends-with "...]")
+}
+
+@test
+def "export-session --tools renders tool_result error marker" [] {
+    let temp_file = $nu.temp-dir | path join $"test-export-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"do thing"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"false"}}]}}'
+        '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"x","is_error":true,"content":"command not found"}]}}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let md = export-session --session $temp_file --tools | get markdown
+    rm $temp_file
+
+    assert ($md =~ '> \[result error: \d+ chars\]')
+}
+
+@test
+def "export-session --tools picks file_path for Read tool placeholder" [] {
+    let temp_file = $nu.temp-dir | path join $"test-export-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"read it"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/src/main.rs"}}]}}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let md = export-session --session $temp_file --tools | get markdown
+    rm $temp_file
+
+    assert ($md | str contains "> [Read: /src/main.rs]")
+}

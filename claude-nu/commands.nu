@@ -697,10 +697,85 @@ export def sanitize-topic []: string -> string {
     | str substring 0..<50
 }
 
+# Collapse whitespace (newlines, tabs, runs of spaces) to single spaces
+# and truncate to a max length, appending an ellipsis on truncation.
+def to-one-line [max: int]: string -> string {
+    str replace --all --regex '\s+' ' '
+    | str trim
+    | if ($in | str length) > $max {
+        $in | str substring 0..<$max | $in + "..."
+    } else { }
+}
+
+# One-line summary of a tool_use input record for placeholder rendering.
+# Picks the most informative scalar field (command, file_path, query, etc.)
+# and falls back to a compact NUON dump.
+def summarize-tool-input [input: any]: nothing -> string {
+    if not (($input | describe) | str starts-with "record") { return "" }
+    let cols = $input | columns
+    let preferred = ["command" "file_path" "path" "pattern" "query" "url" "skill" "subagent_type" "description"]
+    let key = $preferred | where {|k| $k in $cols } | get 0?
+    if $key != null {
+        let v = $input | get $key
+        if ($v | describe) == "string" { $v } else { $v | to nuon }
+    } else {
+        $input | to nuon
+    }
+}
+
+# Render a single content block as one line of markdown for --tools mode.
+# text -> text as-is; tool_use/tool_result -> blockquote placeholder.
+def render-block []: record -> string {
+    let block = $in
+    match $block.type? {
+        "text" => ($block.text? | default "")
+        "tool_use" => {
+            let summary = summarize-tool-input $block.input? | to-one-line 120
+            $"> [($block.name? | default 'tool'): ($summary)]"
+        }
+        "tool_result" => {
+            let raw = $block.content?
+            let txt = match ($raw | describe) {
+                "string" => $raw
+                $t if ($t =~ '^(list|table)') => {
+                    $raw | where type? == "text" | get text --optional | str join " "
+                }
+                _ => ""
+            }
+            let n = $txt | str length
+            let err = if $block.is_error? == true { " error" } else { "" }
+            $"> [result($err): ($n) chars]"
+        }
+        _ => ""
+    }
+}
+
+# Render a record's content blocks as markdown text. With --tools, tool_use
+# and tool_result blocks become one-line blockquote placeholders interleaved
+# with text. Without --tools, behaves like extract-text-content.
+def render-content [--tools]: record -> string {
+    let content = $in.message?.content?
+    match ($content | describe) {
+        "string" => { $content }
+        $t if ($t =~ '^(list|table)') => {
+            if $tools {
+                $content
+                | each { render-block }
+                | where { $in | is-not-empty }
+                | str join "\n\n"
+            } else {
+                $content | where type? == "text" | get text --optional | str join
+            }
+        }
+        _ => ""
+    }
+}
+
 # Export session dialogue to structured data with markdown
 export def export-session [
     topic?: string # Topic for filename (default: session summary)
     --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
+    --tools # Render tool_use/tool_result blocks as one-line blockquote placeholders (default: drop)
 ]: [nothing -> record table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
@@ -741,7 +816,7 @@ export def export-session [
         let dialogue = $records
             | where type? in ["user" "assistant"]
             | where isMeta? != true
-            | insert text { extract-text-content }
+            | insert text { if $tools { render-content --tools } else { extract-text-content } }
             | where { $in.text | str trim | is-not-empty }
             # Keep assistant messages; filter user messages starting with system prefixes
             | where {|r| $r.type != "user" or ($SYSTEM_PREFIXES | all {|p| not ($r.text | str starts-with $p) }) }
