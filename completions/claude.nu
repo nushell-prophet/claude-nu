@@ -309,6 +309,15 @@ export extern "claude project purge" [
     --help (-h) # Display help for command
 ]
 
+# ===== Ultrareview =====
+
+export extern "claude ultrareview" [
+    target?: string # PR number, base branch, or empty for current branch
+    --json # Print the raw bugs.json payload instead of formatted findings
+    --timeout: int # Maximum minutes to wait for the review to finish (default 30)
+    --help (-h) # Display help for command
+]
+
 # ===== Other Commands =====
 
 export extern "claude setup-token" [
