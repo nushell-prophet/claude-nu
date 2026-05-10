@@ -294,6 +294,21 @@ export extern "claude auto-mode defaults" [
     --help (-h) # Display help for command
 ]
 
+# ===== Project Commands =====
+
+export extern "claude project" [
+    --help (-h) # Display help for command
+]
+
+export extern "claude project purge" [
+    path?: string # Project path (omit with --all)
+    --all # Purge state for every project (mutually exclusive with [path])
+    --dry-run # List what would be deleted without deleting anything
+    --interactive (-i) # Prompt for each item before deleting
+    --yes (-y) # Skip confirmation prompt
+    --help (-h) # Display help for command
+]
+
 # ===== Other Commands =====
 
 export extern "claude setup-token" [
