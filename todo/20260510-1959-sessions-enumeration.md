@@ -1,7 +1,7 @@
 ---
-status: draft
+status: done
 created: 20260510-1959
-updated: 20260510-1959
+updated: 20260510
 ---
 
 # Initial request (only the user can edit this section)
@@ -69,3 +69,43 @@ JSONL is enumerable.
 - `claude-nu/mod.nu` — `parse-session-file` export decision
 - `CLAUDE.md` — doc reconciliation
 - `tests/test_commands.nu`, `tests/fixtures/sessions/` — new layout fixtures
+
+## Completed (2026-05-10)
+
+Shipped:
+
+- `sessions --all-projects` — mirrors `messages --all-projects`,
+  enumerates every project under `~/.claude/projects/`. Mutually
+  exclusive with explicit positional paths.
+- Subagent JSONL discovery — new helper `discover-session-files`
+  enumerates both top-level `<uuid>.jsonl` and
+  `<uuid>/subagents/agent-*.jsonl` under any project directory. New
+  `parent_session_id` column on every `sessions` row: `null` for
+  top-level transcripts, the parent UUID (taken from layout, two
+  levels up from the file) for subagent transcripts. Layout-based
+  rather than reading `isSidechain` from records.
+- Vendored 1 obfuscated subagent fixture under existing parent
+  fixture `b370af1e-c96f-46a2-a3fe-66b16f38bc03/subagents/` plus its
+  `.meta.json` sibling.
+- Test count grew from 99 to 103 passing.
+
+Decisions:
+
+- `sessions` single-arg semantics unchanged — `--all-projects` is the
+  explicit opt-in, no auto-recursion when given a directory of
+  project dirs.
+- Did NOT add a separate `subagents` command — keeping the surface
+  area minimal; subagents are a `where parent_session_id != null`
+  filter on `sessions` output.
+- Did NOT export `parse-session-file` from `mod.nu`. `CLAUDE.md` only
+  references `parse-session --all`; export list stays as-is. The
+  helper remains available to tests via direct `commands.nu` import.
+
+Deferred / not in scope:
+
+- Surfacing `agentType` / `description` from the `.meta.json`
+  siblings into `sessions` output. Easy follow-up if desired; would
+  need a new column resolved from sibling lookup.
+- Cross-project recursion on a generic positional directory argument
+  (e.g. passing `~/.claude/projects/`). `--all-projects` covers the
+  common case; the recursive form remains a workaround.
