@@ -25,6 +25,14 @@ const permission_modes = [
     {value: "plan" description: "Plan mode"}
 ]
 
+const effort_levels = [
+    {value: "low" description: "Low effort"}
+    {value: "medium" description: "Medium effort"}
+    {value: "high" description: "High effort"}
+    {value: "xhigh" description: "Extra-high effort"}
+    {value: "max" description: "Maximum effort"}
+]
+
 const models = [
     {value: "opus" description: "Claude Opus (most capable)"}
     {value: "sonnet" description: "Claude Sonnet (balanced)"}
@@ -114,7 +122,7 @@ export extern main [
     --bare # Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, prefetches, keychain reads, CLAUDE.md auto-discovery
     --brief # Enable SendUserMessage tool for agent-to-user communication
     --exclude-dynamic-system-prompt-sections # Move per-machine sections out of the system prompt for cache reuse
-    --effort: string # Effort level for the current session (low, medium, high, xhigh, max)
+    --effort: string@$effort_levels # Effort level for the current session (low, medium, high, xhigh, max)
     --file: string # File resources to download at startup (file_id:relative_path)
     --name (-n): string # Set a display name for this session
     --remote-control: string # Start an interactive session with Remote Control enabled (optionally named)
