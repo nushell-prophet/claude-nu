@@ -52,6 +52,13 @@ const mcp_scopes = [
     {value: "project" description: "Project-specific configuration"}
 ]
 
+const plugin_update_scopes = [
+    {value: "local" description: "Local configuration"}
+    {value: "user" description: "User-wide configuration (default)"}
+    {value: "project" description: "Project-specific configuration"}
+    {value: "managed" description: "Managed installation scope"}
+]
+
 const mcp_transports = [
     {value: "stdio" description: "Standard I/O (default)"}
     {value: "sse" description: "Server-Sent Events"}
@@ -204,10 +211,13 @@ export extern "claude plugin marketplace" [
 
 export extern "claude plugin marketplace add" [
     source: string # URL, path, or GitHub repo
+    --scope: string@$mcp_scopes # Where to declare the marketplace (user default, project, local)
+    --sparse: string # Limit checkout to specific directories via git sparse-checkout (repeatable)
     --help (-h) # Display help for command
 ]
 
 export extern "claude plugin marketplace list" [
+    --json # Output as JSON
     --help (-h) # Display help for command
 ]
 
@@ -230,6 +240,9 @@ export extern "claude plugin install" [
 export extern "claude plugin uninstall" [
     plugin: string # Plugin name to uninstall
     --scope (-s): string@$mcp_scopes # Configuration scope
+    --keep-data # Preserve the plugin's persistent data directory (~/.claude/plugins/data/{id}/)
+    --prune # Also remove auto-installed dependencies that are no longer needed
+    --yes (-y) # Skip the --prune confirmation prompt (required when stdin is not a TTY)
     --help (-h) # Display help for command
 ]
 
@@ -240,14 +253,38 @@ export extern "claude plugin enable" [
 ]
 
 export extern "claude plugin disable" [
-    plugin: string # Plugin name to disable
+    plugin?: string # Plugin name to disable (omit with --all)
+    --all (-a) # Disable all enabled plugins
     --scope (-s): string@$mcp_scopes # Configuration scope
     --help (-h) # Display help for command
 ]
 
 export extern "claude plugin update" [
     plugin: string # Plugin name to update
-    --scope (-s): string@$mcp_scopes # Configuration scope
+    --scope (-s): string@$plugin_update_scopes # Installation scope: user, project, local, managed
+    --help (-h) # Display help for command
+]
+
+export extern "claude plugin list" [
+    --available # Include available plugins from marketplaces (requires --json)
+    --json # Output as JSON
+    --help (-h) # Display help for command
+]
+
+export extern "claude plugin prune" [
+    --dry-run # List what would be removed without removing
+    --scope (-s): string@$mcp_scopes # Prune at scope: user (default), project, or local
+    --yes (-y) # Skip the confirmation prompt (required when stdin is not a TTY)
+    --help (-h) # Display help for command
+]
+
+export extern "claude plugin tag" [
+    path?: string # Path to plugin directory
+    --dry-run # Print what would be tagged without creating it
+    --force (-f) # Skip the dirty-working-tree and tag-already-exists checks
+    --message (-m): string # Tag annotation message (use %s for the version)
+    --push # Push the tag to --remote after creating it
+    --remote: string # Remote to push to with --push (default: "origin")
     --help (-h) # Display help for command
 ]
 
