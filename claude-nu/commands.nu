@@ -123,6 +123,7 @@ export def messages [
     --project (-p): path # Project path to search in (default: current directory)
     --all-projects # Search across all projects
     --include-system (-u) # Include system/meta messages (not just user-typed)
+    --include-thinking # Include assistant thinking blocks (prefixed with [thinking])
     --raw (-r) # Return raw message records instead of just content
     --with-responses (-w) # Include assistant responses (text only, interleaved)
 ]: [nothing -> table table -> table] {
@@ -184,6 +185,15 @@ export def messages [
 
         let session_uuid = $session_file | path basename | str replace '.jsonl' ''
 
+        # Why: --include-thinking surfaces thinking-only assistant turns
+        # (otherwise dropped by the visible-text filter below). Keep
+        # extract-text-content's contract intact for other callers.
+        let extract_assistant = if $include_thinking {
+            {|r| $r | extract-text-with-thinking }
+        } else {
+            {|r| $r | extract-text-content }
+        }
+
         # Parse and filter messages
         let messages = open --raw $session_file
             | lines
@@ -214,7 +224,7 @@ export def messages [
             # Drop assistant messages with no visible text
             | where {|r|
                 match $r.type? {
-                    "assistant" => ($r | extract-text-content | str trim | is-not-empty)
+                    "assistant" => (do $extract_assistant $r | str trim | is-not-empty)
                     _ => true
                 }
             }
@@ -224,7 +234,7 @@ export def messages [
                 where {
                     let msg = $in
                     match $msg.type? {
-                        "assistant" => ($msg | extract-text-content | $in =~ $regex)
+                        "assistant" => (do $extract_assistant $msg | $in =~ $regex)
                         _ => {
                             let content = $msg.message?.content?
                             if ($content | describe) =~ '^(list|table)' {
@@ -242,7 +252,7 @@ export def messages [
         } else {
             $filtered | each {|msg|
                 let message = match $msg.type? {
-                    "assistant" => ($msg | extract-text-content)
+                    "assistant" => (do $extract_assistant $msg)
                     _ => {
                         let content = $msg.message?.content?
                         if ($content | describe) =~ '^(list|table)' {
@@ -278,6 +288,31 @@ export def extract-text-content []: record -> string {
             | where type? == "text"
             | get text --optional
             | str join
+        }
+        _ => { "" }
+    }
+}
+
+# Like extract-text-content but also surfaces thinking blocks, prefixed with
+# `[thinking]` so they're distinguishable from regular text. Blocks are
+# rendered in source order and joined with blank lines.
+# Why: messages --include-thinking exposes thinking-only assistant turns that
+# the visible-text filter would otherwise drop.
+export def extract-text-with-thinking []: record -> string {
+    let content = $in.message?.content?
+    match ($content | describe) {
+        "string" => { $content }
+        $t if ($t =~ '^(list|table)') => {
+            $content
+            | each {|b|
+                match $b.type? {
+                    "text" => ($b.text? | default "")
+                    "thinking" => $"[thinking] ($b.thinking? | default '')"
+                    _ => ""
+                }
+            }
+            | where { $in | is-not-empty }
+            | str join "\n\n"
         }
         _ => { "" }
     }
