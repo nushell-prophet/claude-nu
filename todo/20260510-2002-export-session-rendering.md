@@ -1,7 +1,7 @@
 ---
-status: draft
+status: done
 created: 20260510-2002
-updated: 20260510-2002
+updated: 20260510
 ---
 
 # Initial request (only the user can edit this section)
@@ -60,3 +60,29 @@ addresses these record types).
 - `claude-nu/commands.nu` — `export-session`, `messages`,
   `extract-text-content`
 - `tests/test_commands.nu`
+
+## Completed
+
+- `--tools` flag for `export-session` (commit 4d9c7c8). Renders
+  `tool_use` and `tool_result` blocks as one-line markdown blockquote
+  placeholders interleaved with text:
+  - `> [<ToolName>: <summary>]` for `tool_use`, where summary picks the
+    most informative scalar field from input (`command`, `file_path`,
+    `path`, `pattern`, `query`, `url`, `skill`, `subagent_type`,
+    `description`) and falls back to compact NUON. Whitespace is
+    collapsed to single spaces and the line is truncated to ~120 chars
+    with an ellipsis.
+  - `> [result: <n> chars]` (or `> [result error: <n> chars]`) for
+    `tool_result`, summarising payload length without dumping it.
+- `--include-thinking` flag for `messages` (commit 694ed3b). Surfaces
+  thinking-only assistant turns that the visible-text filter would
+  otherwise drop. Each thinking block is rendered with a `[thinking]`
+  prefix so it stays distinguishable from regular text. Implemented via
+  a parallel helper `extract-text-with-thinking`; the original
+  `extract-text-content` contract is preserved for other callers
+  (parse-session etc.).
+- Defaults are UNCHANGED for both flags (additive only).
+- `--include-system` expansion was DEFERRED per orchestrator
+  instruction — it would couple to parser-format work covering the new
+  top-level record types (`last-prompt`, `queue-operation`,
+  `ai-title`).
