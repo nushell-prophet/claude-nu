@@ -1547,11 +1547,11 @@ def "extract-tool-stats counts new task-family tool names" [] {
     ]
     let stats = $tool_calls | extract-tool-stats []
 
-    assert equal $stats.task_create_count 2
-    assert equal $stats.task_update_count 1
-    assert equal $stats.task_stop_count 1
-    assert equal $stats.monitor_count 1
-    assert equal $stats.tool_search_count 1
+    assert equal $stats.tool_counts.TaskCreate 2
+    assert equal $stats.tool_counts.TaskUpdate 1
+    assert equal $stats.tool_counts.TaskStop 1
+    assert equal $stats.tool_counts.Monitor 1
+    assert equal $stats.tool_counts.ToolSearch 1
 }
 
 @test
@@ -1572,11 +1572,11 @@ def "extract-tool-stats keeps backward-compat columns" [] {
 @test
 def "parse-session counts new tool names from fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_TASKFAMILY
-    let result = parse-session $p --task-create-count --task-update-count --task-stop-count
+    let result = parse-session $p --tool-counts
     # ae3bbbf7 fixture has TaskCreate, TaskUpdate, TaskStop calls
-    assert ($result.task_create_count > 0)
-    assert ($result.task_update_count > 0)
-    assert ($result.task_stop_count > 0)
+    assert ($result.tool_counts.TaskCreate > 0)
+    assert ($result.tool_counts.TaskUpdate > 0)
+    assert ($result.tool_counts.TaskStop > 0)
 }
 
 @test
@@ -1592,11 +1592,13 @@ def "parse-session --all includes new tool-stat columns" [] {
     let cols = $result | columns
     rm $temp_file
 
-    assert ("task_create_count" in $cols)
-    assert ("task_update_count" in $cols)
-    assert ("task_stop_count" in $cols)
-    assert ("monitor_count" in $cols)
-    assert ("tool_search_count" in $cols)
+    assert ("tool_counts" in $cols)
+    let count_keys = $result.tool_counts | columns
+    assert ("TaskCreate" in $count_keys)
+    assert ("TaskUpdate" in $count_keys)
+    assert ("TaskStop" in $count_keys)
+    assert ("Monitor" in $count_keys)
+    assert ("ToolSearch" in $count_keys)
 }
 
 # =============================================================================
