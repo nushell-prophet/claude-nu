@@ -1061,6 +1061,7 @@ def "parse-session --all includes all columns" [] {
     assert ("turn_count" in $cols)
     assert ("assistant_msg_count" in $cols)
     assert ("tool_call_count" in $cols)
+    assert ("token_usage" in $cols)
 }
 
 @test
@@ -1599,6 +1600,38 @@ def "parse-session --all includes new tool-stat columns" [] {
     assert ("TaskStop" in $count_keys)
     assert ("Monitor" in $count_keys)
     assert ("ToolSearch" in $count_keys)
+}
+
+@test
+def "parse-session token-usage sums usage across turns" [] {
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"a"}],"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":5,"cache_read_input_tokens":1}}}'
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"b"}],"usage":{"input_tokens":3,"output_tokens":7,"cache_creation_input_tokens":0,"cache_read_input_tokens":2}}}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let u = parse-session $temp_file --token-usage | get token_usage
+    rm $temp_file
+
+    assert equal $u.input_tokens 13
+    assert equal $u.output_tokens 27
+    assert equal $u.cache_creation_input_tokens 5
+    assert equal $u.cache_read_input_tokens 3
+}
+
+# Guards the math-sum-on-empty crash: assistant turns may carry no usage.
+@test
+def "extract-token-usage zeros when usage absent" [] {
+    let u = [
+        {type: "assistant" message: {role: "assistant" content: [{type: "text" text: "x"}]}}
+    ] | extract-token-usage
+
+    assert equal $u.input_tokens 0
+    assert equal $u.output_tokens 0
+    assert equal $u.cache_creation_input_tokens 0
+    assert equal $u.cache_read_input_tokens 0
 }
 
 # =============================================================================
