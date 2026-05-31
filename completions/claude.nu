@@ -37,8 +37,9 @@ const models = [
     {value: "opus" description: "Claude Opus (most capable)"}
     {value: "sonnet" description: "Claude Sonnet (balanced)"}
     {value: "haiku" description: "Claude Haiku (fastest)"}
-    {value: "claude-opus-4-5-20251101" description: "Claude Opus 4.5 (specific version)"}
-    {value: "claude-sonnet-4-5-20250929" description: "Claude Sonnet 4.5 (specific version)"}
+    {value: "claude-opus-4-8" description: "Claude Opus 4.8 (specific version)"}
+    {value: "claude-opus-4-8[1m]" description: "Claude Opus 4.8, 1M context"}
+    {value: "claude-sonnet-4-6" description: "Claude Sonnet 4.6 (specific version)"}
 ]
 
 const install_targets = [
@@ -356,6 +357,25 @@ export extern "claude ultrareview" [
     target?: string # PR number, base branch, or empty for current branch
     --json # Print the raw bugs.json payload instead of formatted findings
     --timeout: int # Maximum minutes to wait for the review to finish (default 30)
+    --help (-h) # Display help for command
+]
+
+# ===== Agents (background sessions) =====
+
+export extern "claude agents" [
+    --add-dir: string # Additional directory to allow tool access to in dispatched sessions (repeatable)
+    --agent: string # Default agent for dispatched sessions (overrides the 'agent' setting)
+    --allow-dangerously-skip-permissions # Make bypass-permissions mode available to dispatched sessions without defaulting to it
+    --cwd: path # Show only background sessions started under this path
+    --dangerously-skip-permissions # Alias for --permission-mode bypassPermissions
+    --effort: string@$effort_levels # Default effort level for dispatched sessions
+    --json # Print live sessions as a JSON array and exit (for scripting; no TTY required)
+    --mcp-config: string # MCP server configuration to apply to dispatched sessions (repeatable)
+    --model: string@$models # Default model for dispatched sessions
+    --permission-mode: string@$permission_modes # Default permission mode for dispatched sessions
+    --setting-sources: string # Comma-separated setting sources (user, project, local)
+    --settings: string # Settings file or JSON string to apply to the agent view and dispatched sessions
+    --strict-mcp-config # Only use MCP servers from --mcp-config in dispatched sessions
     --help (-h) # Display help for command
 ]
 
