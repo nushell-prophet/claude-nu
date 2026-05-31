@@ -447,6 +447,27 @@ export def extract-derived-metrics [
     }
 }
 
+# Aggregate token usage across assistant records.
+# Why: costUSD is null for subscription users, so token counts are the only
+# usable cost/effort signal. Usage lives at message.usage per assistant turn;
+# the nested `iterations`/`cache_creation` breakdowns are ignored — the
+# top-level fields already hold the per-message totals.
+export def extract-token-usage []: table -> record {
+    let usages = get message.usage --optional | compact
+    # Why: math sum errors on empty input in nu 0.107, so guard like the
+    # response_length/user_msg_length sums elsewhere in this module.
+    let sum = {|field|
+        $usages | get $field --optional | compact
+        | if ($in | is-empty) { 0 } else { math sum }
+    }
+    {
+        input_tokens: (do $sum "input_tokens")
+        output_tokens: (do $sum "output_tokens")
+        cache_creation_input_tokens: (do $sum "cache_creation_input_tokens")
+        cache_read_input_tokens: (do $sum "cache_read_input_tokens")
+    }
+}
+
 # Parse a single session file into structured info
 export def parse-session-file []: path -> record {
     let file_path = $in
@@ -613,6 +634,8 @@ export def parse-session [
     --turn-count # Include turn_count column (user→assistant turns)
     --assistant-msg-count # Include assistant_msg_count column
     --tool-call-count # Include tool_call_count column
+    # Token usage
+    --token-usage # Include token_usage column (record: input/output/cache_creation/cache_read tokens)
     --all (-a) # Include all columns
 ]: [nothing -> record table -> table] {
     let input = $in
@@ -652,6 +675,7 @@ export def parse-session [
         let need_meta = $all or $session_id or $slug or $version or $cwd or $git_branch
         let need_tool_stats = $all or $bash_commands or $bash_count or $skill_invocations or $tool_errors or $ask_user_count or $plan_mode_used or $tool_counts
         let need_metrics = $all or $turn_count or $assistant_msg_count or $tool_call_count
+        let need_usage = $all or $token_usage
         let need_timestamps = $all or $first_timestamp or $last_timestamp
 
         let file_ops = if $need_file_ops { $all_tool_calls | extract-file-operations } else { {} }
@@ -668,6 +692,7 @@ export def parse-session [
         let metrics = if $need_metrics {
             $user_records | extract-derived-metrics $assistant_records $all_tool_calls
         } else { {} }
+        let usage = if $need_usage { $assistant_records | extract-token-usage } else { {} }
 
         let sum = if ($all or $summary) {
             $records | extract-summary
@@ -706,6 +731,8 @@ export def parse-session [
             {include: $turn_count field: turn_count value: $metrics.turn_count?}
             {include: $assistant_msg_count field: assistant_msg_count value: $metrics.assistant_msg_count?}
             {include: $tool_call_count field: tool_call_count value: $metrics.tool_call_count?}
+            # Token usage
+            {include: $token_usage field: token_usage value: $usage}
         ]
         | where { $all or $in.include }
         | reduce --fold $base {|it acc| $acc | insert $it.field $it.value }
