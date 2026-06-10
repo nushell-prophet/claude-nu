@@ -1405,6 +1405,29 @@ def "projects recovers name from session cwd and counts sessions" [] {
 }
 
 @test
+def "get-sessions-dir suffix-matches only parent/name shorthands" [] {
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    mkdir ($fake_home | path join ".claude" "projects" "-other-place-foo")
+
+    let results = with-env {HOME: $fake_home} {
+        do {
+            cd /tmp
+            {
+                bare: (get-sessions-dir foo)
+                shorthand: (get-sessions-dir "place/foo")
+            }
+        }
+    }
+
+    rm -rf $fake_home
+
+    # Why: a bare name is a relative path (./foo), not a shorthand — it must
+    # resolve to its own (missing) dir, never to another project's sessions.
+    assert equal $results.bare ($fake_home | path join ".claude" "projects" "-tmp-foo")
+    assert equal $results.shorthand ($fake_home | path join ".claude" "projects" "-other-place-foo")
+}
+
+@test
 def "projects skips dirs without session files" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     mkdir ($fake_home | path join ".claude" "projects" "-empty-project")

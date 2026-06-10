@@ -91,6 +91,14 @@ export def get-sessions-dir [
         return $direct_dir
     }
 
+    # Why: only the completer's `parent/name` shape may suffix-match. A bare
+    # or path-like value (e.g. `--project foo` meaning ./foo) must fail on
+    # the missing dir, not silently resolve to another project whose encoded
+    # name happens to end in the same suffix.
+    if not ($project =~ '^[^/~.][^/]*/[^/]+$') {
+        return $direct_dir
+    }
+
     let encoded = $project | str replace --all '/' '-'
     let matches = ls $projects_root
         | where type == dir
