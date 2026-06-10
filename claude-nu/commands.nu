@@ -248,10 +248,10 @@ export def messages [
     --all-sessions (-a) # Search across all project sessions
     --project (-p): path@"nu-complete claude projects" # Project path to search in (default: current directory)
     --all-projects # Search across all projects
-    --include-system (-u) # Include system/meta messages (not just user-typed)
-    --include-thinking # Include assistant thinking blocks (prefixed with [thinking])
+    --include-system (-m) # Include system/meta messages (not just user-typed)
+    --include-thinking (-t) # Include assistant thinking blocks (prefixed with [thinking])
     --raw (-r) # Return raw message records instead of just content
-    --with-responses (-w) # Include assistant responses (text only, interleaved)
+    --include-responses (-w) # Include assistant responses (text only, interleaved)
 ]: [nothing -> table table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
@@ -324,7 +324,7 @@ export def messages [
         let messages = open --raw $session_file
             | lines
             | each { from json }
-            | if $with_responses {
+            | if $include_responses {
                 where type in ["user" "assistant"]
             } else {
                 where type == "user"
@@ -373,7 +373,7 @@ export def messages [
             $filtered
             | each {|msg| {role: $msg.type message: $msg.text timestamp: ($msg.timestamp? | into datetime)} }
             | sort-by timestamp
-            | if $with_responses { } else { reject role }
+            | if $include_responses { } else { reject role }
         }
         | if ($all_sessions or $all_projects or $piped_files != null) {
             each { insert session $session_uuid }
