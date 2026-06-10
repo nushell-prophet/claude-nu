@@ -10,6 +10,8 @@ The completions are a secondary feature, and more of a historical artifact. The 
 
 Always think about CLI interface usability and ways to benefit from the pipelines architecture. If you see better ways to do what the user requests — mention that.
 
+Nushell's completions should be used when they add a real value.
+
 ## Architecture
 
 ```
