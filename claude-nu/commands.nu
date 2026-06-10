@@ -610,7 +610,7 @@ export def parse-session [
     --edited-files # Include edited_files column
     --read-files # Include read_files column
     # Session info
-    --summary (-s) # Include summary column
+    --summary # Include summary column
     --agents (-g) # Include agents column
     --first-timestamp # Include first_timestamp column
     --last-timestamp # Include last_timestamp column
@@ -636,7 +636,7 @@ export def parse-session [
     --tool-call-count # Include tool_call_count column
     # Token usage
     --token-usage # Include token_usage column (record: input/output/cache_creation/cache_read tokens)
-    --all (-a) # Include all columns
+    --all # Include all columns
 ]: [nothing -> record table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input

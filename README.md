@@ -83,7 +83,7 @@ claude-nu parse-session -s <uuid> # Specific session
 
 | Flag | Description |
 |------|-------------|
-| `--summary`, `-s` | Session summary |
+| `--summary` | Session summary |
 | `--edited-files` | Files modified by Edit/Write |
 | `--read-files` | Files read |
 | `--agents`, `-g` | Subagent info |
@@ -104,7 +104,7 @@ claude-nu parse-session -s <uuid> # Specific session
 | `--turn-count` | User→assistant turns |
 | `--assistant-msg-count` | Assistant messages |
 | `--tool-call-count` | Total tool invocations |
-| `--all`, `-a` | Include everything |
+| `--all` | Include everything |
 
 ### `claude-nu export-session`
 
