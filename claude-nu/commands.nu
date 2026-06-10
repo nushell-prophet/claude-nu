@@ -78,10 +78,62 @@ const NUSHELL_DOCS_FOLDERS = ['blog' 'book' 'cookbook']
 
 # Helper to get project sessions directory
 export def get-sessions-dir [
-    project?: path # Project path (default: $env.PWD)
+    project?: path # Project path, or `parent/name` shorthand (default: $env.PWD)
 ]: nothing -> path {
-    let project_path = ($project | default $env.PWD) | path expand | str replace --all '/' '-'
-    $env.HOME | path join ".claude" "projects" $project_path
+    let projects_root = $env.HOME | path join ".claude" "projects"
+    let direct = ($project | default $env.PWD) | path expand | str replace --all '/' '-'
+    let direct_dir = $projects_root | path join $direct
+
+    # Why: the completer inserts a `parent/name` shorthand, which `path expand`
+    # would wrongly anchor to $PWD. A real path always resolves directly, so
+    # only fall back to shorthand matching when the expanded dir is absent.
+    if $project == null or ($direct_dir | path exists) {
+        return $direct_dir
+    }
+
+    let encoded = $project | str replace --all '/' '-'
+    let matches = ls $projects_root
+        | where type == dir
+        | where {|row| $row.name | path basename | str ends-with $"-($encoded)" }
+    match ($matches | length) {
+        0 => $direct_dir # let downstream report the missing dir
+        1 => ($matches | get 0.name)
+        _ => (error make {msg: $"Ambiguous project shorthand '($project)' matches: (($matches | get name | path basename | str join ', '))"})
+    }
+}
+
+# Completer for --project: existing projects by recency, shown as `parent/name`
+export def "nu-complete claude projects" []: nothing -> record {
+    let projects_root = $env.HOME | path join ".claude" "projects"
+    if not ($projects_root | path exists) {
+        return {options: {sort: false} completions: []}
+    }
+
+    let completions = ls $projects_root
+        | where type == dir
+        | sort-by modified --reverse
+        | each {|dir|
+            let newest = ls $dir.name
+                | where name =~ $UUID_JSONL_PATTERN
+                | sort-by modified --reverse
+                | get 0?.name?
+            if $newest == null { return null }
+            # Why: the dir name is lossy (`/` and `-` both encode to `-`), so
+            # recover the real path from a session's `cwd` for true segments.
+            let cwd = try {
+                open --raw $newest
+                | lines
+                | first 30
+                | where ($it | str contains '"cwd"')
+                | get 0?
+                | if $in != null { from json | get cwd? } else { null }
+            } catch { null }
+            if $cwd == null { return null }
+            {value: ($cwd | path split | last 2 | path join) description: ($dir.modified | date humanize)}
+        }
+        | compact
+
+    {options: {sort: false} completions: $completions}
 }
 
 # Resolve session file path from UUID, path, or default to most recent
@@ -160,7 +212,7 @@ export def messages [
     regex?: string # Filter messages by regex pattern
     --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
     --all-sessions (-a) # Search across all project sessions
-    --project (-p): path # Project path to search in (default: current directory)
+    --project (-p): path@"nu-complete claude projects" # Project path to search in (default: current directory)
     --all-projects # Search across all projects
     --include-system (-u) # Include system/meta messages (not just user-typed)
     --include-thinking # Include assistant thinking blocks (prefixed with [thinking])
