@@ -538,11 +538,11 @@ def "response length sums text content" [] {
 }
 
 # =============================================================================
-# Integration test for parse-session-file
+# Integration tests for sessions overview and column selection
 # =============================================================================
 
 @test
-def "parse-session-file extracts all fields from session file" [] {
+def "sessions extracts all overview fields from session file" [] {
     # Create temp file with realistic session data
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
@@ -557,13 +557,10 @@ def "parse-session-file extracts all fields from session file" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    # Run parse-session-file
-    let result = $temp_file | parse-session-file
+    let result = sessions $temp_file | first
 
-    # Cleanup
     rm $temp_file
 
-    # Assertions
     assert equal $result.summary "Test session about file parsing"
     assert equal $result.user_msg_count 2
     assert ($result.user_msg_length > 0)
@@ -578,12 +575,12 @@ def "parse-session-file extracts all fields from session file" [] {
 }
 
 @test
-def "parse-session-file handles empty file" [] {
+def "sessions handles empty file" [] {
     let temp_file = $nu.temp-dir | path join $"test-empty-(random uuid).jsonl"
 
     "" | save --force $temp_file
 
-    let result = $temp_file | parse-session-file
+    let result = sessions $temp_file | first
 
     rm $temp_file
 
@@ -593,6 +590,39 @@ def "parse-session-file handles empty file" [] {
     assert equal $result.last_timestamp null
     assert equal ($result.agents | length) 0
     assert equal ($result.mentioned_files | length) 0
+}
+
+@test
+def "sessions default columns are the overview set" [] {
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
+
+    '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force $temp_file
+
+    let cols = sessions $temp_file | first | columns
+
+    rm $temp_file
+
+    assert equal $cols [
+        summary first_timestamp last_timestamp user_msg_count user_msg_length
+        response_length agent_count agents mentioned_files read_files
+        edited_files path parent_session_id
+    ]
+}
+
+@test
+def "sessions column flag narrows output to base plus requested" [] {
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
+
+    '{"type":"user","slug":"narrow-test","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force $temp_file
+
+    let result = sessions $temp_file --slug | first
+
+    rm $temp_file
+
+    assert equal ($result | columns) [slug path parent_session_id]
+    assert equal $result.slug "narrow-test"
 }
 
 # =============================================================================
@@ -1491,7 +1521,7 @@ def "parse-session uses summary record when present in preference to ai-title" [
 }
 
 @test
-def "parse-session-file falls back to ai-title aiTitle for summary" [] {
+def "sessions falls back to ai-title aiTitle for summary" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
     let lines = [
         '{"type":"ai-title","aiTitle":"My AI title"}'
@@ -1499,7 +1529,7 @@ def "parse-session-file falls back to ai-title aiTitle for summary" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = $temp_file | parse-session-file
+    let result = sessions $temp_file | first
     rm $temp_file
 
     assert equal $result.summary "My AI title"

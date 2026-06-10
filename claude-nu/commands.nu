@@ -19,21 +19,54 @@ const SYSTEM_PREFIXES = [
     "Caveat:"
 ]
 
-# Template for session summary record
-const EMPTY_SESSION_SUMMARY = {
-    summary: ""
-    first_timestamp: null
-    last_timestamp: null
-    user_msg_count: 0
-    user_msg_length: 0
-    response_length: 0
-    agent_count: 0
-    agents: []
-    mentioned_files: []
-    read_files: []
-    edited_files: []
-    path: null
-}
+# All selectable session columns, in output order
+const SESSION_COLUMNS = [
+    summary
+    first_timestamp
+    last_timestamp
+    user_msg_count
+    user_msg_length
+    response_length
+    agent_count
+    agents
+    mentioned_files
+    read_files
+    edited_files
+    user_messages
+    session_id
+    slug
+    version
+    cwd
+    git_branch
+    thinking_level
+    bash_commands
+    bash_count
+    skill_invocations
+    tool_errors
+    ask_user_count
+    plan_mode_used
+    tool_counts
+    turn_count
+    assistant_msg_count
+    tool_call_count
+    token_usage
+]
+
+# Overview returned when no column flags are given — the fixed set `sessions`
+# always returned before columns became selectable
+const DEFAULT_SESSION_COLUMNS = [
+    summary
+    first_timestamp
+    last_timestamp
+    user_msg_count
+    user_msg_length
+    response_length
+    agent_count
+    agents
+    mentioned_files
+    read_files
+    edited_files
+]
 
 # Default output directory for Claude Code documentation
 const CLAUDE_DOCS_DIR = 'claude-code-docs'
@@ -468,54 +501,125 @@ export def extract-token-usage []: table -> record {
     }
 }
 
-# Parse a single session file into structured info
-export def parse-session-file []: path -> record {
+# Parse one session file, computing only the selected columns.
+# Lazy: each extraction group runs only when a selected column needs it.
+# Why: no empty-file special case — every extractor yields its typed default
+# ("", 0, []) on an empty record set, so empty JSONL files flow through.
+def parse-session-columns [selected: list<string>]: path -> record {
     let file_path = $in
-    let lines = open --raw $file_path | lines
-
-    if ($lines | is-empty) {
-        return ($EMPTY_SESSION_SUMMARY | update path $file_path)
-    }
-
-    let records = $lines | each { from json }
-
-    let summary = $records | extract-summary
+    let records = open --raw $file_path | lines | each { from json }
 
     let user_records = $records | where type? == "user"
-    let timestamps = $user_records | extract-timestamps
+    let assistant_records = $records | where type? == "assistant"
 
-    let user_msg_length = $user_records
-        | each { extract-text-content | str length }
+    let need = {|cols| $cols | any {|c| $c in $selected } }
+
+    let all_tool_calls = if (do $need [
+        agents agent_count read_files edited_files bash_commands bash_count
+        skill_invocations tool_errors ask_user_count plan_mode_used tool_counts
+        turn_count assistant_msg_count tool_call_count
+    ]) {
+        $assistant_records | each { extract-tool-calls } | flatten
+    } else { [] }
+
+    # Why: user_msg_length sums these texts, so both columns share one pass
+    let user_messages = if (do $need [user_messages user_msg_length]) {
+        $user_records | each { extract-text-content }
+    } else { [] }
+
+    let user_msg_length = $user_messages
+        | each { str length }
         | if ($in | is-empty) { 0 } else { math sum }
 
-    let mentioned_files = $user_records
+    let mentioned_files = if ("mentioned_files" in $selected) {
+        $user_records
         | each { extract-text-content | parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
         | flatten
         | uniq
+    } else { [] }
 
-    let assistant_records = $records | where type? == "assistant"
-    let response_length = $assistant_records
+    let response_length = if ("response_length" in $selected) {
+        $assistant_records
         | each { extract-text-content | str length }
         | if ($in | is-empty) { 0 } else { math sum }
+    } else { 0 }
 
-    let all_tool_calls = $assistant_records | each { extract-tool-calls } | flatten
-    let file_ops = $all_tool_calls | extract-file-operations
-    let agents = $all_tool_calls | extract-agents
+    let summary = if ("summary" in $selected) { $records | extract-summary } else { "" }
 
-    $EMPTY_SESSION_SUMMARY | merge {
-        summary: $summary
-        first_timestamp: $timestamps.first
-        last_timestamp: $timestamps.last
-        user_msg_count: ($user_records | length)
-        user_msg_length: $user_msg_length
-        response_length: $response_length
-        agent_count: ($agents | length)
-        agents: $agents
-        mentioned_files: $mentioned_files
-        read_files: $file_ops.read_files
-        edited_files: $file_ops.edited_files
-        path: $file_path
-    }
+    let timestamps = if (do $need [first_timestamp last_timestamp]) {
+        $user_records | extract-timestamps
+    } else { {first: null last: null} }
+
+    let file_ops = if (do $need [read_files edited_files]) {
+        $all_tool_calls | extract-file-operations
+    } else { {} }
+
+    let agent_list = if (do $need [agents agent_count]) {
+        $all_tool_calls | extract-agents
+    } else { [] }
+
+    let meta = if (do $need [session_id slug version cwd git_branch]) {
+        $records | extract-session-metadata
+    } else { {} }
+
+    let thinking = if ("thinking_level" in $selected) {
+        $user_records | extract-thinking-level
+    } else { "" }
+
+    let tool_stats = if (do $need [
+        bash_commands bash_count skill_invocations tool_errors ask_user_count
+        plan_mode_used tool_counts
+    ]) {
+        let tool_results = $user_records | extract-tool-results
+        let stats = $all_tool_calls | extract-tool-stats $tool_results
+        # Why: 2.1.x replaced EnterPlanMode tool calls with top-level
+        # permission-mode records. Treat either signal as plan-mode.
+        let from_records = $records | where type? == "permission-mode" | get permissionMode? | any { $in == "plan" }
+        $stats | upsert plan_mode_used ($stats.plan_mode_used or $from_records)
+    } else { {} }
+
+    let metrics = if (do $need [turn_count assistant_msg_count tool_call_count]) {
+        $user_records | extract-derived-metrics $assistant_records $all_tool_calls
+    } else { {} }
+
+    let usage = if ("token_usage" in $selected) {
+        $assistant_records | extract-token-usage
+    } else { {} }
+
+    [
+        {name: summary value: $summary}
+        {name: first_timestamp value: $timestamps.first}
+        {name: last_timestamp value: $timestamps.last}
+        {name: user_msg_count value: ($user_records | length)}
+        {name: user_msg_length value: $user_msg_length}
+        {name: response_length value: $response_length}
+        {name: agent_count value: ($agent_list | length)}
+        {name: agents value: $agent_list}
+        {name: mentioned_files value: $mentioned_files}
+        {name: read_files value: $file_ops.read_files?}
+        {name: edited_files value: $file_ops.edited_files?}
+        {name: user_messages value: ($user_messages | where $it != "")}
+        {name: session_id value: $meta.session_id?}
+        {name: slug value: $meta.slug?}
+        {name: version value: $meta.version?}
+        {name: cwd value: $meta.cwd?}
+        {name: git_branch value: $meta.git_branch?}
+        {name: thinking_level value: $thinking}
+        {name: bash_commands value: $tool_stats.bash_commands?}
+        {name: bash_count value: $tool_stats.bash_count?}
+        {name: skill_invocations value: $tool_stats.skill_invocations?}
+        {name: tool_errors value: $tool_stats.tool_errors?}
+        {name: ask_user_count value: $tool_stats.ask_user_count?}
+        {name: plan_mode_used value: $tool_stats.plan_mode_used?}
+        {name: tool_counts value: $tool_stats.tool_counts?}
+        {name: turn_count value: $metrics.turn_count?}
+        {name: assistant_msg_count value: $metrics.assistant_msg_count?}
+        {name: tool_call_count value: $metrics.tool_call_count?}
+        {name: token_usage value: $usage}
+    ]
+    | where name in $selected
+    | reduce --fold {} {|it acc| $acc | insert $it.name $it.value }
+    | insert path $file_path
 }
 
 # Extract session file paths from piped input
@@ -552,31 +656,97 @@ export def discover-session-files [dir: path]: nothing -> table {
     $top_level | append $subagent_files
 }
 
-# Parse Claude Code sessions for structured information
+# Parse Claude Code sessions for structured information.
+# Column flags select what to compute (lazy — only requested extractions run);
+# no column flags returns the default overview set, --all everything.
 export def sessions [
     ...paths: path # Session files or directories to parse (default: current project sessions)
+    --session (-s): string@"nu-complete claude sessions" # Single session UUID or path
+    --last # Only the most recent session of the current project
     --all-projects # Enumerate sessions across every project under ~/.claude/projects
-]: [nothing -> table string -> table] {
+    # Session info
+    --summary # Include summary column
+    --first-timestamp # Include first_timestamp column
+    --last-timestamp # Include last_timestamp column
+    --user-msg-count # Include user_msg_count column
+    --user-msg-length # Include user_msg_length column (total chars typed by user)
+    --response-length # Include response_length column (total chars of assistant text)
+    --agent-count # Include agent_count column
+    --agents (-g) # Include agents column
+    # File operations
+    --mentioned-files # Include mentioned_files column (@-mentions in user messages)
+    --read-files # Include read_files column
+    --edited-files # Include edited_files column
+    --user-messages # Include user_messages column (list of user message texts)
+    # Session metadata
+    --session-id # Include session_id column
+    --slug # Include slug column (human-readable session name)
+    --version # Include version column (Claude Code version)
+    --cwd # Include cwd column (working directory)
+    --git-branch # Include git_branch column
+    # Thinking
+    --thinking-level # Include thinking_level column
+    # Tool statistics
+    --bash-commands # Include bash_commands column (list of commands)
+    --bash-count # Include bash_count column
+    --skill-invocations # Include skill_invocations column
+    --tool-errors # Include tool_errors column (count of failed tool calls)
+    --ask-user-count # Include ask_user_count column
+    --plan-mode-used # Include plan_mode_used column (bool)
+    --tool-counts # Include tool_counts column (record keyed by tool name: TaskCreate/Update/Stop, Monitor, ToolSearch)
+    # Derived metrics
+    --turn-count # Include turn_count column (user→assistant turns)
+    --assistant-msg-count # Include assistant_msg_count column
+    --tool-call-count # Include tool_call_count column
+    # Token usage
+    --token-usage # Include token_usage column (record: input/output/cache_creation/cache_read tokens)
+    --all # Include all columns
+]: [nothing -> table string -> table table -> table] {
     let input = $in
+    # Why: piped string is a target path (`"dir" | sessions`); piped table
+    # carries path/session columns like the other commands accept.
+    let piped_path = if ($input | describe) == "string" { $input } else { null }
+    let piped_files = if $piped_path == null { resolve-piped-sessions $input } else { null }
 
     if $all_projects and ($paths | is-not-empty) {
         error make {msg: "--all-projects and explicit paths are mutually exclusive"}
     }
-
-    let target_paths = if $all_projects {
-        let projects_dir = $env.HOME | path join ".claude" "projects"
-        if not ($projects_dir | path exists) {
-            error make {msg: "No projects directory found"}
-        }
-        ls $projects_dir | where type == dir | get name
-    } else {
-        $paths
-        | if ($in | is-empty) {
-            if ($input | describe) == "string" { [$input] } else { [(get-sessions-dir)] }
-        } else { }
+    if $session != null {
+        if ($paths | is-not-empty) { error make {msg: "--session and explicit paths are mutually exclusive"} }
+        if $all_projects { error make {msg: "--session and --all-projects are mutually exclusive"} }
+        if $last { error make {msg: "--session and --last are mutually exclusive"} }
+    }
+    if $last and ($all_projects or ($paths | is-not-empty)) {
+        error make {msg: "--last cannot be combined with --all-projects or explicit paths"}
+    }
+    if ($piped_files != null or $piped_path != null) and ($session != null or $last or $all_projects or ($paths | is-not-empty)) {
+        error make {msg: "Piped input conflicts with --session/--last/--all-projects/paths"}
     }
 
-    let session_rows = $target_paths
+    let session_rows = if $piped_files != null {
+        $piped_files | each {|p| {path: $p parent_session_id: null} }
+    } else if $session != null or $last {
+        # Why: parse-session defaulted to the most recent session; after the
+        # merge (bare scope = whole project) --last keeps that workflow.
+        [{path: (resolve-session-file $session) parent_session_id: null}]
+    } else {
+        let target_paths = if $all_projects {
+            let projects_dir = $env.HOME | path join ".claude" "projects"
+            if not ($projects_dir | path exists) {
+                error make {msg: "No projects directory found"}
+            }
+            ls $projects_dir | where type == dir | get name
+        } else {
+            $paths
+            | if ($in | is-empty) {
+                [($piped_path | default (get-sessions-dir))]
+            } else { }
+        }
+
+        # Why: UUID/agent pattern filtering lives in discover-session-files
+        # (directory scans only) — a file named explicitly or piped is parsed
+        # as-is, whatever its name.
+        $target_paths
         | each {|p|
             if not ($p | path exists) {
                 error make {msg: $"Path not found: ($p)"}
@@ -590,14 +760,56 @@ export def sessions [
             }
         }
         | flatten
-        | where { $in.path =~ $UUID_JSONL_PATTERN or $in.path =~ $AGENT_JSONL_PATTERN }
+    }
 
     if ($session_rows | is-empty) {
         error make {msg: "No session files found"}
     }
 
+    let requested = [
+        [include name];
+        [$summary summary]
+        [$first_timestamp first_timestamp]
+        [$last_timestamp last_timestamp]
+        [$user_msg_count user_msg_count]
+        [$user_msg_length user_msg_length]
+        [$response_length response_length]
+        [$agent_count agent_count]
+        [$agents agents]
+        [$mentioned_files mentioned_files]
+        [$read_files read_files]
+        [$edited_files edited_files]
+        [$user_messages user_messages]
+        [$session_id session_id]
+        [$slug slug]
+        [$version version]
+        [$cwd cwd]
+        [$git_branch git_branch]
+        [$thinking_level thinking_level]
+        [$bash_commands bash_commands]
+        [$bash_count bash_count]
+        [$skill_invocations skill_invocations]
+        [$tool_errors tool_errors]
+        [$ask_user_count ask_user_count]
+        [$plan_mode_used plan_mode_used]
+        [$tool_counts tool_counts]
+        [$turn_count turn_count]
+        [$assistant_msg_count assistant_msg_count]
+        [$tool_call_count tool_call_count]
+        [$token_usage token_usage]
+    ] | where include | get name
+
+    let selected = if $all {
+        $SESSION_COLUMNS
+    } else if ($requested | is-empty) {
+        $DEFAULT_SESSION_COLUMNS
+    } else { $requested }
+
     $session_rows | each {|row|
-        $row.path | parse-session-file | insert parent_session_id $row.parent_session_id
+        if not ($row.path | path exists) {
+            error make {msg: $"Session file not found: ($row.path)"}
+        }
+        $row.path | parse-session-columns $selected | insert parent_session_id $row.parent_session_id
     }
 }
 
