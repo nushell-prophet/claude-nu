@@ -123,17 +123,24 @@ export def projects []: nothing -> table {
     | each {|dir|
         let files = ls $dir.name | where name =~ $UUID_JSONL_PATTERN
         if ($files | is-empty) { return null }
-        let newest = $files | sort-by modified --reverse | get 0.name
         # Why: the dir name is lossy (`/` and `-` both encode to `-`), so
         # recover the real path from a session's `cwd` for true segments.
-        let cwd = try {
-            open --raw $newest
-            | lines
-            | first 30
-            | where ($it | str contains '"cwd"')
-            | get 0?
-            | if $in != null { from json | get cwd? } else { null }
-        } catch { null }
+        # Scan newest-first until a file records one — summary-only files
+        # (e.g. legacy sidechain summaries) carry no cwd and must not hide
+        # the whole project.
+        let cwd = $files
+            | sort-by modified --reverse
+            | reduce --fold null {|file found|
+                if $found != null { return $found }
+                try {
+                    open --raw $file.name
+                    | lines
+                    | first 30
+                    | where ($it | str contains '"cwd"')
+                    | get 0?
+                    | if $in != null { from json | get cwd? } else { null }
+                } catch { null }
+            }
         if $cwd == null { return null }
         {
             name: ($cwd | path split | last 2 | path join)

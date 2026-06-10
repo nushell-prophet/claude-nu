@@ -1405,6 +1405,30 @@ def "projects recovers name from session cwd and counts sessions" [] {
 }
 
 @test
+def "projects falls back to older sessions when newest lacks cwd" [] {
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let sessions_dir = $fake_home | path join ".claude" "projects" "-some-encoded-dir"
+    mkdir $sessions_dir
+
+    # Why: a summary-only file (a real Claude Code artifact) carries no cwd;
+    # when it is the newest, the project must not vanish from the listing.
+    let old_file = $sessions_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
+    '{"type":"user","cwd":"/real/parent/proj","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force $old_file
+    touch -m -t ((date now) - 1hr) $old_file
+    '{"type":"summary","summary":"Legacy sidechain summary"}'
+        | save --force ($sessions_dir | path join "12345678-1234-1234-1234-123456789abd.jsonl")
+
+    let result = with-env {HOME: $fake_home} { projects }
+
+    rm -rf $fake_home
+
+    assert equal ($result | length) 1
+    assert equal $result.0.name "parent/proj"
+    assert equal $result.0.count 2
+}
+
+@test
 def "get-sessions-dir suffix-matches only parent/name shorthands" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     mkdir ($fake_home | path join ".claude" "projects" "-other-place-foo")
