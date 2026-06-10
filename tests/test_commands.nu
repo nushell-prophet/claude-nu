@@ -1327,11 +1327,17 @@ def "discover-session-files extracts parent UUID from subagent path" [] {
 
 @test
 def "nu-complete returns empty for non-existent sessions dir" [] {
-    # Use a path that definitely doesn't exist
-    let result = do {
-        cd /tmp
-        nu-complete claude sessions
+    # Why: a fake HOME guarantees the sessions dir is absent — with the real
+    # HOME the test breaks on machines that have Claude sessions for /tmp.
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    mkdir $fake_home
+    let result = with-env {HOME: $fake_home} {
+        do {
+            cd /tmp
+            nu-complete claude sessions
+        }
     }
+    rm -rf $fake_home
 
     assert equal $result.completions []
     assert equal $result.options.sort false
