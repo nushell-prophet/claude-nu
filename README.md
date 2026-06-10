@@ -83,6 +83,7 @@ claude-nu parse-session -s <uuid> # Specific session
 
 | Flag | Description |
 |------|-------------|
+| `--session`, `-s` | Session UUID or path (default: most recent) |
 | `--summary` | Session summary |
 | `--edited-files` | Files modified by Edit/Write |
 | `--read-files` | Files read |

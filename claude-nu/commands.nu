@@ -605,7 +605,7 @@ export def sessions [
 # A plumbing command for downstream pipelines
 # Uses lazy evaluation: expensive extractions only run when their flags are requested
 export def parse-session [
-    session?: string@"nu-complete claude sessions" # Session UUID or path (default: most recent)
+    --session (-s): string@"nu-complete claude sessions" # Session UUID or path (default: most recent)
     # File operations
     --edited-files # Include edited_files column
     --read-files # Include read_files column
@@ -642,7 +642,7 @@ export def parse-session [
     let piped_files = resolve-piped-sessions $input
 
     if $piped_files != null and $session != null {
-        error make {msg: "Piped input conflicts with session argument"}
+        error make {msg: "Piped input conflicts with --session"}
     }
 
     let parse_one = {|session_file|

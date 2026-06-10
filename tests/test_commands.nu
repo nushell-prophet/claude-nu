@@ -658,7 +658,7 @@ def "parse-session extracts session_id from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --session-id
+    let result = parse-session --session $temp_file --session-id
 
     rm $temp_file
 
@@ -675,7 +675,7 @@ def "parse-session extracts slug from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --slug
+    let result = parse-session --session $temp_file --slug
 
     rm $temp_file
 
@@ -692,7 +692,7 @@ def "parse-session extracts version from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --version
+    let result = parse-session --session $temp_file --version
 
     rm $temp_file
 
@@ -709,7 +709,7 @@ def "parse-session extracts cwd from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --cwd
+    let result = parse-session --session $temp_file --cwd
 
     rm $temp_file
 
@@ -726,7 +726,7 @@ def "parse-session extracts git_branch from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --git-branch
+    let result = parse-session --session $temp_file --git-branch
 
     rm $temp_file
 
@@ -743,7 +743,7 @@ def "parse-session handles missing metadata with empty defaults" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --session-id --slug --version --cwd --git-branch
+    let result = parse-session --session $temp_file --session-id --slug --version --cwd --git-branch
 
     rm $temp_file
 
@@ -768,7 +768,7 @@ def "parse-session extracts thinking_level from user records" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --thinking-level
+    let result = parse-session --session $temp_file --thinking-level
 
     rm $temp_file
 
@@ -785,7 +785,7 @@ def "parse-session handles missing thinking metadata" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --thinking-level
+    let result = parse-session --session $temp_file --thinking-level
 
     rm $temp_file
 
@@ -808,7 +808,7 @@ def "parse-session extracts bash_commands list" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --bash-commands
+    let result = parse-session --session $temp_file --bash-commands
 
     rm $temp_file
 
@@ -829,7 +829,7 @@ def "parse-session counts bash commands correctly" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --bash-count
+    let result = parse-session --session $temp_file --bash-count
 
     rm $temp_file
 
@@ -848,7 +848,7 @@ def "parse-session extracts skill_invocations list" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --skill-invocations
+    let result = parse-session --session $temp_file --skill-invocations
 
     rm $temp_file
 
@@ -869,7 +869,7 @@ def "parse-session counts tool_errors from tool_result" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --tool-errors
+    let result = parse-session --session $temp_file --tool-errors
 
     rm $temp_file
 
@@ -889,7 +889,7 @@ def "parse-session counts ask_user_count" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --ask-user-count
+    let result = parse-session --session $temp_file --ask-user-count
 
     rm $temp_file
 
@@ -907,7 +907,7 @@ def "parse-session detects plan_mode_used true" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --plan-mode-used
+    let result = parse-session --session $temp_file --plan-mode-used
 
     rm $temp_file
 
@@ -925,7 +925,7 @@ def "parse-session detects plan_mode_used false" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --plan-mode-used
+    let result = parse-session --session $temp_file --plan-mode-used
 
     rm $temp_file
 
@@ -949,7 +949,7 @@ def "parse-session counts turn_count excluding meta messages" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --turn-count
+    let result = parse-session --session $temp_file --turn-count
 
     rm $temp_file
 
@@ -970,7 +970,7 @@ def "parse-session counts assistant_msg_count" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --assistant-msg-count
+    let result = parse-session --session $temp_file --assistant-msg-count
 
     rm $temp_file
 
@@ -989,7 +989,7 @@ def "parse-session counts tool_call_count" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --tool-call-count
+    let result = parse-session --session $temp_file --tool-call-count
 
     rm $temp_file
 
@@ -1007,7 +1007,7 @@ def "parse-session handles empty session for derived metrics" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --turn-count --assistant-msg-count --tool-call-count
+    let result = parse-session --session $temp_file --turn-count --assistant-msg-count --tool-call-count
 
     rm $temp_file
 
@@ -1031,7 +1031,7 @@ def "parse-session --all includes all columns" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --all
+    let result = parse-session --session $temp_file --all
     let cols = $result | columns
 
     rm $temp_file
@@ -1074,7 +1074,7 @@ def "parse-session default columns are minimal" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file
+    let result = parse-session --session $temp_file
     let cols = $result | columns
 
     rm $temp_file
@@ -1402,7 +1402,7 @@ def "extract-agents still recognizes legacy Task tool name" [] {
 @test
 def "parse-session finds agents in Agent-tool fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
-    let result = parse-session $p --agents
+    let result = parse-session --session $p --agents
     assert (($result.agents | length) > 0)
 }
 
@@ -1442,7 +1442,7 @@ def "extract-session-metadata returns empty defaults when no records carry a fie
 @test
 def "parse-session metadata works for file-history-snapshot-first fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_TASKFAMILY
-    let result = parse-session $p --session-id --cwd --version --git-branch
+    let result = parse-session --session $p --session-id --cwd --version --git-branch
     assert (($result.session_id | str length) > 0)
     assert (($result.cwd | str length) > 0)
     assert (($result.version | str length) > 0)
@@ -1451,7 +1451,7 @@ def "parse-session metadata works for file-history-snapshot-first fixture" [] {
 @test
 def "parse-session metadata works for permission-mode-first fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
-    let result = parse-session $p --session-id --cwd --version --git-branch
+    let result = parse-session --session $p --session-id --cwd --version --git-branch
     assert (($result.session_id | str length) > 0)
     assert (($result.cwd | str length) > 0)
     assert (($result.version | str length) > 0)
@@ -1460,7 +1460,7 @@ def "parse-session metadata works for permission-mode-first fixture" [] {
 @test
 def "parse-session metadata still works for older user-first fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST
-    let result = parse-session $p --session-id --cwd --version --git-branch
+    let result = parse-session --session $p --session-id --cwd --version --git-branch
     assert (($result.session_id | str length) > 0)
     assert (($result.cwd | str length) > 0)
     assert equal $result.version "2.1.129"
@@ -1470,7 +1470,7 @@ def "parse-session metadata still works for older user-first fixture" [] {
 def "parse-session falls back to ai-title aiTitle when no summary record" [] {
     # All vendored fixtures lack a summary record but have ai-title
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
-    let result = parse-session $p --summary
+    let result = parse-session --session $p --summary
     assert (($result.summary | str length) > 0)
 }
 
@@ -1484,7 +1484,7 @@ def "parse-session uses summary record when present in preference to ai-title" [
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --summary
+    let result = parse-session --session $temp_file --summary
     rm $temp_file
 
     assert equal $result.summary "Real summary record"
@@ -1510,14 +1510,14 @@ def "parse-session derives plan_mode_used true from permission-mode record" [] {
     # Why: 2.1.x replaced EnterPlanMode tool calls with top-level
     # permission-mode records carrying permissionMode value
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
-    let result = parse-session $p --plan-mode-used
+    let result = parse-session --session $p --plan-mode-used
     assert equal $result.plan_mode_used true
 }
 
 @test
 def "parse-session plan_mode_used false when no plan in permission-mode" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
-    let result = parse-session $p --plan-mode-used
+    let result = parse-session --session $p --plan-mode-used
     assert equal $result.plan_mode_used false
 }
 
@@ -1530,7 +1530,7 @@ def "parse-session plan_mode_used still detects legacy EnterPlanMode tool" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --plan-mode-used
+    let result = parse-session --session $temp_file --plan-mode-used
     rm $temp_file
 
     assert equal $result.plan_mode_used true
@@ -1573,7 +1573,7 @@ def "extract-tool-stats keeps backward-compat columns" [] {
 @test
 def "parse-session counts new tool names from fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_TASKFAMILY
-    let result = parse-session $p --tool-counts
+    let result = parse-session --session $p --tool-counts
     # ae3bbbf7 fixture has TaskCreate, TaskUpdate, TaskStop calls
     assert ($result.tool_counts.TaskCreate > 0)
     assert ($result.tool_counts.TaskUpdate > 0)
@@ -1589,7 +1589,7 @@ def "parse-session --all includes new tool-stat columns" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session $temp_file --all
+    let result = parse-session --session $temp_file --all
     let cols = $result | columns
     rm $temp_file
 
@@ -1612,7 +1612,7 @@ def "parse-session token-usage sums usage across turns" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let u = parse-session $temp_file --token-usage | get token_usage
+    let u = parse-session --session $temp_file --token-usage | get token_usage
     rm $temp_file
 
     assert equal $u.input_tokens 13
