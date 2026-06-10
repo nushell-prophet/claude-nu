@@ -721,7 +721,7 @@ export def discover-session-files [dir: path]: nothing -> table {
 
 # Parse Claude Code sessions for structured information.
 # Column flags select what to compute (lazy — only requested extractions run);
-# no column flags returns the default overview set, --all everything.
+# no column flags returns the default overview set, --all-columns everything.
 export def sessions [
     ...paths: path # Session files or directories to parse (default: current project sessions)
     --session (-s): string@"nu-complete claude sessions" # Single session UUID or path
@@ -763,7 +763,7 @@ export def sessions [
     --tool-call-count # Include tool_call_count column
     # Token usage
     --token-usage # Include token_usage column (record: input/output/cache_creation/cache_read tokens)
-    --all # Include all columns
+    --all-columns # Include all columns
 ]: [nothing -> table string -> table table -> table] {
     let input = $in
     # Why: piped string is a target path (`"dir" | sessions`); piped table
@@ -872,7 +872,7 @@ export def sessions [
         [$token_usage token_usage]
     ] | where include | get name
 
-    let selected = if $all {
+    let selected = if $all_columns {
         $SESSION_COLUMNS
     } else if ($requested | is-empty) {
         $DEFAULT_SESSION_COLUMNS

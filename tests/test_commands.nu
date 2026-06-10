@@ -1059,11 +1059,11 @@ def "sessions handles empty session for derived metrics" [] {
 }
 
 # =============================================================================
-# Tests for sessions command - --all flag
+# Tests for sessions command - --all-columns flag
 # =============================================================================
 
 @test
-def "sessions --all includes all columns" [] {
+def "sessions --all-columns includes all columns" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1073,7 +1073,7 @@ def "sessions --all includes all columns" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --all | first
+    let result = sessions $temp_file --all-columns | first
     let cols = $result | columns
 
     rm $temp_file
@@ -1738,7 +1738,7 @@ def "sessions counts new tool names from fixture" [] {
 }
 
 @test
-def "sessions --all includes new tool-stat columns" [] {
+def "sessions --all-columns includes new tool-stat columns" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
     let lines = [
         '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -1746,7 +1746,7 @@ def "sessions --all includes new tool-stat columns" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --all | first
+    let result = sessions $temp_file --all-columns | first
     let cols = $result | columns
     rm $temp_file
 

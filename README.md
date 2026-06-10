@@ -59,7 +59,7 @@ claude-nu sessions ~/other/project        # Sessions from another path
 claude-nu sessions --all-projects         # Every project under ~/.claude/projects
 claude-nu sessions -s <uuid>              # Single session (tab-completable)
 claude-nu sessions --last --token-usage   # Most recent session, just the requested column
-claude-nu sessions --all                  # All available columns
+claude-nu sessions --all-columns          # All available columns
 ```
 
 **Default (overview) columns:**
@@ -101,7 +101,7 @@ claude-nu sessions --all                  # All available columns
 | `--assistant-msg-count` | Assistant messages |
 | `--tool-call-count` | Total tool invocations |
 | `--token-usage` | Token totals (input/output/cache) |
-| `--all` | Include everything |
+| `--all-columns` | Include everything |
 
 ### `claude-nu export-session`
 
