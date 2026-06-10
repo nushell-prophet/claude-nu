@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 claude-nu is a Nushell module providing utilities for working with Claude Code sessions and CLI completions. Work in progress — features added as needed.
 
+The completions are a secondary feature, and more of a historical artifact. The main purpose of this repo is to build convenient Nushell tooling for interacting with Claude's sessions.
+
+Always think about CLI interface usability and ways to benefit from the pipelines architecture. If you see better ways to do what the user requests — mention that.
+
 ## Architecture
 
 ```
