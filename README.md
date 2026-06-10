@@ -38,7 +38,7 @@ Extract user messages from Claude Code session files.
 ```nushell
 claude-nu messages              # Messages from current session
 claude-nu messages 'pattern'    # Filter by regex
-claude-nu messages --all        # Include system messages
+claude-nu messages --include-system # Include system/meta messages
 claude-nu messages --raw        # Get raw JSONL records
 claude-nu messages -s <uuid>    # Specific session (tab-completable)
 ```
@@ -115,11 +115,11 @@ Export session dialogue to a markdown file for git tracking.
 claude-nu export-session                    # Uses session summary as topic
 claude-nu export-session "auth-refactor"    # Custom topic
 claude-nu export-session -s <uuid>          # Specific session
-claude-nu export-session -o ./docs          # Custom output directory
-claude-nu export-session --echo             # Print to stdout instead of file
+claude-nu export-session | claude-nu save-markdown          # Write to docs/sessions/
+claude-nu export-session | claude-nu save-markdown -o ./tmp # Custom output directory
 ```
 
-**Output format:** `docs/sessions/yyyymmdd+topic.md`
+**Output format:** `docs/sessions/yyyymmdd-topic.md`
 
 Filters out system-generated messages, keeping only user prompts and assistant responses.
 
