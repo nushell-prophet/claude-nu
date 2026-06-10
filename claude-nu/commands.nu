@@ -322,40 +322,12 @@ export def messages [
                     }
                 }
             }
-            # Drop assistant messages with no visible text
-            | where {|r|
+            # Extract visible text once; the regex filter and output read it
+            | insert text {|r|
                 match $r.type? {
-                    "assistant" => (do $extract_assistant $r | str trim | is-not-empty)
-                    _ => true
-                }
-            }
-
-        let filtered = $messages
-            | if $regex == null { } else {
-                where {
-                    let msg = $in
-                    match $msg.type? {
-                        "assistant" => (do $extract_assistant $msg | $in =~ $regex)
-                        _ => {
-                            let content = $msg.message?.content?
-                            if ($content | describe) =~ '^(list|table)' {
-                                ($content | get content --optional | str join "\n") =~ $regex
-                            } else {
-                                $content =~ $regex
-                            }
-                        }
-                    }
-                }
-            }
-
-        if $raw {
-            $filtered | sort-by timestamp
-        } else {
-            $filtered | each {|msg|
-                let message = match $msg.type? {
-                    "assistant" => (do $extract_assistant $msg)
+                    "assistant" => (do $extract_assistant $r)
                     _ => {
-                        let content = $msg.message?.content?
+                        let content = $r.message?.content?
                         if ($content | describe) =~ '^(list|table)' {
                             $content | get content --optional | str join "\n"
                         } else {
@@ -363,8 +335,18 @@ export def messages [
                         }
                     }
                 }
-                {role: $msg.type message: $message timestamp: ($msg.timestamp? | into datetime)}
             }
+            # Drop assistant messages with no visible text
+            | where {|r| $r.type? != "assistant" or ($r.text | str trim | is-not-empty) }
+
+        let filtered = $messages
+            | if $regex == null { } else { where text =~ $regex }
+
+        if $raw {
+            $filtered | reject text | sort-by timestamp
+        } else {
+            $filtered
+            | each {|msg| {role: $msg.type message: $msg.text timestamp: ($msg.timestamp? | into datetime)} }
             | sort-by timestamp
             | if $with_responses { } else { reject role }
         }
