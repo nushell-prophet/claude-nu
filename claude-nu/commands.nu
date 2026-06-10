@@ -126,12 +126,19 @@ export def "nu-complete claude sessions" []: nothing -> record {
         | each {|file|
             let uuid = $file.name | path basename | str replace '.jsonl' ''
             let size = $file.size | into string
-            let lines = try {
-                open --raw $file.name | lines | first 5 | each { from json }
-            } catch { [] }
-            let summary = $lines | get 0?.summary? | default "No summary"
+            let raw_lines = try { open --raw $file.name | lines } catch { [] }
+            # Why: the title lives in summary/ai-title records anywhere in the
+            # file. String-match first so a Tab press never JSON-parses whole
+            # session files; extract-summary then filters false-positive lines
+            # (e.g. messages quoting the pattern) by record type.
+            let summary = $raw_lines
+                | where $it =~ '"type":"(summary|ai-title)"'
+                | each { try { from json } catch { {} } }
+                | extract-summary
+                | if ($in | is-empty) { "No summary" } else { }
+            let head = try { $raw_lines | first 5 | each { from json } } catch { [] }
             # Timestamps are on message records, not summary headers
-            let timestamp = $lines
+            let timestamp = $head
                 | where timestamp? != null
                 | get 0?.timestamp?
                 | if ($in != null) { into datetime } else { $file.modified }
@@ -380,7 +387,9 @@ export def extract-summary []: table -> string {
     if ($from_summary | is-not-empty) {
         return $from_summary
     }
-    $records | where type? == "ai-title" | get 0?.aiTitle? | default ""
+    # Why: Claude Code rewrites ai-title as the session evolves; the last
+    # record carries the current title, matching what the app shows.
+    $records | where type? == "ai-title" | reverse | get 0?.aiTitle? | default ""
 }
 
 # Extract session metadata from records, walking each one to find each field.
