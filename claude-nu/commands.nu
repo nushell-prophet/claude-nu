@@ -76,11 +76,16 @@ const NUSHELL_DOCS_DIR = 'nushell-docs'
 const NUSHELL_DOCS_REPO = 'https://github.com/nushell/nushell.github.io.git'
 const NUSHELL_DOCS_FOLDERS = ['blog' 'book' 'cookbook']
 
+# Root of Claude Code session storage: ~/.claude/projects
+def projects-root []: nothing -> path {
+    $env.HOME | path join ".claude" "projects"
+}
+
 # Helper to get project sessions directory
 export def get-sessions-dir [
     project?: path # Project path, or `parent/name` shorthand (default: $env.PWD)
 ]: nothing -> path {
-    let projects_root = $env.HOME | path join ".claude" "projects"
+    let projects_root = projects-root
     let direct = ($project | default $env.PWD) | path expand | str replace --all '/' '-'
     let direct_dir = $projects_root | path join $direct
 
@@ -114,7 +119,7 @@ export def get-sessions-dir [
 # `name` is the last two segments of the real project path; `path` is the
 # sessions directory, so rows pipe straight into `sessions`.
 export def projects []: nothing -> table {
-    let projects_root = $env.HOME | path join ".claude" "projects"
+    let projects_root = projects-root
     if not ($projects_root | path exists) { return [] }
 
     ls $projects_root
@@ -189,6 +194,11 @@ export def resolve-session-file [
     $files | first | get name
 }
 
+# Session UUID from a session file path
+def session-id-from-path []: path -> string {
+    path basename | str replace '.jsonl' ''
+}
+
 # Completion for session UUIDs
 export def "nu-complete claude sessions" []: nothing -> record {
     let sessions_dir = get-sessions-dir
@@ -200,7 +210,7 @@ export def "nu-complete claude sessions" []: nothing -> record {
     let completions = ls $sessions_dir
         | where name =~ $UUID_JSONL_PATTERN
         | each {|file|
-            let uuid = $file.name | path basename | str replace '.jsonl' ''
+            let uuid = $file.name | session-id-from-path
             let size = $file.size | into string
             let raw_lines = try { open --raw $file.name | lines } catch { [] }
             # Why: the title lives in summary/ai-title records anywhere in the
@@ -262,7 +272,7 @@ export def messages [
         if $project != null {
             error make {msg: "--all-projects and --project are mutually exclusive"}
         }
-        let projects_dir = $env.HOME | path join ".claude" "projects"
+        let projects_dir = projects-root
         if not ($projects_dir | path exists) {
             error make {msg: "No projects directory found"}
         }
@@ -299,7 +309,7 @@ export def messages [
             error make {msg: $"Session file not found: ($session_file)"}
         }
 
-        let session_uuid = $session_file | path basename | str replace '.jsonl' ''
+        let session_uuid = $session_file | session-id-from-path
 
         # Why: --include-thinking surfaces thinking-only assistant turns
         # (otherwise dropped by the visible-text filter below). Keep
@@ -436,6 +446,11 @@ export def extract-summary []: table -> string {
     $records | where type? == "ai-title" | reverse | get 0?.aiTitle? | default ""
 }
 
+# First non-null value of a field across records, "" when absent
+def pick-first [field: cell-path]: table -> string {
+    get $field --optional | compact | first | default ""
+}
+
 # Extract session metadata from records, walking each one to find each field.
 # Why: in 2.1.x first record can be permission-mode (sessionId only) or
 # file-history-snapshot (no metadata). A "first non-summary record" lookup
@@ -443,24 +458,18 @@ export def extract-summary []: table -> string {
 # that actually carries it.
 export def extract-session-metadata []: table -> record {
     let records = $in
-    let pick = {|field|
-        $records | get $field --optional | compact | first | default ""
-    }
     {
-        session_id: (do $pick "sessionId")
-        slug: (do $pick "slug")
-        version: (do $pick "version")
-        cwd: (do $pick "cwd")
-        git_branch: (do $pick "gitBranch")
+        session_id: ($records | pick-first $.sessionId)
+        slug: ($records | pick-first $.slug)
+        version: ($records | pick-first $.version)
+        cwd: ($records | pick-first $.cwd)
+        git_branch: ($records | pick-first $.gitBranch)
     }
 }
 
 # Extract thinking level from user records
 export def extract-thinking-level []: table -> string {
-    get thinkingMetadata.level --optional
-    | compact
-    | first
-    | default ""
+    pick-first $.thinkingMetadata.level
 }
 
 # Extract first/last timestamps from user records
@@ -533,6 +542,12 @@ export def extract-derived-metrics [
     }
 }
 
+# Why: math sum errors on empty input in nu 0.107; every column sum
+# (token usage, user_msg_length, response_length) guards through this.
+def sum-or-zero []: list -> int {
+    if ($in | is-empty) { 0 } else { math sum }
+}
+
 # Aggregate token usage across assistant records.
 # Why: costUSD is null for subscription users, so token counts are the only
 # usable cost/effort signal. Usage lives at message.usage per assistant turn;
@@ -540,12 +555,7 @@ export def extract-derived-metrics [
 # top-level fields already hold the per-message totals.
 export def extract-token-usage []: table -> record {
     let usages = get message.usage --optional | compact
-    # Why: math sum errors on empty input in nu 0.107, so guard like the
-    # response_length/user_msg_length sums elsewhere in this module.
-    let sum = {|field|
-        $usages | get $field --optional | compact
-        | if ($in | is-empty) { 0 } else { math sum }
-    }
+    let sum = {|field| $usages | get $field --optional | compact | sum-or-zero }
     {
         input_tokens: (do $sum "input_tokens")
         output_tokens: (do $sum "output_tokens")
@@ -582,7 +592,7 @@ def parse-session-columns [selected: list<string>]: path -> record {
 
     let user_msg_length = $user_messages
         | each { str length }
-        | if ($in | is-empty) { 0 } else { math sum }
+        | sum-or-zero
 
     let mentioned_files = if ("mentioned_files" in $selected) {
         $user_records
@@ -594,7 +604,7 @@ def parse-session-columns [selected: list<string>]: path -> record {
     let response_length = if ("response_length" in $selected) {
         $assistant_records
         | each { extract-text-content | str length }
-        | if ($in | is-empty) { 0 } else { math sum }
+        | sum-or-zero
     } else { 0 }
 
     let summary = if ("summary" in $selected) { $records | extract-summary } else { "" }
@@ -794,7 +804,7 @@ export def sessions [
         [{path: (resolve-session-file $session) parent_session_id: null}]
     } else {
         let target_paths = if $all_projects {
-            let projects_dir = $env.HOME | path join ".claude" "projects"
+            let projects_dir = projects-root
             if not ($projects_dir | path exists) {
                 error make {msg: "No projects directory found"}
             }
@@ -1013,7 +1023,7 @@ export def export-session [
             }
 
         # Format as markdown
-        let session_id = $session_file | path basename | str replace '.jsonl' ''
+        let session_id = $session_file | session-id-from-path
         let date_formatted = $first_timestamp | into datetime | format date '%Y-%m-%d'
 
         let frontmatter = [
