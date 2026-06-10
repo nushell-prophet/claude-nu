@@ -1103,8 +1103,8 @@ export def save-markdown [
 }
 
 # Download Claude Code documentation from sitemap
-export def download-documentation [
-    --output-dir (-o): path = "claude-code-docs" # Output directory for downloaded docs
+export def download-claude-docs [
+    --output-dir (-o): path = $CLAUDE_DOCS_DIR # Output directory for downloaded docs
 ]: nothing -> table {
     # Fetch and parse sitemap
     let sitemap_xml = http get https://code.claude.com/docs/sitemap.xml
@@ -1139,7 +1139,7 @@ export def download-documentation [
 export def fetch-claude-docs [
     --commit # Create a git commit after downloading
 ]: nothing -> nothing {
-    let results = download-documentation --output-dir $CLAUDE_DOCS_DIR
+    let results = download-claude-docs
 
     # Print results
     $results | each {|r|
