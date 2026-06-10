@@ -40,7 +40,7 @@ claude-nu messages              # Messages from current session
 claude-nu messages 'pattern'    # Filter by regex
 claude-nu messages --include-system # Include system/meta messages
 claude-nu messages --raw        # Get raw JSONL records
-claude-nu messages -s <uuid>    # Specific session (tab-completable)
+claude-nu messages --session <uuid> # Specific session (tab-completable)
 ```
 
 **Output:**
@@ -57,7 +57,7 @@ Parse session files into structured data. Column flags select what to compute â€
 claude-nu sessions                        # All sessions in current project (overview columns)
 claude-nu sessions ~/other/project        # Sessions from another path
 claude-nu sessions --all-projects         # Every project under ~/.claude/projects
-claude-nu sessions -s <uuid>              # Single session (tab-completable)
+claude-nu sessions --session <uuid>       # Single session (tab-completable)
 claude-nu sessions --last --token-usage   # Most recent session, just the requested column
 claude-nu sessions --all-columns          # All available columns
 ```
@@ -110,9 +110,9 @@ Export session dialogue to a markdown file for git tracking.
 ```nushell
 claude-nu export-session                    # Uses session summary as topic
 claude-nu export-session "auth-refactor"    # Custom topic
-claude-nu export-session -s <uuid>          # Specific session
+claude-nu export-session --session <uuid>   # Specific session
 claude-nu export-session | claude-nu save-markdown          # Write to docs/sessions/
-claude-nu export-session | claude-nu save-markdown -o ./tmp # Custom output directory
+claude-nu export-session | claude-nu save-markdown --output-dir ./tmp # Custom output directory
 ```
 
 **Output format:** `docs/sessions/yyyymmdd-topic.md`

@@ -1883,7 +1883,7 @@ def "export-session --tools picks file_path for Read tool placeholder" [] {
 @test
 def "messages default drops thinking-only assistant turns" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST
-    let result = messages --session $p -w
+    let result = messages --session $p --include-responses
 
     # No [thinking] prefix should leak when --include-thinking is absent
     assert not ($result | get message | any { $in | str contains "[thinking]" })
@@ -1892,8 +1892,8 @@ def "messages default drops thinking-only assistant turns" [] {
 @test
 def "messages --include-thinking surfaces thinking-only assistant turns" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST
-    let default = messages --session $p -w | where role == "assistant" | length
-    let with_thinking = messages --session $p -w --include-thinking | where role == "assistant" | length
+    let default = messages --session $p --include-responses | where role == "assistant" | length
+    let with_thinking = messages --session $p --include-responses --include-thinking | where role == "assistant" | length
 
     # Fixture has 38 thinking-only turns; flag must surface at least some
     assert ($with_thinking > $default)
@@ -1908,7 +1908,7 @@ def "messages --include-thinking prefixes thinking blocks" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = messages --session $temp_file -w --include-thinking
+    let result = messages --session $temp_file --include-responses --include-thinking
     rm $temp_file
 
     let assistant_msg = $result | where role == "assistant" | first | get message

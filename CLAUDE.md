@@ -49,7 +49,7 @@ use /path/to/completions/nu.nu *
 claude-nu projects                     # Projects by recency (name, path, count, modified)
 claude-nu projects | where name =~ nu | claude-nu sessions | claude-nu messages # pipe chain scoping
 claude-nu messages                     # User messages from current session
-claude-nu messages 'regex' -a          # Search across all sessions in project
+claude-nu messages 'regex' --all-sessions # Search across all sessions in project
 claude-nu messages --all-projects      # Search across all projects
 claude-nu sessions                     # All sessions with summaries and stats
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, thinking level...

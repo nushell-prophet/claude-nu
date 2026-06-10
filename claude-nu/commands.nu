@@ -244,14 +244,14 @@ export def "nu-complete claude sessions" []: nothing -> record {
 # Extract user messages from Claude Code session files
 export def messages [
     regex?: string # Filter messages by regex pattern
-    --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
-    --all-sessions (-a) # Search across all project sessions
-    --project (-p): path@"nu-complete claude projects" # Project path to search in (default: current directory)
+    --session: string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
+    --all-sessions # Search across all project sessions
+    --project: path@"nu-complete claude projects" # Project path to search in (default: current directory)
     --all-projects # Search across all projects
-    --include-system (-m) # Include system/meta messages (not just user-typed)
-    --include-thinking (-t) # Include assistant thinking blocks (prefixed with [thinking])
-    --raw (-r) # Return raw message records instead of just content
-    --include-responses (-w) # Include assistant responses (text only, interleaved)
+    --include-system # Include system/meta messages (not just user-typed)
+    --include-thinking # Include assistant thinking blocks (prefixed with [thinking])
+    --raw # Return raw message records instead of just content
+    --include-responses # Include assistant responses (text only, interleaved)
 ]: [nothing -> table table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
@@ -724,7 +724,7 @@ export def discover-session-files [dir: path]: nothing -> table {
 # no column flags returns the default overview set, --all-columns everything.
 export def sessions [
     ...paths: path # Session files or directories to parse (default: current project sessions)
-    --session (-s): string@"nu-complete claude sessions" # Single session UUID or path
+    --session: string@"nu-complete claude sessions" # Single session UUID or path
     --last # Only the most recent session of the current project
     --all-projects # Enumerate sessions across every project under ~/.claude/projects
     # Session info
@@ -735,7 +735,7 @@ export def sessions [
     --user-msg-length # Include user_msg_length column (total chars typed by user)
     --response-length # Include response_length column (total chars of assistant text)
     --agent-count # Include agent_count column
-    --agents (-g) # Include agents column
+    --agents # Include agents column
     # File operations
     --mentioned-files # Include mentioned_files column (@-mentions in user messages)
     --read-files # Include read_files column
@@ -963,7 +963,7 @@ def render-content [--tools --thinking]: record -> string {
 # Export session dialogue to structured data with markdown
 export def export-session [
     topic?: string # Topic for filename (default: session summary)
-    --session (-s): string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
+    --session: string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
     --tools # Render tool_use/tool_result blocks as one-line blockquote placeholders (default: drop)
 ]: [nothing -> record table -> table] {
     let input = $in
@@ -1062,7 +1062,7 @@ export def export-session [
 
 # Save exported session markdown to files
 export def save-markdown [
-    --output-dir (-o): path # Output directory (default: docs/sessions)
+    --output-dir: path # Output directory (default: docs/sessions)
 ]: [record -> string table -> table] {
     let input = $in
     let out_dir = $output_dir | default "docs/sessions"
@@ -1104,7 +1104,7 @@ export def save-markdown [
 
 # Download Claude Code documentation from sitemap
 export def download-claude-docs [
-    --output-dir (-o): path = $CLAUDE_DOCS_DIR # Output directory for downloaded docs
+    --output-dir: path = $CLAUDE_DOCS_DIR # Output directory for downloaded docs
 ]: nothing -> table {
     # Fetch and parse sitemap
     let sitemap_xml = http get https://code.claude.com/docs/sitemap.xml
