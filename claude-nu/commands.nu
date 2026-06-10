@@ -102,38 +102,47 @@ export def get-sessions-dir [
     }
 }
 
+# List Claude Code projects under ~/.claude/projects, most recent first.
+# `name` is the last two segments of the real project path; `path` is the
+# sessions directory, so rows pipe straight into `sessions`.
+export def projects []: nothing -> table {
+    let projects_root = $env.HOME | path join ".claude" "projects"
+    if not ($projects_root | path exists) { return [] }
+
+    ls $projects_root
+    | where type == dir
+    | sort-by modified --reverse
+    | each {|dir|
+        let files = ls $dir.name | where name =~ $UUID_JSONL_PATTERN
+        if ($files | is-empty) { return null }
+        let newest = $files | sort-by modified --reverse | get 0.name
+        # Why: the dir name is lossy (`/` and `-` both encode to `-`), so
+        # recover the real path from a session's `cwd` for true segments.
+        let cwd = try {
+            open --raw $newest
+            | lines
+            | first 30
+            | where ($it | str contains '"cwd"')
+            | get 0?
+            | if $in != null { from json | get cwd? } else { null }
+        } catch { null }
+        if $cwd == null { return null }
+        {
+            name: ($cwd | path split | last 2 | path join)
+            path: $dir.name
+            count: ($files | length)
+            modified: $dir.modified
+        }
+    }
+    | compact
+}
+
 # Completer for --project: existing projects by recency, shown as `parent/name`
 export def "nu-complete claude projects" []: nothing -> record {
-    let projects_root = $env.HOME | path join ".claude" "projects"
-    if not ($projects_root | path exists) {
-        return {options: {sort: false} completions: []}
+    {
+        options: {sort: false}
+        completions: (projects | each {|p| {value: $p.name description: ($p.modified | date humanize)} })
     }
-
-    let completions = ls $projects_root
-        | where type == dir
-        | sort-by modified --reverse
-        | each {|dir|
-            let newest = ls $dir.name
-                | where name =~ $UUID_JSONL_PATTERN
-                | sort-by modified --reverse
-                | get 0?.name?
-            if $newest == null { return null }
-            # Why: the dir name is lossy (`/` and `-` both encode to `-`), so
-            # recover the real path from a session's `cwd` for true segments.
-            let cwd = try {
-                open --raw $newest
-                | lines
-                | first 30
-                | where ($it | str contains '"cwd"')
-                | get 0?
-                | if $in != null { from json | get cwd? } else { null }
-            } catch { null }
-            if $cwd == null { return null }
-            {value: ($cwd | path split | last 2 | path join) description: ($dir.modified | date humanize)}
-        }
-        | compact
-
-    {options: {sort: false} completions: $completions}
 }
 
 # Resolve session file path from UUID, path, or default to most recent
@@ -785,7 +794,17 @@ export def sessions [
     }
 
     let session_rows = if $piped_files != null {
-        $piped_files | each {|p| {path: $p parent_session_id: null} }
+        # Why: a piped path may be a project dir (`projects | sessions`) —
+        # expand it like a positional dir; files are parsed as-is.
+        $piped_files
+        | each {|p|
+            if ($p | path type) == "dir" {
+                discover-session-files $p
+            } else {
+                [{path: $p parent_session_id: null}]
+            }
+        }
+        | flatten
     } else if $session != null or $last {
         # Why: parse-session defaulted to the most recent session; after the
         # merge (bare scope = whole project) --last keeps that workflow.

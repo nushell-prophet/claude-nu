@@ -1372,6 +1372,55 @@ def "nu-complete claude sessions shows latest ai-title in description" [] {
     assert ($result.completions.0.description | str contains "Current title")
 }
 
+@test
+def "projects recovers name from session cwd and counts sessions" [] {
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let sessions_dir = $fake_home | path join ".claude" "projects" "-some-encoded-dir"
+    mkdir $sessions_dir
+
+    # Why: the encoded dir name is lossy — `name` must come from cwd,
+    # not from decoding the dir name.
+    let lines = [
+        '{"type":"user","cwd":"/real/parent/proj","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+    $lines | str join "\n"
+        | save --force ($sessions_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl")
+    $lines | str join "\n"
+        | save --force ($sessions_dir | path join "12345678-1234-1234-1234-123456789abd.jsonl")
+
+    let result = with-env {HOME: $fake_home} { projects }
+
+    rm -rf $fake_home
+
+    assert equal ($result | length) 1
+    assert equal $result.0.name "parent/proj"
+    assert equal $result.0.count 2
+    assert equal $result.0.path $sessions_dir
+}
+
+@test
+def "projects skips dirs without session files" [] {
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    mkdir ($fake_home | path join ".claude" "projects" "-empty-project")
+
+    let result = with-env {HOME: $fake_home} { projects }
+
+    rm -rf $fake_home
+
+    assert equal $result []
+}
+
+@test
+def "sessions expands piped project dirs like positional dirs" [] {
+    # Why: `projects | sessions` pipes dirs through the path column —
+    # they must discover subagent files exactly as positional dirs do.
+    let piped = [{path: $FIXTURES_SESSIONS_DIR}] | sessions
+    let positional = null | sessions $FIXTURES_SESSIONS_DIR
+
+    assert equal ($piped | sort-by path) ($positional | sort-by path)
+    assert (($piped | where parent_session_id != null | length) > 0)
+}
+
 # =============================================================================
 # sanitize-topic tests
 # =============================================================================
