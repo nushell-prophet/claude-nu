@@ -378,20 +378,22 @@ export def messages [
     | flatten
 }
 
-# Helper to extract text content from a message
-export def extract-text-content []: record -> string {
+# Shared dispatch on message content shape: string content passes through
+# as-is, content block lists go through $render, anything else yields "".
+def render-message-content [render: closure]: record -> string {
     let content = $in.message?.content?
-    let content_type = $content | describe
-    match $content_type {
+    match ($content | describe) {
         "string" => { $content }
-        $t if ($t =~ '^(list|table)') => {
-            $content
-            | where type? == "text"
-            | get text --optional
-            | str join
-        }
+        $t if ($t =~ '^(list|table)') => { $content | do $render }
         _ => { "" }
     }
+}
+
+# Helper to extract text content from a message
+export def extract-text-content []: record -> string {
+    # Why: text blocks join with no separator (unlike render-content's "\n\n")
+    # — callers like user_msg_length count exact characters.
+    render-message-content { where type? == "text" | get text --optional | str join }
 }
 
 # Like extract-text-content but also surfaces thinking blocks, prefixed with
@@ -400,23 +402,7 @@ export def extract-text-content []: record -> string {
 # Why: messages --include-thinking exposes thinking-only assistant turns that
 # the visible-text filter would otherwise drop.
 export def extract-text-with-thinking []: record -> string {
-    let content = $in.message?.content?
-    match ($content | describe) {
-        "string" => { $content }
-        $t if ($t =~ '^(list|table)') => {
-            $content
-            | each {|b|
-                match $b.type? {
-                    "text" => ($b.text? | default "")
-                    "thinking" => $"[thinking] ($b.thinking? | default '')"
-                    _ => ""
-                }
-            }
-            | where { $in | is-not-empty }
-            | str join "\n\n"
-        }
-        _ => { "" }
-    }
+    render-content --thinking
 }
 
 # Helper to extract tool calls from assistant messages
@@ -927,17 +913,19 @@ def summarize-tool-input [input: any]: nothing -> string {
     }
 }
 
-# Render a single content block as one line of markdown for --tools mode.
-# text -> text as-is; tool_use/tool_result -> blockquote placeholder.
-def render-block []: record -> string {
+# Render a single content block as one line of markdown.
+# text -> text as-is; with --thinking, thinking -> `[thinking]`-prefixed text;
+# with --tools, tool_use/tool_result -> blockquote placeholder; else "".
+def render-block [--tools --thinking]: record -> string {
     let block = $in
     match $block.type? {
         "text" => ($block.text? | default "")
-        "tool_use" => {
+        "thinking" if $thinking => $"[thinking] ($block.thinking? | default '')"
+        "tool_use" if $tools => {
             let summary = summarize-tool-input $block.input? | to-one-line 120
             $"> [($block.name? | default 'tool'): ($summary)]"
         }
-        "tool_result" => {
+        "tool_result" if $tools => {
             let raw = $block.content?
             let txt = match ($raw | describe) {
                 "string" => $raw
@@ -954,24 +942,14 @@ def render-block []: record -> string {
     }
 }
 
-# Render a record's content blocks as markdown text. With --tools, tool_use
-# and tool_result blocks become one-line blockquote placeholders interleaved
-# with text. Without --tools, behaves like extract-text-content.
-def render-content [--tools]: record -> string {
-    let content = $in.message?.content?
-    match ($content | describe) {
-        "string" => { $content }
-        $t if ($t =~ '^(list|table)') => {
-            if $tools {
-                $content
-                | each { render-block }
-                | where { $in | is-not-empty }
-                | str join "\n\n"
-            } else {
-                $content | where type? == "text" | get text --optional | str join
-            }
-        }
-        _ => ""
+# Render a record's content blocks as markdown text, one block per paragraph.
+# Flags pass through to render-block: --tools renders tool_use/tool_result as
+# one-line blockquote placeholders, --thinking renders thinking blocks.
+def render-content [--tools --thinking]: record -> string {
+    render-message-content {
+        each { render-block --tools=$tools --thinking=$thinking }
+        | where { $in | is-not-empty }
+        | str join "\n\n"
     }
 }
 
