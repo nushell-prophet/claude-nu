@@ -51,45 +51,39 @@ claude-nu messages -s <uuid>    # Specific session (tab-completable)
 
 ### `claude-nu sessions`
 
-Parse session files into structured summaries.
+Parse session files into structured data. Column flags select what to compute — lazy evaluation, only requested extractions run.
 
 ```nushell
-claude-nu sessions                    # All sessions in current project
-claude-nu sessions ~/other/project    # Sessions from another path
+claude-nu sessions                        # All sessions in current project (overview columns)
+claude-nu sessions ~/other/project        # Sessions from another path
+claude-nu sessions --all-projects         # Every project under ~/.claude/projects
+claude-nu sessions -s <uuid>              # Single session (tab-completable)
+claude-nu sessions --last --token-usage   # Most recent session, just the requested column
+claude-nu sessions --all                  # All available columns
 ```
 
-**Output:**
+**Default (overview) columns:**
 | Column | Description |
 |--------|-------------|
 | `summary` | AI-generated session summary |
 | `first_timestamp` | Session start time |
 | `last_timestamp` | Last activity |
 | `user_msg_count` | Number of user messages |
+| `user_msg_length` | Total chars typed by user |
+| `response_length` | Total chars of assistant text |
 | `agent_count` | Subagents spawned |
-| `edited_files` | Files modified |
+| `agents` | Subagent info |
+| `mentioned_files` | @-mentions in user messages |
 | `read_files` | Files read |
+| `edited_files` | Files modified by Edit/Write |
+| `path` | Session file path |
+| `parent_session_id` | Parent UUID for subagent transcripts |
 
-### `claude-nu parse-session`
-
-Low-level command for extracting specific session data. Uses lazy evaluation—only requested fields are computed.
-
-```nushell
-claude-nu parse-session --summary --edited-files
-claude-nu parse-session --all     # All available fields
-claude-nu parse-session -s <uuid> # Specific session
-```
-
-**Available flags:**
+**Column flags:** any column flag switches output to `path`/`parent_session_id` plus the requested columns. Overview columns have flags too (`--summary`, `--first-timestamp`, …); the rest:
 
 | Flag | Description |
 |------|-------------|
-| `--session`, `-s` | Session UUID or path (default: most recent) |
-| `--summary` | Session summary |
-| `--edited-files` | Files modified by Edit/Write |
-| `--read-files` | Files read |
-| `--agents`, `-g` | Subagent info |
-| `--first-timestamp` | Session start |
-| `--last-timestamp` | Last activity |
+| `--user-messages` | List of user message texts |
 | `--session-id` | UUID |
 | `--slug` | Human-readable name |
 | `--version` | Claude Code version |
@@ -102,9 +96,11 @@ claude-nu parse-session -s <uuid> # Specific session
 | `--tool-errors` | Failed tool calls |
 | `--ask-user-count` | User questions asked |
 | `--plan-mode-used` | Whether plan mode was used |
+| `--tool-counts` | Per-tool call counts (TaskCreate/Update/Stop, Monitor, ToolSearch) |
 | `--turn-count` | User→assistant turns |
 | `--assistant-msg-count` | Assistant messages |
 | `--tool-call-count` | Total tool invocations |
+| `--token-usage` | Token totals (input/output/cache) |
 | `--all` | Include everything |
 
 ### `claude-nu export-session`

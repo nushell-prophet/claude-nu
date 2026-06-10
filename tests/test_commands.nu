@@ -675,11 +675,11 @@ def "messages command accepts full path via --session" [] {
 }
 
 # =============================================================================
-# Tests for parse-session command - Session metadata extraction
+# Tests for sessions command - Session metadata extraction
 # =============================================================================
 
 @test
-def "parse-session extracts session_id from first record" [] {
+def "sessions extracts session_id from first record" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -688,7 +688,7 @@ def "parse-session extracts session_id from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --session-id
+    let result = sessions $temp_file --session-id | first
 
     rm $temp_file
 
@@ -696,7 +696,7 @@ def "parse-session extracts session_id from first record" [] {
 }
 
 @test
-def "parse-session extracts slug from first record" [] {
+def "sessions extracts slug from first record" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -705,7 +705,7 @@ def "parse-session extracts slug from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --slug
+    let result = sessions $temp_file --slug | first
 
     rm $temp_file
 
@@ -713,7 +713,7 @@ def "parse-session extracts slug from first record" [] {
 }
 
 @test
-def "parse-session extracts version from first record" [] {
+def "sessions extracts version from first record" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -722,7 +722,7 @@ def "parse-session extracts version from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --version
+    let result = sessions $temp_file --version | first
 
     rm $temp_file
 
@@ -730,7 +730,7 @@ def "parse-session extracts version from first record" [] {
 }
 
 @test
-def "parse-session extracts cwd from first record" [] {
+def "sessions extracts cwd from first record" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -739,7 +739,7 @@ def "parse-session extracts cwd from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --cwd
+    let result = sessions $temp_file --cwd | first
 
     rm $temp_file
 
@@ -747,7 +747,7 @@ def "parse-session extracts cwd from first record" [] {
 }
 
 @test
-def "parse-session extracts git_branch from first record" [] {
+def "sessions extracts git_branch from first record" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -756,7 +756,7 @@ def "parse-session extracts git_branch from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --git-branch
+    let result = sessions $temp_file --git-branch | first
 
     rm $temp_file
 
@@ -764,7 +764,7 @@ def "parse-session extracts git_branch from first record" [] {
 }
 
 @test
-def "parse-session handles missing metadata with empty defaults" [] {
+def "sessions handles missing metadata with empty defaults" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -773,7 +773,7 @@ def "parse-session handles missing metadata with empty defaults" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --session-id --slug --version --cwd --git-branch
+    let result = sessions $temp_file --session-id --slug --version --cwd --git-branch | first
 
     rm $temp_file
 
@@ -785,11 +785,11 @@ def "parse-session handles missing metadata with empty defaults" [] {
 }
 
 # =============================================================================
-# Tests for parse-session command - Thinking level extraction
+# Tests for sessions command - Thinking level extraction
 # =============================================================================
 
 @test
-def "parse-session extracts thinking_level from user records" [] {
+def "sessions extracts thinking_level from user records" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -798,7 +798,7 @@ def "parse-session extracts thinking_level from user records" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --thinking-level
+    let result = sessions $temp_file --thinking-level | first
 
     rm $temp_file
 
@@ -806,7 +806,7 @@ def "parse-session extracts thinking_level from user records" [] {
 }
 
 @test
-def "parse-session handles missing thinking metadata" [] {
+def "sessions handles missing thinking metadata" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -815,7 +815,7 @@ def "parse-session handles missing thinking metadata" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --thinking-level
+    let result = sessions $temp_file --thinking-level | first
 
     rm $temp_file
 
@@ -823,11 +823,11 @@ def "parse-session handles missing thinking metadata" [] {
 }
 
 # =============================================================================
-# Tests for parse-session command - Tool statistics
+# Tests for sessions command - Tool statistics
 # =============================================================================
 
 @test
-def "parse-session extracts bash_commands list" [] {
+def "sessions extracts bash_commands list" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -838,7 +838,7 @@ def "parse-session extracts bash_commands list" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --bash-commands
+    let result = sessions $temp_file --bash-commands | first
 
     rm $temp_file
 
@@ -848,7 +848,7 @@ def "parse-session extracts bash_commands list" [] {
 }
 
 @test
-def "parse-session counts bash commands correctly" [] {
+def "sessions counts bash commands correctly" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -859,7 +859,7 @@ def "parse-session counts bash commands correctly" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --bash-count
+    let result = sessions $temp_file --bash-count | first
 
     rm $temp_file
 
@@ -867,7 +867,7 @@ def "parse-session counts bash commands correctly" [] {
 }
 
 @test
-def "parse-session extracts skill_invocations list" [] {
+def "sessions extracts skill_invocations list" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -878,7 +878,7 @@ def "parse-session extracts skill_invocations list" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --skill-invocations
+    let result = sessions $temp_file --skill-invocations | first
 
     rm $temp_file
 
@@ -888,7 +888,7 @@ def "parse-session extracts skill_invocations list" [] {
 }
 
 @test
-def "parse-session counts tool_errors from tool_result" [] {
+def "sessions counts tool_errors from tool_result" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -899,7 +899,7 @@ def "parse-session counts tool_errors from tool_result" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --tool-errors
+    let result = sessions $temp_file --tool-errors | first
 
     rm $temp_file
 
@@ -907,7 +907,7 @@ def "parse-session counts tool_errors from tool_result" [] {
 }
 
 @test
-def "parse-session counts ask_user_count" [] {
+def "sessions counts ask_user_count" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -919,7 +919,7 @@ def "parse-session counts ask_user_count" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --ask-user-count
+    let result = sessions $temp_file --ask-user-count | first
 
     rm $temp_file
 
@@ -927,7 +927,7 @@ def "parse-session counts ask_user_count" [] {
 }
 
 @test
-def "parse-session detects plan_mode_used true" [] {
+def "sessions detects plan_mode_used true" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -937,7 +937,7 @@ def "parse-session detects plan_mode_used true" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --plan-mode-used
+    let result = sessions $temp_file --plan-mode-used | first
 
     rm $temp_file
 
@@ -945,7 +945,7 @@ def "parse-session detects plan_mode_used true" [] {
 }
 
 @test
-def "parse-session detects plan_mode_used false" [] {
+def "sessions detects plan_mode_used false" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -955,7 +955,7 @@ def "parse-session detects plan_mode_used false" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --plan-mode-used
+    let result = sessions $temp_file --plan-mode-used | first
 
     rm $temp_file
 
@@ -963,11 +963,11 @@ def "parse-session detects plan_mode_used false" [] {
 }
 
 # =============================================================================
-# Tests for parse-session command - Derived metrics
+# Tests for sessions command - Derived metrics
 # =============================================================================
 
 @test
-def "parse-session counts turn_count excluding meta messages" [] {
+def "sessions counts turn_count excluding meta messages" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -979,7 +979,7 @@ def "parse-session counts turn_count excluding meta messages" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --turn-count
+    let result = sessions $temp_file --turn-count | first
 
     rm $temp_file
 
@@ -987,7 +987,7 @@ def "parse-session counts turn_count excluding meta messages" [] {
 }
 
 @test
-def "parse-session counts assistant_msg_count" [] {
+def "sessions counts assistant_msg_count" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1000,7 +1000,7 @@ def "parse-session counts assistant_msg_count" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --assistant-msg-count
+    let result = sessions $temp_file --assistant-msg-count | first
 
     rm $temp_file
 
@@ -1008,7 +1008,7 @@ def "parse-session counts assistant_msg_count" [] {
 }
 
 @test
-def "parse-session counts tool_call_count" [] {
+def "sessions counts tool_call_count" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1019,7 +1019,7 @@ def "parse-session counts tool_call_count" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --tool-call-count
+    let result = sessions $temp_file --tool-call-count | first
 
     rm $temp_file
 
@@ -1027,7 +1027,7 @@ def "parse-session counts tool_call_count" [] {
 }
 
 @test
-def "parse-session handles empty session for derived metrics" [] {
+def "sessions handles empty session for derived metrics" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     # Single record to avoid empty file edge case
@@ -1037,7 +1037,7 @@ def "parse-session handles empty session for derived metrics" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --turn-count --assistant-msg-count --tool-call-count
+    let result = sessions $temp_file --turn-count --assistant-msg-count --tool-call-count | first
 
     rm $temp_file
 
@@ -1047,11 +1047,11 @@ def "parse-session handles empty session for derived metrics" [] {
 }
 
 # =============================================================================
-# Tests for parse-session command - --all flag
+# Tests for sessions command - --all flag
 # =============================================================================
 
 @test
-def "parse-session --all includes all columns" [] {
+def "sessions --all includes all columns" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1061,7 +1061,7 @@ def "parse-session --all includes all columns" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --all
+    let result = sessions $temp_file --all | first
     let cols = $result | columns
 
     rm $temp_file
@@ -1092,28 +1092,6 @@ def "parse-session --all includes all columns" [] {
     assert ("assistant_msg_count" in $cols)
     assert ("tool_call_count" in $cols)
     assert ("token_usage" in $cols)
-}
-
-@test
-def "parse-session default columns are minimal" [] {
-    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
-
-    let lines = [
-        '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
-    ]
-
-    $lines | str join "\n" | save --force $temp_file
-
-    let result = parse-session --session $temp_file
-    let cols = $result | columns
-
-    rm $temp_file
-
-    # Default should only have 3 columns
-    assert equal ($cols | length) 3
-    assert ("path" in $cols)
-    assert ("user_messages" in $cols)
-    assert ("mentioned_files" in $cols)
 }
 
 # =============================================================================
@@ -1430,9 +1408,9 @@ def "extract-agents still recognizes legacy Task tool name" [] {
 }
 
 @test
-def "parse-session finds agents in Agent-tool fixture" [] {
+def "sessions finds agents in Agent-tool fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
-    let result = parse-session --session $p --agents
+    let result = sessions $p --agents | first
     assert (($result.agents | length) > 0)
 }
 
@@ -1470,42 +1448,42 @@ def "extract-session-metadata returns empty defaults when no records carry a fie
 }
 
 @test
-def "parse-session metadata works for file-history-snapshot-first fixture" [] {
+def "sessions metadata works for file-history-snapshot-first fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_TASKFAMILY
-    let result = parse-session --session $p --session-id --cwd --version --git-branch
+    let result = sessions $p --session-id --cwd --version --git-branch | first
     assert (($result.session_id | str length) > 0)
     assert (($result.cwd | str length) > 0)
     assert (($result.version | str length) > 0)
 }
 
 @test
-def "parse-session metadata works for permission-mode-first fixture" [] {
+def "sessions metadata works for permission-mode-first fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
-    let result = parse-session --session $p --session-id --cwd --version --git-branch
+    let result = sessions $p --session-id --cwd --version --git-branch | first
     assert (($result.session_id | str length) > 0)
     assert (($result.cwd | str length) > 0)
     assert (($result.version | str length) > 0)
 }
 
 @test
-def "parse-session metadata still works for older user-first fixture" [] {
+def "sessions metadata still works for older user-first fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST
-    let result = parse-session --session $p --session-id --cwd --version --git-branch
+    let result = sessions $p --session-id --cwd --version --git-branch | first
     assert (($result.session_id | str length) > 0)
     assert (($result.cwd | str length) > 0)
     assert equal $result.version "2.1.129"
 }
 
 @test
-def "parse-session falls back to ai-title aiTitle when no summary record" [] {
+def "sessions falls back to ai-title aiTitle when no summary record" [] {
     # All vendored fixtures lack a summary record but have ai-title
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
-    let result = parse-session --session $p --summary
+    let result = sessions $p --summary | first
     assert (($result.summary | str length) > 0)
 }
 
 @test
-def "parse-session uses summary record when present in preference to ai-title" [] {
+def "sessions uses summary record when present in preference to ai-title" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
     let lines = [
         '{"type":"summary","summary":"Real summary record"}'
@@ -1514,7 +1492,7 @@ def "parse-session uses summary record when present in preference to ai-title" [
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --summary
+    let result = sessions $temp_file --summary | first
     rm $temp_file
 
     assert equal $result.summary "Real summary record"
@@ -1536,23 +1514,23 @@ def "sessions falls back to ai-title aiTitle for summary" [] {
 }
 
 @test
-def "parse-session derives plan_mode_used true from permission-mode record" [] {
+def "sessions derives plan_mode_used true from permission-mode record" [] {
     # Why: 2.1.x replaced EnterPlanMode tool calls with top-level
     # permission-mode records carrying permissionMode value
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
-    let result = parse-session --session $p --plan-mode-used
+    let result = sessions $p --plan-mode-used | first
     assert equal $result.plan_mode_used true
 }
 
 @test
-def "parse-session plan_mode_used false when no plan in permission-mode" [] {
+def "sessions plan_mode_used false when no plan in permission-mode" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
-    let result = parse-session --session $p --plan-mode-used
+    let result = sessions $p --plan-mode-used | first
     assert equal $result.plan_mode_used false
 }
 
 @test
-def "parse-session plan_mode_used still detects legacy EnterPlanMode tool" [] {
+def "sessions plan_mode_used still detects legacy EnterPlanMode tool" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
     let lines = [
         '{"type":"user","message":{"content":"plan this"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -1560,7 +1538,7 @@ def "parse-session plan_mode_used still detects legacy EnterPlanMode tool" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --plan-mode-used
+    let result = sessions $temp_file --plan-mode-used | first
     rm $temp_file
 
     assert equal $result.plan_mode_used true
@@ -1601,9 +1579,9 @@ def "extract-tool-stats keeps backward-compat columns" [] {
 }
 
 @test
-def "parse-session counts new tool names from fixture" [] {
+def "sessions counts new tool names from fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_TASKFAMILY
-    let result = parse-session --session $p --tool-counts
+    let result = sessions $p --tool-counts | first
     # ae3bbbf7 fixture has TaskCreate, TaskUpdate, TaskStop calls
     assert ($result.tool_counts.TaskCreate > 0)
     assert ($result.tool_counts.TaskUpdate > 0)
@@ -1611,7 +1589,7 @@ def "parse-session counts new tool names from fixture" [] {
 }
 
 @test
-def "parse-session --all includes new tool-stat columns" [] {
+def "sessions --all includes new tool-stat columns" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
     let lines = [
         '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -1619,7 +1597,7 @@ def "parse-session --all includes new tool-stat columns" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = parse-session --session $temp_file --all
+    let result = sessions $temp_file --all | first
     let cols = $result | columns
     rm $temp_file
 
@@ -1633,7 +1611,7 @@ def "parse-session --all includes new tool-stat columns" [] {
 }
 
 @test
-def "parse-session token-usage sums usage across turns" [] {
+def "sessions token-usage sums usage across turns" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
     let lines = [
         '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -1642,7 +1620,7 @@ def "parse-session token-usage sums usage across turns" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let u = parse-session --session $temp_file --token-usage | get token_usage
+    let u = sessions $temp_file --token-usage | first | get token_usage
     rm $temp_file
 
     assert equal $u.input_tokens 13

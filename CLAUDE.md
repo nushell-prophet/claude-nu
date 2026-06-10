@@ -33,7 +33,7 @@ claude-nu/
 
 **Key concepts:**
 - Session files: JSONL in `~/.claude/projects/<encoded-path>/` where path is `-` separated segments
-- `parse-session` uses lazy evaluation — 25+ optional columns, only requested extractions run
+- `sessions` uses lazy evaluation — 25+ optional columns, only requested extractions run
 - `nu.nu` completions dynamically parse script AST to discover subcommands at tab-time
 - `claude.nu` session picker shows age, size, and summary alongside UUIDs
 
@@ -50,7 +50,8 @@ claude-nu messages                     # User messages from current session
 claude-nu messages 'regex' -a          # Search across all sessions in project
 claude-nu messages --all-projects      # Search across all projects
 claude-nu sessions                     # All sessions with summaries and stats
-claude-nu parse-session --all          # 25+ fields: tools, errors, agents, thinking level...
+claude-nu sessions --all               # 25+ fields: tools, errors, agents, thinking level...
+claude-nu sessions --last --token-usage # Just the requested columns, most recent session
 claude-nu export-session               # Export to markdown with YAML frontmatter
 ```
 
