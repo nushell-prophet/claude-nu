@@ -701,6 +701,17 @@ def "messages always includes session column" [] {
     assert equal ($result | first | get session) ($temp_file | path basename | str replace '.jsonl' '')
 }
 
+@test
+def "save-markdown fails fast on messages-shaped input" [] {
+    let err = try {
+        [{role: "user" message: "hi" timestamp: "2024-01-15T10:00:00Z" session: "abc"}] | save-markdown
+        null
+    } catch {|e| $e.msg }
+
+    assert ($err != null)
+    assert ($err =~ "missing columns: date, topic, markdown")
+}
+
 # =============================================================================
 # Tests for sessions command - Session metadata extraction
 # =============================================================================

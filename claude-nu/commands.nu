@@ -1082,6 +1082,16 @@ export def save-markdown [
 
     # Normalize to table
     let rows = if $was_record { [$input] } else { $input }
+
+    let missing = [session date topic markdown] | where $it not-in ($rows | columns)
+    if ($rows | is-not-empty) and ($missing | is-not-empty) {
+        error make --unspanned {
+            msg: $"input is missing columns: ($missing | str join ', ')"
+            help: "save-markdown takes export-session output — pipe through it first: ... | claude-nu export-session | claude-nu save-markdown"
+        }
+    }
+
+    let rows = $rows
         | insert filename {|r| $"($r.date)-($r.topic).md" }
 
     # Detect collisions: filenames shared by multiple sessions
