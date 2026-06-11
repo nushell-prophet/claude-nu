@@ -51,6 +51,8 @@ claude-nu projects | where name =~ nu | claude-nu sessions | claude-nu messages 
 claude-nu messages                     # User messages from current session
 claude-nu messages 'regex' --all-sessions # Search across all sessions in project
 claude-nu messages --all-projects      # Search across all projects
+claude-nu messages 'regex' --all-sessions | claude-nu messages --include-responses # full dialogues of matched sessions
+claude-nu messages 'regex' --all-sessions | claude-nu export-session | claude-nu save-markdown # export matched sessions to markdown
 claude-nu sessions                     # All sessions with summaries and stats
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, thinking level...
 claude-nu sessions --last --token-usage # Just the requested columns, most recent session

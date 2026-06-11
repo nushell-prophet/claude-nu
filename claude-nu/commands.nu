@@ -386,9 +386,10 @@ export def messages [
             | sort-by timestamp
             | if $include_responses { } else { reject role }
         }
-        | if ($all_sessions or $all_projects or $piped_files != null) {
-            each { insert session $session_uuid }
-        } else { }
+        # Why: rows are self-describing — the session column makes messages
+        # output a valid session selector for resolve-piped-sessions, so it
+        # can pipe back into messages/export-session/sessions.
+        | each { insert session $session_uuid }
         | if $all_projects {
             insert project ($session_file | path dirname | path basename)
         } else { }

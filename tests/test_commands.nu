@@ -686,6 +686,21 @@ def "messages command accepts full path via --session" [] {
     assert equal ($result | first | get message) "Hello from path test"
 }
 
+@test
+def "messages always includes session column" [] {
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
+
+    '{"type":"user","message":{"content":"Self-describing row"},"timestamp":"2024-01-15T10:00:00Z"}'
+    | save --force $temp_file
+
+    let result = messages --session $temp_file
+
+    rm $temp_file
+
+    assert ("session" in ($result | columns))
+    assert equal ($result | first | get session) ($temp_file | path basename | str replace '.jsonl' '')
+}
+
 # =============================================================================
 # Tests for sessions command - Session metadata extraction
 # =============================================================================
