@@ -176,7 +176,18 @@ export def resolve-session-file [
         if ($session | str ends-with '.jsonl') {
             return $session
         }
-        return ($dir | path join $"($session).jsonl")
+        let candidate = $dir | path join $"($session).jsonl"
+        if ($candidate | path exists) {
+            return $candidate
+        }
+        # Why: UUIDs are globally unique, but piped rows (or --session) may
+        # point at a session from another project — search all projects
+        # before giving up.
+        let found = glob (projects-root | path join $"*/($session).jsonl")
+        if ($found | is-empty) {
+            error make {msg: $"Session not found in any project: ($session)"}
+        }
+        return ($found | first)
     }
 
     if not ($dir | path exists) {
