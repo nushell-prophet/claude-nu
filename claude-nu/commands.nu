@@ -260,6 +260,7 @@ export def "nu-complete claude sessions" []: nothing -> record {
 # skills, plugins, hooks, MCP, ...); permissions still apply.
 export def ask [
     prompt?: string # Prompt text; placed before piped stdin when both are given
+    --here # Run in the current directory so claude sees the project (cwd, git status, recent commits)
     --keep-sbx-token # Keep the sandbox placeholder ANTHROPIC_API_KEY (when a real key or proxy base-URL is set)
 ]: [nothing -> string, string -> string] {
     let piped = $in
@@ -275,6 +276,18 @@ export def ask [
     # this child only makes claude fall back to stored login credentials, so it just works.
     # Keep it only when a real key or proxy base-URL is set (--keep-sbx-token).
     let key_env = if $keep_sbx_token { {} } else { {ANTHROPIC_API_KEY: null} }
+    # Why: Claude injects the launch dir's env block (cwd, git status, recent commits)
+    # even under --safe-mode, so a question answered from a repo leaks that repo. Run from
+    # a neutral empty dir by default so the answer uses only the prompt; --here opts into
+    # the current dir to include the project.
+    let workdir = if $here {
+        $env.PWD
+    } else {
+        let neutral = $nu.temp-dir | path join claude-nu-ask
+        mkdir $neutral
+        $neutral
+    }
+    cd $workdir
     with-env $key_env { $parts | str join "\n\n" | claude --print --safe-mode }
 }
 
