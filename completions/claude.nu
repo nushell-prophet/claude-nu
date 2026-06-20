@@ -128,6 +128,7 @@ export extern main [
     --chrome # Enable Claude in Chrome integration
     --no-chrome # Disable Claude in Chrome integration
     --bare # Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, prefetches, keychain reads, CLAUDE.md auto-discovery
+    --safe-mode # Start with all customizations disabled (CLAUDE.md, skills, plugins, hooks, MCP, custom commands/agents, ...); sets CLAUDE_CODE_SAFE_MODE=1
     --brief # Enable SendUserMessage tool for agent-to-user communication
     --exclude-dynamic-system-prompt-sections # Move per-machine sections out of the system prompt for cache reuse
     --effort: string@$effort_levels # Effort level for the current session (low, medium, high, xhigh, max)
