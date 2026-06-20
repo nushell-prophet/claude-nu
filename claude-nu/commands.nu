@@ -260,6 +260,7 @@ export def "nu-complete claude sessions" []: nothing -> record {
 # skills, plugins, hooks, MCP, ...); permissions still apply.
 export def ask [
     prompt?: string # Prompt text; placed before piped stdin when both are given
+    --no-sbx-token # Drop the sandbox placeholder ANTHROPIC_API_KEY so claude uses your login auth
 ]: [nothing -> string, string -> string] {
     let piped = $in
     let parts = [$prompt $piped] | compact | where ($it | str trim | is-not-empty)
@@ -269,7 +270,11 @@ export def ask [
             help: "pass an argument, pipe stdin, or both"
         }
     }
-    $parts | str join "\n\n" | claude --print --safe-mode
+    # Why: in the sandbox ANTHROPIC_API_KEY is the literal placeholder 'proxy-managed';
+    # a nested claude uses it verbatim and gets 'Invalid API key'. Setting it to null
+    # removes it for this child only, so claude falls back to stored login credentials.
+    let key_env = if $no_sbx_token { {ANTHROPIC_API_KEY: null} } else { {} }
+    with-env $key_env { $parts | str join "\n\n" | claude --print --safe-mode }
 }
 
 # Extract user messages from Claude Code session files
