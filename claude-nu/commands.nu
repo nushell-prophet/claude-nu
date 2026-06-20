@@ -252,6 +252,26 @@ export def "nu-complete claude sessions" []: nothing -> record {
     }
 }
 
+# Run a one-shot Claude prompt non-interactively and return its text response.
+#
+# Merges an optional positional prompt with optional piped stdin (prompt first,
+# blank line, then stdin) and runs `claude --print --safe-mode`. At least one
+# source must carry text. --safe-mode disables all customizations (CLAUDE.md,
+# skills, plugins, hooks, MCP, ...); permissions still apply.
+export def ask [
+    prompt?: string # Prompt text; placed before piped stdin when both are given
+]: [nothing -> string, string -> string] {
+    let piped = $in
+    let parts = [$prompt $piped] | compact | where ($it | str trim | is-not-empty)
+    if ($parts | is-empty) {
+        error make --unspanned {
+            msg: "claude-nu ask: no prompt given"
+            help: "pass an argument, pipe stdin, or both"
+        }
+    }
+    $parts | str join "\n\n" | claude --print --safe-mode
+}
+
 # Extract user messages from Claude Code session files
 export def messages [
     regex?: string # Filter messages by regex pattern
