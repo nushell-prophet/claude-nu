@@ -19,6 +19,44 @@ const SYSTEM_PREFIXES = [
     "Caveat:"
 ]
 
+# All selectable session columns, paired with overview membership (the fixed
+# set `sessions` returns when no columns are requested). Single source of truth:
+# the --columns completer, --all-columns, and the default set all read from it;
+# parse-session-columns computes each name. Adding a column means one row here
+# plus its computation there — no flag list to keep in sync.
+const SESSION_COLUMNS = [
+    [name default];
+    [summary true]
+    [first_timestamp true]
+    [last_timestamp true]
+    [user_msg_count true]
+    [user_msg_length true]
+    [response_length true]
+    [agent_count true]
+    [agents true]
+    [mentioned_files true]
+    [read_files true]
+    [edited_files true]
+    [user_messages false]
+    [session_id false]
+    [slug false]
+    [version false]
+    [cwd false]
+    [git_branch false]
+    [thinking_level false]
+    [bash_commands false]
+    [bash_count false]
+    [skill_invocations false]
+    [tool_errors false]
+    [ask_user_count false]
+    [plan_mode_used false]
+    [tool_counts false]
+    [turn_count false]
+    [assistant_msg_count false]
+    [tool_call_count false]
+    [token_usage false]
+]
+
 # Root of Claude Code session storage: ~/.claude/projects
 def projects-root []: nothing -> path {
     $env.HOME | path join ".claude" "projects"
@@ -683,50 +721,21 @@ export def discover-session-files [dir: path]: nothing -> table {
     $top_level | append $subagent_files | sort-by modified --reverse
 }
 
+# Completer for --columns: selectable session column names.
+export def "nu-complete claude session-columns" []: nothing -> list<string> {
+    $SESSION_COLUMNS | get name
+}
+
 # Parse Claude Code sessions for structured information.
-# Column flags select what to compute (lazy — only requested extractions run);
-# no column flags returns the default overview set, --all-columns everything.
+# `--columns` selects what to compute (lazy — only requested extractions run);
+# omit it for the default overview set, `--all-columns` for everything. Column
+# names are listed in SESSION_COLUMNS (and tab-complete on --columns).
 export def sessions [
     ...paths: path # Session files or directories to parse (default: current project sessions)
     --session: string@"nu-complete claude sessions" # Single session UUID or path
     --last # Only the most recent session of the current project
     --all-projects # Enumerate sessions across every project under ~/.claude/projects
-    # Session info
-    --summary # Include summary column
-    --first-timestamp # Include first_timestamp column
-    --last-timestamp # Include last_timestamp column
-    --user-msg-count # Include user_msg_count column
-    --user-msg-length # Include user_msg_length column (total chars typed by user)
-    --response-length # Include response_length column (total chars of assistant text)
-    --agent-count # Include agent_count column
-    --agents # Include agents column
-    # File operations
-    --mentioned-files # Include mentioned_files column (@-mentions in user messages)
-    --read-files # Include read_files column
-    --edited-files # Include edited_files column
-    --user-messages # Include user_messages column (list of user message texts)
-    # Session metadata
-    --session-id # Include session_id column
-    --slug # Include slug column (human-readable session name)
-    --version # Include version column (Claude Code version)
-    --cwd # Include cwd column (working directory)
-    --git-branch # Include git_branch column
-    # Thinking
-    --thinking-level # Include thinking_level column
-    # Tool statistics
-    --bash-commands # Include bash_commands column (list of commands)
-    --bash-count # Include bash_count column
-    --skill-invocations # Include skill_invocations column
-    --tool-errors # Include tool_errors column (count of failed tool calls)
-    --ask-user-count # Include ask_user_count column
-    --plan-mode-used # Include plan_mode_used column (bool)
-    --tool-counts # Include tool_counts column (record keyed by tool name: TaskCreate/Update/Stop, Monitor, ToolSearch)
-    # Derived metrics
-    --turn-count # Include turn_count column (user→assistant turns)
-    --assistant-msg-count # Include assistant_msg_count column
-    --tool-call-count # Include tool_call_count column
-    # Token usage
-    --token-usage # Include token_usage column (record: input/output/cache_creation/cache_read tokens)
+    --columns (-c): list<string>@"nu-complete claude session-columns" # Columns to include (default: overview set)
     --all-columns # Include all columns
 ]: [nothing -> table string -> table table -> table] {
     let input = $in
@@ -803,51 +812,28 @@ export def sessions [
         error make {msg: "No session files found"}
     }
 
-    # Why: single source of truth for the column set. Each row pairs a column's
-    # --flag with its name and whether it belongs to the default overview (the
-    # fixed set `sessions` returned before columns became selectable). Adding a
-    # column means one row here, plus its flag above and its computation in
-    # parse-session-columns — not five separate lists to keep in sync.
-    let column_flags = [
-        [include name default];
-        [$summary summary true]
-        [$first_timestamp first_timestamp true]
-        [$last_timestamp last_timestamp true]
-        [$user_msg_count user_msg_count true]
-        [$user_msg_length user_msg_length true]
-        [$response_length response_length true]
-        [$agent_count agent_count true]
-        [$agents agents true]
-        [$mentioned_files mentioned_files true]
-        [$read_files read_files true]
-        [$edited_files edited_files true]
-        [$user_messages user_messages false]
-        [$session_id session_id false]
-        [$slug slug false]
-        [$version version false]
-        [$cwd cwd false]
-        [$git_branch git_branch false]
-        [$thinking_level thinking_level false]
-        [$bash_commands bash_commands false]
-        [$bash_count bash_count false]
-        [$skill_invocations skill_invocations false]
-        [$tool_errors tool_errors false]
-        [$ask_user_count ask_user_count false]
-        [$plan_mode_used plan_mode_used false]
-        [$tool_counts tool_counts false]
-        [$turn_count turn_count false]
-        [$assistant_msg_count assistant_msg_count false]
-        [$tool_call_count tool_call_count false]
-        [$token_usage token_usage false]
-    ]
+    if $all_columns and ($columns | is-not-empty) {
+        error make {msg: "--columns and --all-columns are mutually exclusive"}
+    }
 
-    let requested = $column_flags | where include | get name
+    let all_names = $SESSION_COLUMNS | get name
 
     let selected = if $all_columns {
-        $column_flags | get name
-    } else if ($requested | is-empty) {
-        $column_flags | where default | get name
-    } else { $requested }
+        $all_names
+    } else if ($columns | is-empty) {
+        $SESSION_COLUMNS | where default | get name
+    } else {
+        # Why: fail fast on a typo'd column name — parse-session-columns would
+        # otherwise silently omit it, hiding the mistake.
+        let unknown = $columns | where $it not-in $all_names
+        if ($unknown | is-not-empty) {
+            error make {
+                msg: $"Unknown session column\(s): ($unknown | str join ', ')"
+                help: $"valid columns: ($all_names | str join ', ')"
+            }
+        }
+        $columns
+    }
 
     $session_rows | each {|row|
         if not ($row.path | path exists) {
