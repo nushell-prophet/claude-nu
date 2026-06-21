@@ -194,15 +194,15 @@ export def resolve-session-file [
         error make {msg: "No sessions directory found for current project"}
     }
 
-    let files = ls $dir
-        | where name =~ $UUID_JSONL_PATTERN
-        | sort-by modified --reverse
+    # Why: one discoverer owns the listing and recency order, so "most recent
+    # session" is the first top-level (non-subagent) row it yields.
+    let files = discover-session-files $dir | where parent_session_id == null
 
     if ($files | is-empty) {
         error make {msg: "No session files found"}
     }
 
-    $files | first | get name
+    $files | first | get path
 }
 
 # Session UUID from a session file path
@@ -329,11 +329,14 @@ export def messages [
         ls $projects_dir
         | where type == dir
         | each {|dir|
-            ls $dir.name
-            | where name =~ $UUID_JSONL_PATTERN
-            | sort-by modified --reverse
+            # Why: messages reports human-typed turns, so restrict to top-level
+            # sessions — subagent transcripts hold agent-driven turns, not the
+            # user's. Newest-first comes from the discoverer, so `take 1` is
+            # each project's most recent session.
+            discover-session-files $dir.name
+            | where parent_session_id == null
             | if $all_sessions { } else { take 1 }
-            | get name
+            | get path
         }
         | flatten
     } else if $all_sessions {
@@ -344,10 +347,10 @@ export def messages [
         if not ($dir | path exists) {
             error make {msg: $"Sessions directory not found: ($dir)"}
         }
-        ls $dir
-        | where name =~ $UUID_JSONL_PATTERN
-        | sort-by modified --reverse
-        | get name
+        # Why: top-level only — subagent transcripts aren't the user's messages.
+        discover-session-files $dir
+        | where parent_session_id == null
+        | get path
     } else {
         let dir = get-sessions-dir $project
         [(resolve-session-file $session --sessions-dir $dir)]
@@ -750,24 +753,30 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
     }
 }
 
-# Discover session files inside a single directory.
-# Returns rows {path, parent_session_id} where parent_session_id is the
-# parent session UUID for subagent files (basename of `<uuid>/subagents/`),
-# null for top-level session files.
+# Discover session files in a directory, newest first. Returns rows
+# {path, parent_session_id, modified}; parent_session_id is the parent session
+# UUID for subagent files (`<uuid>/subagents/agent-*.jsonl`), null for top-level
+# files. Single source of truth for the on-disk session layout — every command
+# that lists or picks session files goes through here, so the name patterns, the
+# subagent walk, and the recency order live in one place. Callers wanting only
+# human-driven sessions filter `where parent_session_id == null`.
 export def discover-session-files [dir: path]: nothing -> table {
-    let top_level = glob ($dir | path join "*.jsonl")
-        | where $it =~ $UUID_JSONL_PATTERN
-        | each {|p| {path: $p parent_session_id: null} }
+    # Why: top-level files sit directly in $dir, so one `ls` lists them with
+    # their mtimes; an empty dir is just [], whereas `ls` on a no-match glob
+    # errors — keeping the empty case graceful without a special branch.
+    let top_level = ls $dir
+        | where name =~ $UUID_JSONL_PATTERN
+        | each {|f| {path: $f.name parent_session_id: null modified: $f.modified} }
 
+    # Why: subagent transcripts are nested out of reach of a flat `ls`, so glob
+    # descends to them; the parent UUID is two levels up from the file.
     let subagent_files = glob ($dir | path join "*/subagents/*.jsonl")
         | where $it =~ $AGENT_JSONL_PATTERN
         | each {|p|
-            # Why: layout is `<dir>/<uuid>/subagents/agent-*.jsonl`,
-            # so the parent UUID is two levels up from the file.
-            {path: $p parent_session_id: ($p | path dirname | path dirname | path basename)}
+            {path: $p parent_session_id: ($p | path dirname | path dirname | path basename) modified: (ls $p | get 0.modified)}
         }
 
-    $top_level | append $subagent_files
+    $top_level | append $subagent_files | sort-by modified --reverse
 }
 
 # Parse Claude Code sessions for structured information.

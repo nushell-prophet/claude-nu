@@ -702,6 +702,65 @@ def "messages always includes session column" [] {
 }
 
 @test
+def "messages --all-sessions covers top-level sessions but not subagents" [] {
+    # Why: --all-sessions routes through the shared discoverer and filters to
+    # top-level — subagent transcripts hold agent-driven turns, not the user's.
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let sessions_dir = $fake_home | path join ".claude" "projects" "-work-proj"
+    let parent_uuid = "11111111-1111-1111-1111-111111111111"
+    mkdir ($sessions_dir | path join $parent_uuid "subagents")
+
+    '{"type":"user","message":{"content":"alpha top message"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($sessions_dir | path join $"($parent_uuid).jsonl")
+    '{"type":"user","message":{"content":"beta top message"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($sessions_dir | path join "22222222-2222-2222-2222-222222222222.jsonl")
+    '{"type":"user","message":{"content":"gamma subagent message"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($sessions_dir | path join $parent_uuid "subagents" "agent-abc123.jsonl")
+
+    let msgs = with-env {HOME: $fake_home} {
+        messages --all-sessions --project "/work/proj" | get message
+    }
+
+    rm -rf $fake_home
+
+    assert ("alpha top message" in $msgs)
+    assert ("beta top message" in $msgs)
+    assert ("gamma subagent message" not-in $msgs)
+}
+
+@test
+def "messages --all-projects takes newest per project, --all-sessions takes all" [] {
+    # Why: --all-projects without --all-sessions is the newest session of each
+    # project; with it, every session. Both restrict to top-level files.
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let projects_dir = $fake_home | path join ".claude" "projects"
+    let proj_a = $projects_dir | path join "-proj-a"
+    let proj_b = $projects_dir | path join "-proj-b"
+    mkdir $proj_a $proj_b
+
+    let a_old = $proj_a | path join "11111111-1111-1111-1111-111111111111.jsonl"
+    let a_new = $proj_a | path join "22222222-2222-2222-2222-222222222222.jsonl"
+    '{"type":"user","message":{"content":"a-old"},"timestamp":"2024-01-15T10:00:00Z"}' | save --force $a_old
+    '{"type":"user","message":{"content":"a-new"},"timestamp":"2024-01-15T10:00:00Z"}' | save --force $a_new
+    touch -m -t ((date now) - 2hr) $a_old
+    touch -m -t ((date now) - 1hr) $a_new
+    '{"type":"user","message":{"content":"b-only"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($proj_b | path join "33333333-3333-3333-3333-333333333333.jsonl")
+
+    let newest = with-env {HOME: $fake_home} { messages --all-projects | get message }
+    let all = with-env {HOME: $fake_home} { messages --all-projects --all-sessions | get message }
+
+    rm -rf $fake_home
+
+    assert ("a-new" in $newest)
+    assert ("b-only" in $newest)
+    assert ("a-old" not-in $newest)
+    assert ("a-old" in $all)
+    assert ("a-new" in $all)
+    assert ("b-only" in $all)
+}
+
+@test
 def "save-markdown fails fast on messages-shaped input" [] {
     let err = try {
         [{role: "user" message: "hi" timestamp: "2024-01-15T10:00:00Z" session: "abc"}] | save-markdown
@@ -1345,6 +1404,28 @@ def "discover-session-files extracts parent UUID from subagent path" [] {
     let agent_rows = $result | where parent_session_id == $parent_uuid
     assert equal ($agent_rows | length) 1
     assert equal $agent_rows.0.path $agent_file
+}
+
+@test
+def "discover-session-files orders rows newest first" [] {
+    # Why: the recency callers (most-recent session, newest-of-each-project)
+    # trust this order instead of re-sorting, so it is a contract.
+    let temp_dir = $nu.temp-dir | path join $"test-discover-(random uuid)"
+    mkdir $temp_dir
+
+    let older = $temp_dir | path join "11111111-1111-1111-1111-111111111111.jsonl"
+    let newer = $temp_dir | path join "22222222-2222-2222-2222-222222222222.jsonl"
+    "" | save --force $older
+    "" | save --force $newer
+    touch -m -t ((date now) - 2hr) $older
+    touch -m -t ((date now) - 1hr) $newer
+
+    let result = discover-session-files $temp_dir
+
+    rm -rf $temp_dir
+
+    assert ("modified" in ($result | columns))
+    assert equal ($result | get path) [$newer $older]
 }
 
 # =============================================================================
