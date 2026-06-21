@@ -1086,13 +1086,14 @@ export def export-session [
         let session_id = $session_file | session-id-from-path
         let date_formatted = $first_timestamp | into datetime | format date '%Y-%m-%d'
 
-        let frontmatter = [
-            '---'
-            $"date: ($date_formatted)"
-            $"session: ($session_id)"
-            ...(if $summary != "" { [$"summary: ($summary)"] } else { [] })
-            '---'
-        ] | str join "\n"
+        let frontmatter = {
+            date: $date_formatted
+            session: $session_id
+        }
+        | if $summary != "" {insert summary $summary} else {}
+        | to yaml
+        | $"---\n($in)---\n"
+
 
         let title = $"# ($resolved_topic | str replace --all '-' ' ' | str title-case)"
 
