@@ -19,55 +19,6 @@ const SYSTEM_PREFIXES = [
     "Caveat:"
 ]
 
-# All selectable session columns, in output order
-const SESSION_COLUMNS = [
-    summary
-    first_timestamp
-    last_timestamp
-    user_msg_count
-    user_msg_length
-    response_length
-    agent_count
-    agents
-    mentioned_files
-    read_files
-    edited_files
-    user_messages
-    session_id
-    slug
-    version
-    cwd
-    git_branch
-    thinking_level
-    bash_commands
-    bash_count
-    skill_invocations
-    tool_errors
-    ask_user_count
-    plan_mode_used
-    tool_counts
-    turn_count
-    assistant_msg_count
-    tool_call_count
-    token_usage
-]
-
-# Overview returned when no column flags are given — the fixed set `sessions`
-# always returned before columns became selectable
-const DEFAULT_SESSION_COLUMNS = [
-    summary
-    first_timestamp
-    last_timestamp
-    user_msg_count
-    user_msg_length
-    response_length
-    agent_count
-    agents
-    mentioned_files
-    read_files
-    edited_files
-]
-
 # Root of Claude Code session storage: ~/.claude/projects
 def projects-root []: nothing -> path {
     $env.HOME | path join ".claude" "projects"
@@ -852,43 +803,50 @@ export def sessions [
         error make {msg: "No session files found"}
     }
 
-    let requested = [
-        [include name];
-        [$summary summary]
-        [$first_timestamp first_timestamp]
-        [$last_timestamp last_timestamp]
-        [$user_msg_count user_msg_count]
-        [$user_msg_length user_msg_length]
-        [$response_length response_length]
-        [$agent_count agent_count]
-        [$agents agents]
-        [$mentioned_files mentioned_files]
-        [$read_files read_files]
-        [$edited_files edited_files]
-        [$user_messages user_messages]
-        [$session_id session_id]
-        [$slug slug]
-        [$version version]
-        [$cwd cwd]
-        [$git_branch git_branch]
-        [$thinking_level thinking_level]
-        [$bash_commands bash_commands]
-        [$bash_count bash_count]
-        [$skill_invocations skill_invocations]
-        [$tool_errors tool_errors]
-        [$ask_user_count ask_user_count]
-        [$plan_mode_used plan_mode_used]
-        [$tool_counts tool_counts]
-        [$turn_count turn_count]
-        [$assistant_msg_count assistant_msg_count]
-        [$tool_call_count tool_call_count]
-        [$token_usage token_usage]
-    ] | where include | get name
+    # Why: single source of truth for the column set. Each row pairs a column's
+    # --flag with its name and whether it belongs to the default overview (the
+    # fixed set `sessions` returned before columns became selectable). Adding a
+    # column means one row here, plus its flag above and its computation in
+    # parse-session-columns — not five separate lists to keep in sync.
+    let column_flags = [
+        [include name default];
+        [$summary summary true]
+        [$first_timestamp first_timestamp true]
+        [$last_timestamp last_timestamp true]
+        [$user_msg_count user_msg_count true]
+        [$user_msg_length user_msg_length true]
+        [$response_length response_length true]
+        [$agent_count agent_count true]
+        [$agents agents true]
+        [$mentioned_files mentioned_files true]
+        [$read_files read_files true]
+        [$edited_files edited_files true]
+        [$user_messages user_messages false]
+        [$session_id session_id false]
+        [$slug slug false]
+        [$version version false]
+        [$cwd cwd false]
+        [$git_branch git_branch false]
+        [$thinking_level thinking_level false]
+        [$bash_commands bash_commands false]
+        [$bash_count bash_count false]
+        [$skill_invocations skill_invocations false]
+        [$tool_errors tool_errors false]
+        [$ask_user_count ask_user_count false]
+        [$plan_mode_used plan_mode_used false]
+        [$tool_counts tool_counts false]
+        [$turn_count turn_count false]
+        [$assistant_msg_count assistant_msg_count false]
+        [$tool_call_count tool_call_count false]
+        [$token_usage token_usage false]
+    ]
+
+    let requested = $column_flags | where include | get name
 
     let selected = if $all_columns {
-        $SESSION_COLUMNS
+        $column_flags | get name
     } else if ($requested | is-empty) {
-        $DEFAULT_SESSION_COLUMNS
+        $column_flags | where default | get name
     } else { $requested }
 
     $session_rows | each {|row|
