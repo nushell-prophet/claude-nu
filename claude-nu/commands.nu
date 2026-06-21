@@ -68,14 +68,6 @@ const DEFAULT_SESSION_COLUMNS = [
     edited_files
 ]
 
-# Default output directory for Claude Code documentation
-const CLAUDE_DOCS_DIR = 'claude-code-docs'
-
-# Nushell documentation settings
-const NUSHELL_DOCS_DIR = 'nushell-docs'
-const NUSHELL_DOCS_REPO = 'https://github.com/nushell/nushell.github.io.git'
-const NUSHELL_DOCS_FOLDERS = ['blog' 'book' 'cookbook']
-
 # Root of Claude Code session storage: ~/.claude/projects
 def projects-root []: nothing -> path {
     $env.HOME | path join ".claude" "projects"
@@ -250,45 +242,6 @@ export def "nu-complete claude sessions" []: nothing -> record {
         options: {sort: false}
         completions: $completions
     }
-}
-
-# Run a one-shot Claude prompt non-interactively and return its text response.
-#
-# Merges an optional positional prompt with optional piped stdin (prompt first,
-# blank line, then stdin) and runs `claude --print --safe-mode`. At least one
-# source must carry text. --safe-mode disables all customizations (CLAUDE.md,
-# skills, plugins, hooks, MCP, ...); permissions still apply.
-export def ask [
-    prompt?: string # Prompt text; placed before piped stdin when both are given
-    --here # Run in the current directory so claude sees the project (cwd, git status, recent commits)
-    --keep-sbx-token # Keep the sandbox placeholder ANTHROPIC_API_KEY (when a real key or proxy base-URL is set)
-]: [nothing -> string, string -> string] {
-    let piped = $in
-    let parts = [$prompt $piped] | compact | where ($it | str trim | is-not-empty)
-    if ($parts | is-empty) {
-        error make --unspanned {
-            msg: "claude-nu ask: no prompt given"
-            help: "pass an argument, pipe stdin, or both"
-        }
-    }
-    # Why: in the sandbox ANTHROPIC_API_KEY is the literal placeholder 'proxy-managed';
-    # a nested claude uses it verbatim and gets 'Invalid API key'. Dropping it (null) for
-    # this child only makes claude fall back to stored login credentials, so it just works.
-    # Keep it only when a real key or proxy base-URL is set (--keep-sbx-token).
-    let key_env = if $keep_sbx_token { {} } else { {ANTHROPIC_API_KEY: null} }
-    # Why: Claude injects the launch dir's env block (cwd, git status, recent commits)
-    # even under --safe-mode, so a question answered from a repo leaks that repo. Run from
-    # a neutral empty dir by default so the answer uses only the prompt; --here opts into
-    # the current dir to include the project.
-    let workdir = if $here {
-        $env.PWD
-    } else {
-        let neutral = $nu.temp-dir | path join claude-nu-ask
-        mkdir $neutral
-        $neutral
-    }
-    cd $workdir
-    with-env $key_env { $parts | str join "\n\n" | claude --print --safe-mode }
 }
 
 # Extract user messages from Claude Code session files
@@ -1171,97 +1124,4 @@ export def save-markdown [
     } else {
         $results
     }
-}
-
-# Download Claude Code documentation from sitemap
-export def download-claude-docs [
-    --output-dir: path = $CLAUDE_DOCS_DIR # Output directory for downloaded docs
-]: nothing -> table {
-    # Fetch and parse sitemap
-    let sitemap_xml = http get https://code.claude.com/docs/sitemap.xml
-
-    let urls = $sitemap_xml
-        | get content.content
-        | each { get content.0.content.0 }
-        | where $it =~ 'docs/en/'
-        | each { $in + '.md' }
-
-    # Ensure output directory exists
-    mkdir $output_dir
-
-    # Download files in parallel
-    $urls
-    | par-each --threads 4 {|url|
-        let filename = $url | path split | skip 4 | str join '_'
-        let dest_path = [$output_dir $filename] | path join
-
-        try {
-            http get $url | save -f $dest_path
-            {url: $url status: "ok" dest: $dest_path error: null}
-        } catch {|e|
-            {url: $url status: "failed" dest: $dest_path error: ($e.msg? | default "unknown error")}
-        }
-    }
-}
-
-# Download Claude Code documentation pages from the sitemap, print results, and optionally commit
-@example "Fetch docs" { claude-nu fetch-claude-docs }
-@example "Fetch and commit" { claude-nu fetch-claude-docs --commit }
-export def fetch-claude-docs [
-    --commit # Create a git commit after downloading
-]: nothing -> nothing {
-    let results = download-claude-docs
-
-    # Print results
-    $results | each {|r|
-        let icon = if $r.status == "ok" { $"(ansi green)✓(ansi reset)" } else { $"(ansi red)✗(ansi reset)" }
-        print $"($icon) ($r.url)"
-    }
-
-    # Summary
-    let ok = $results | where status == "ok" | length
-    let failed = $results | where status == "failed" | length
-    print $"\n(ansi green_bold)($ok) ok(ansi reset), (ansi red_bold)($failed) failed(ansi reset)"
-
-    if $commit {
-        # Stage and commit if there are changes
-        let status = git status --porcelain $CLAUDE_DOCS_DIR | str trim
-        if $status != "" {
-            git add $CLAUDE_DOCS_DIR
-            let date = date now | format date "%Y-%m-%d"
-            git commit -m $"docs: update claude-code-docs \(($date)\)"
-            print $"(ansi green)Committed documentation updates(ansi reset)"
-        } else {
-            print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
-        }
-    }
-}
-
-# Fetch Nushell documentation (book, cookbook, blog) via shallow sparse checkout
-@example "Fetch/update Nushell docs" { claude-nu fetch-nushell-docs }
-export def fetch-nushell-docs []: nothing -> nothing {
-    let dest = $NUSHELL_DOCS_DIR
-
-    if ($dest | path exists) {
-        # Update existing checkout
-        print $"(ansi attr_dimmed)Updating nushell-docs...(ansi reset)"
-        cd $dest
-        git pull
-        cd -
-    } else {
-        # Fresh shallow sparse clone
-        print $"(ansi attr_dimmed)Cloning nushell.github.io \(shallow sparse\)...(ansi reset)"
-        git clone --depth 1 --filter=blob:none --sparse $NUSHELL_DOCS_REPO $dest
-        cd $dest
-        git sparse-checkout set --no-cone ...($NUSHELL_DOCS_FOLDERS | each { $'/($in)/*' })
-        cd -
-    }
-
-    # Show what we have
-    let sizes = $NUSHELL_DOCS_FOLDERS
-        | each {|f| {folder: $f size: (du $"($dest)/($f)" | get apparent | first)} }
-
-    print ""
-    print ($sizes | table)
-    print $"\n(ansi green)✓(ansi reset) Nushell docs ready at (ansi cyan)($dest)/(ansi reset)"
 }

@@ -118,15 +118,15 @@ def print-test-result [result: record] {
 export def 'main fetch-claude-docs' [
     --commit # Create a git commit after downloading
 ] {
-    use claude-nu
-    claude-nu fetch-claude-docs --commit=$commit
+    use claude-nu/docs.nu
+    docs fetch-claude-docs --commit=$commit
 }
 
 # Fetch Nushell documentation (book, cookbook, blog) via shallow sparse checkout
 @example "Fetch/update Nushell docs" { nu toolkit.nu fetch-nushell-docs }
 export def 'main fetch-nushell-docs' [] {
-    use claude-nu
-    claude-nu fetch-nushell-docs
+    use claude-nu/docs.nu
+    docs fetch-nushell-docs
 }
 
 # Vendor real session files as test fixtures (with obfuscated session IDs)
