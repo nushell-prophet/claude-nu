@@ -27,103 +27,52 @@ def "get-sessions-dir returns valid path for current directory" [] {
 }
 
 # =============================================================================
-# Tests for system message filtering logic
+# Tests for system message filtering (via the real `messages` command)
 # =============================================================================
 
 @test
-def "system prefixes filter command-name messages" [] {
-    let system_prefixes = [
-        "<command-name>"
-        "<command-message>"
-        "<local-command-stdout>"
-        "<bash-input>"
-        "<bash-stdout>"
-        "Caveat:"
+def "messages drops every system/command wrapper prefix" [] {
+    # Why: the old shadow test kept its own copy of the prefix list, which had
+    # already drifted from SYSTEM_PREFIXES. Drive one message per real prefix
+    # through `messages` so renaming/removing any one is caught here. (The list
+    # mirrors SYSTEM_PREFIXES; feeding a prefix that the source no longer filters
+    # makes it survive and fails this test.)
+    let temp_file = $nu.temp-dir | path join $"test-sysprefix-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"real human message"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<command-name>foo"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<command-message>bar"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<local-command-caveat>baz"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<local-command-stdout>out"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<local-command-stderr>err"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<bash-input>ls"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<bash-stdout>files"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"Caveat: heads up"},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
+    $lines | str join "\n" | save --force $temp_file
 
-    let content = "<command-name>some command"
-    let passes = $system_prefixes | all { $content !~ $'^($in)' }
+    let result = messages --session $temp_file | get message
 
-    assert equal $passes false
+    rm $temp_file
+
+    assert equal $result ["real human message"]
 }
 
 @test
-def "system prefixes filter bash-stdout messages" [] {
-    let system_prefixes = [
-        "<command-name>"
-        "<command-message>"
-        "<local-command-stdout>"
-        "<bash-input>"
-        "<bash-stdout>"
-        "Caveat:"
+def "messages --include-system keeps the wrapper messages" [] {
+    let temp_file = $nu.temp-dir | path join $"test-sysprefix-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"real human message"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<bash-stdout>files"},"timestamp":"2024-01-15T10:00:01Z"}'
     ]
+    $lines | str join "\n" | save --force $temp_file
 
-    let content = "<bash-stdout>output here"
-    let passes = $system_prefixes | all { $content !~ $'^($in)' }
+    let result = messages --session $temp_file --include-system | get message
 
-    assert equal $passes false
-}
+    rm $temp_file
 
-@test
-def "system prefixes filter caveat messages" [] {
-    let system_prefixes = [
-        "<command-name>"
-        "<command-message>"
-        "<local-command-stdout>"
-        "<bash-input>"
-        "<bash-stdout>"
-        "Caveat:"
-    ]
-
-    let content = "Caveat: This is a warning"
-    let passes = $system_prefixes | all { $content !~ $'^($in)' }
-
-    assert equal $passes false
-}
-
-@test
-def "system prefixes allow regular user messages" [] {
-    let system_prefixes = [
-        "<command-name>"
-        "<command-message>"
-        "<local-command-stdout>"
-        "<bash-input>"
-        "<bash-stdout>"
-        "Caveat:"
-    ]
-
-    let content = "Hello Claude, please help me"
-    let passes = $system_prefixes | all { $content !~ $'^($in)' }
-
-    assert equal $passes true
-}
-
-@test
-def "system prefixes filter multiple message types correctly" [] {
-    let system_prefixes = [
-        "<command-name>"
-        "<command-message>"
-        "<local-command-stdout>"
-        "<bash-input>"
-        "<bash-stdout>"
-        "Caveat:"
-    ]
-
-    let test_messages = [
-        "Hello Claude" # Should pass
-        "<command-name>some command" # Should be filtered
-        "<bash-stdout>output" # Should be filtered
-        "Caveat: This is a warning" # Should be filtered
-        "Regular message" # Should pass
-    ]
-
-    let filtered = $test_messages | where {|content|
-            $system_prefixes | all { $content !~ $'^($in)' }
-        }
-
-    assert equal ($filtered | length) 2
-    assert equal ($filtered | first) "Hello Claude"
-    assert equal ($filtered | last) "Regular message"
+    assert ("real human message" in $result)
+    assert ("<bash-stdout>files" in $result)
 }
 
 # =============================================================================
@@ -220,57 +169,47 @@ def "extract-tool-calls returns empty for no tool_use" [] {
 # =============================================================================
 
 @test
-def "mentioned files regex extracts @path patterns" [] {
-    let texts = [
-        "Please look at @src/main.rs"
-        "Check @README.md and @docs/guide.md"
-        "No files here"
+def "sessions mentioned_files extracts @path mentions with prefixes" [] {
+    # Why: replaces a shadow test that ran a copy of the regex. Driving the
+    # real `sessions` extraction keeps the pattern from drifting untested.
+    let temp_file = $nu.temp-dir | path join $"test-mentioned-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"please look at @src/main.rs"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"check @README.md and @docs/guide.md"},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"user","message":{"content":"also @/absolute/path.rs and @./relative/file.nu and @~/home/config.toml"},"timestamp":"2024-01-15T10:00:02Z"}'
     ]
+    $lines | str join "\n" | save --force $temp_file
 
-    let mentioned = $texts
-        | each { parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
-        | flatten
-        | uniq
+    let mentioned = sessions $temp_file --columns mentioned_files | first | get mentioned_files
 
-    assert equal ($mentioned | length) 3
+    rm $temp_file
+
     assert ("src/main.rs" in $mentioned)
     assert ("README.md" in $mentioned)
     assert ("docs/guide.md" in $mentioned)
-}
-
-@test
-def "mentioned files regex rejects false positives" [] {
-    let texts = [
-        "claude@anthropic.com" # email
-        "See @- and @-- revsets" # jj revsets
-        '@"nu-complete sessions"' # nushell annotation
-        "Use @example attribute" # no extension
-        "End with @) or @:" # punctuation
-    ]
-
-    let mentioned = $texts
-        | each { parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
-        | flatten
-
-    assert equal ($mentioned | length) 0
-}
-
-@test
-def "mentioned files regex handles path prefixes" [] {
-    let texts = [
-        "Check @/absolute/path.rs"
-        "Also @./relative/file.nu"
-        "And @~/home/config.toml"
-    ]
-
-    let mentioned = $texts
-        | each { parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
-        | flatten
-
-    assert equal ($mentioned | length) 3
     assert ("/absolute/path.rs" in $mentioned)
     assert ("./relative/file.nu" in $mentioned)
     assert ("~/home/config.toml" in $mentioned)
+}
+
+@test
+def "sessions mentioned_files rejects false positives" [] {
+    # Emails, jj revsets, nushell annotations, extension-less @words, and
+    # trailing punctuation must not be picked up as file mentions.
+    let temp_file = $nu.temp-dir | path join $"test-mentioned-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"mail me at claude@anthropic.com"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"see @- and @-- revsets"},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"user","message":{"content":"the @\"nu-complete sessions\" annotation"},"timestamp":"2024-01-15T10:00:02Z"}'
+        '{"type":"user","message":{"content":"use @example attribute, end with @) or @:"},"timestamp":"2024-01-15T10:00:03Z"}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let mentioned = sessions $temp_file --columns mentioned_files | first | get mentioned_files
+
+    rm $temp_file
+
+    assert equal $mentioned []
 }
 
 @test
