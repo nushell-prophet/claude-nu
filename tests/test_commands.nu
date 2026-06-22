@@ -1946,6 +1946,12 @@ def "resolve-piped-sessions reads the path column, deduped" [] {
 }
 
 @test
+def "resolve-piped-sessions accepts a record as a 1-row table" [] {
+    let result = resolve-piped-sessions {path: "/a.jsonl"}
+    assert equal $result ["/a.jsonl"]
+}
+
+@test
 def "resolve-piped-sessions resolves the session column via UUID lookup" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj = $fake_home | path join ".claude" "projects" "-proj-x"

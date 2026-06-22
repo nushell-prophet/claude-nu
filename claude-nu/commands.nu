@@ -227,7 +227,7 @@ export def messages [
     --include-thinking # Include assistant thinking blocks (prefixed with [thinking])
     --raw # Return raw message records instead of just content
     --include-responses # Include assistant responses (text only, interleaved)
-]: [nothing -> table table -> table] {
+]: [nothing -> table record -> table table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
 
@@ -631,6 +631,9 @@ def parse-session-columns [selected: list<string>]: path -> record {
 # Returns null when input is not a table
 export def resolve-piped-sessions [input: any]: nothing -> any {
     if ($input | describe) == "nothing" { return null }
+    # Why: a record is a 1-row table (e.g. `sessions | first`); widen it here so
+    # every piped command accepts a single row without the caller re-wrapping it.
+    let input = if ($input | describe | str replace --regex '<.*' '') == "record" { [$input] } else { $input }
     let cols = $input | columns
     # Why: `find` is handy for searching every column at once (it recurses into
     # nested cells like user_messages), but it marks matches by injecting ansi
@@ -703,7 +706,7 @@ export def sessions [
     --all-projects # Enumerate sessions across every project under ~/.claude/projects
     --columns (-c): string@"nu-complete claude session-columns" # Comma-separated columns to include (default: overview set)
     --all-columns # Include all columns
-]: [nothing -> table string -> table table -> table] {
+]: [nothing -> table string -> table record -> table table -> table] {
     let input = $in
     # Why: piped string is a target path (`"dir" | sessions`); piped table
     # carries path/session columns like the other commands accept.
@@ -896,7 +899,7 @@ export def export-session [
     topic?: string # Topic for filename (default: session summary)
     --session: string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
     --tools # Render tool_use/tool_result blocks as one-line blockquote placeholders (default: drop)
-]: [nothing -> record table -> table] {
+]: [nothing -> record record -> table table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
 
