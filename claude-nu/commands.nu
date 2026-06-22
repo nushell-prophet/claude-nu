@@ -170,6 +170,14 @@ def session-id-from-path []: path -> string {
     path basename | str replace '.jsonl' ''
 }
 
+# Read a session JSONL file into a table of records, one record per line. The
+# single decode point for a session's raw records: every full-file parser goes
+# through here, so "a session is one JSON object per line" lives in one place
+# (and any future empty/corrupt-line handling has a single home).
+def read-session-records []: path -> table {
+    open --raw $in | lines | each { from json }
+}
+
 # Completion for session UUIDs
 export def "nu-complete claude sessions" []: nothing -> record {
     let sessions_dir = get-sessions-dir
@@ -269,9 +277,8 @@ export def messages [
             }
         }
 
-        let dialogue = open --raw $session_file
-            | lines
-            | each { from json }
+        let dialogue = $session_file
+            | read-session-records
             | if $include_responses { } else { where type? == "user" }
             | extract-dialogue $extract_text --keep-system=$include_system
 
@@ -523,7 +530,7 @@ export def extract-token-usage []: table -> record {
 # ("", 0, []) on an empty record set, so empty JSONL files flow through.
 def parse-session-columns [selected: list<string>]: path -> record {
     let file_path = $in
-    let records = open --raw $file_path | lines | each { from json }
+    let records = $file_path | read-session-records
 
     let user_records = $records | where type? == "user"
     let assistant_records = $records | where type? == "assistant"
@@ -642,13 +649,19 @@ def parse-session-columns [selected: list<string>]: path -> record {
     | insert path $file_path
 }
 
+# True when a value is a record (which is a 1-row table once piped). Strips the
+# `<...>` type detail so `record<a: int>` and a bare `record` both match.
+def is-record []: any -> bool {
+    ($in | describe | str replace --regex '<.*' '') == "record"
+}
+
 # Extract session file paths from piped input
 # Returns null when input is not a table
 export def resolve-piped-sessions [input: any]: nothing -> any {
     if ($input | describe) == "nothing" { return null }
     # Why: a record is a 1-row table (e.g. `sessions | first`); widen it here so
     # every piped command accepts a single row without the caller re-wrapping it.
-    let input = if ($input | describe | str replace --regex '<.*' '') == "record" { [$input] } else { $input }
+    let input = if ($input | is-record) { [$input] } else { $input }
     let cols = $input | columns
     # Why: `find` is handy for searching every column at once (it recurses into
     # nested cells like user_messages), but it marks matches by injecting ansi
@@ -995,7 +1008,7 @@ export def export-session [
             error make --unspanned {msg: $"Session file not found: ($session_file)"}
         }
 
-        let records = open --raw $session_file | lines | each { from json }
+        let records = $session_file | read-session-records
 
         if ($records | is-empty) {
             error make {msg: "Session file is empty"}
@@ -1078,7 +1091,7 @@ export def save-markdown [
 ]: [record -> string table -> table] {
     let input = $in
     let out_dir = $output_dir | default "docs/sessions"
-    let was_record = ($input | describe | str replace --regex '<.*' '') == "record"
+    let was_record = $input | is-record
 
     # Normalize to table
     let rows = if $was_record { [$input] } else { $input }
