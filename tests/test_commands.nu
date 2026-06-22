@@ -262,6 +262,32 @@ def "sessions extracts all overview fields from session file" [] {
 }
 
 @test
+def "sessions user_msg_count and turn_count exclude tool-result user records" [] {
+    # Why: Claude Code stores tool results as type:"user" records whose content
+    # is tool_result blocks (no text). Counting them inflated both metrics wildly
+    # (e.g. 175 records for 3 real messages). Both must count authored text only,
+    # staying consistent with user_messages / user_msg_length.
+    let temp_file = $nu.temp-dir | path join $"test-toolresult-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Real question"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/x"}}]},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"user","message":{"content":[{"type":"tool_result","content":"file contents"}]},"timestamp":"2024-01-15T10:00:02Z"}'
+        '{"type":"user","message":{"content":"Follow-up"},"timestamp":"2024-01-15T10:00:03Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = sessions $temp_file --columns user_msg_count,turn_count,user_messages | first
+
+    rm $temp_file
+
+    assert equal $result.user_msg_count 2
+    assert equal $result.turn_count 2
+    assert equal $result.user_messages ["Real question" "Follow-up"]
+}
+
+@test
 def "sessions handles empty file" [] {
     let temp_file = $nu.temp-dir | path join $"test-empty-(random uuid).jsonl"
 

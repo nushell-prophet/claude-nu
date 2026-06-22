@@ -456,7 +456,9 @@ export def extract-derived-metrics [
     tool_calls: table
 ]: table -> record {
     {
-        turn_count: ($in | where isMeta? != true | length)
+        # Why: tool results are type:"user" records too; exclude them (empty
+        # rendered text) so a turn counts an authored message, not a tool reply.
+        turn_count: ($in | where isMeta? != true | where {|r| ($r | extract-text-content) != "" } | length)
         assistant_msg_count: ($assistant_records | length)
         tool_call_count: ($tool_calls | length)
     }
@@ -505,9 +507,13 @@ def parse-session-columns [selected: list<string>]: path -> record {
         $assistant_records | each { extract-tool-calls } | flatten
     } else { [] }
 
-    # Why: user_msg_length sums these texts, so both columns share one pass
-    let user_messages = if (do $need [user_messages user_msg_length]) {
-        $user_records | each { extract-text-content }
+    # Why: user_msg_count/length/list all describe user-authored text, so one
+    # pass feeds all three. Tool results are type:"user" records too, but their
+    # content renders to "" — drop empties here so none of the three count them.
+    # Not counting raw user records because: that balloons the count with tool
+    # replies (e.g. 175 records for 3 real messages).
+    let user_messages = if (do $need [user_messages user_msg_length user_msg_count]) {
+        $user_records | each { extract-text-content } | where $it != ""
     } else { [] }
 
     let user_msg_length = $user_messages
@@ -573,7 +579,7 @@ def parse-session-columns [selected: list<string>]: path -> record {
         {name: summary value: $summary}
         {name: first_timestamp value: $timestamps.first}
         {name: last_timestamp value: $timestamps.last}
-        {name: user_msg_count value: ($user_records | length)}
+        {name: user_msg_count value: ($user_messages | length)}
         {name: user_msg_length value: $user_msg_length}
         {name: response_length value: $response_length}
         {name: agent_count value: ($agent_list | length)}
@@ -581,7 +587,7 @@ def parse-session-columns [selected: list<string>]: path -> record {
         {name: mentioned_files value: $mentioned_files}
         {name: read_files value: $file_ops.read_files?}
         {name: edited_files value: $file_ops.edited_files?}
-        {name: user_messages value: ($user_messages | where $it != "")}
+        {name: user_messages value: $user_messages}
         {name: session_id value: $meta.session_id?}
         {name: slug value: $meta.slug?}
         {name: version value: $meta.version?}
