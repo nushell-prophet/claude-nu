@@ -616,6 +616,37 @@ def "claude-nu -f skips subagent transcripts" [] {
 }
 
 @test
+def "claude-nu -f matches a regex, not just a literal" [] {
+    # Why: rg pre-filters the files, then `messages` re-applies the regex to the
+    # extracted text — both use Rust's regex engine, so an actual pattern
+    # (alternation here) must survive the round-trip and a non-match must drop.
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+    mkdir $proj_dir
+    let encoded = $proj_dir | path expand | str replace --all '/' '-'
+    let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+    mkdir $sessions_dir
+
+    '{"type":"user","message":{"content":"deploy to staging now"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($sessions_dir | path join "11111111-1111-1111-1111-111111111111.jsonl")
+    '{"type":"user","message":{"content":"deploy to prod later"},"timestamp":"2024-01-15T10:00:01Z"}'
+        | save --force ($sessions_dir | path join "22222222-2222-2222-2222-222222222222.jsonl")
+    '{"type":"user","message":{"content":"nothing relevant"},"timestamp":"2024-01-15T10:00:02Z"}'
+        | save --force ($sessions_dir | path join "33333333-3333-3333-3333-333333333333.jsonl")
+
+    let result = with-env {HOME: $fake_home} {
+        do { cd $proj_dir; claude-nu -f 'staging|prod' }
+    }
+
+    rm -rf $fake_home $proj_dir
+
+    let msgs = $result | get message
+    assert equal ($result | length) 2
+    assert ($msgs | any {|m| $m | str contains "staging" })
+    assert ($msgs | any {|m| $m | str contains "prod" })
+}
+
+@test
 def "claude-nu without a search term errors with guidance" [] {
     let result = try { claude-nu; "no error" } catch {|e| $e.msg }
     assert ($result | str contains "search term")

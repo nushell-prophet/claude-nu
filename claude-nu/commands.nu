@@ -692,6 +692,70 @@ export def discover-session-files [dir: path]: nothing -> table {
     $top_level | append $subagent_files | sort-by modified --reverse
 }
 
+# Session files (current project, or every project with --all-projects) whose
+# raw JSONL contains `pattern`, newest first. Uses ripgrep to skip files that
+# cannot match before the costly JSON parse; without rg it returns every
+# top-level session file and lets the caller's structured filter do the work.
+# Subagent transcripts are excluded — they carry no human-typed messages.
+# Why: rg scans the raw, escaped JSON, so it can't honor line anchors or match a
+# JSON-escaped quote/backslash the way the structured regex on extracted text
+# does. That only ever costs recall for such patterns; it never yields a wrong
+# hit, because `claude-nu -f` re-applies the real regex to the parsed text. For
+# ordinary word/phrase/regex searches rg and the structured filter agree (both
+# use Rust's regex engine), and we open only the few files that can match
+# instead of parsing every session in every project.
+export def find-session-files [
+    pattern: string # Regex (Rust syntax) matched against raw session JSONL
+    --all-projects # Search every project under ~/.claude/projects, not just the current one
+]: nothing -> list<path> {
+    let rows = if (which rg | is-empty) {
+        top-level-session-files --all-projects=$all_projects
+    } else {
+        rg-session-files $pattern --all-projects=$all_projects
+    }
+    if ($rows | is-empty) { return [] }
+    $rows | sort-by modified --reverse | get path
+}
+
+# Top-level session files in scope as {path, modified} rows (no content filter).
+# The rg-less fallback for find-session-files, and the single place the
+# project-vs-all-projects enumeration lives.
+def top-level-session-files [--all-projects]: nothing -> table {
+    let dirs = if $all_projects {
+        let root = projects-root
+        if not ($root | path exists) { return [] }
+        ls $root | where type == dir | get name
+    } else {
+        let dir = get-sessions-dir
+        if not ($dir | path exists) { return [] }
+        [$dir]
+    }
+    $dirs
+    | each {|d| discover-session-files $d | where parent_session_id == null | select path modified }
+    | flatten
+}
+
+# Top-level session files whose raw JSONL matches `pattern`, as {path, modified}.
+# Why: --no-ignore --hidden so a stray .gitignore or the dot in ~/.claude can't
+# hide a session; the subagents glob keeps us to human dialogue; the UUID-name
+# guard mirrors discover-session-files' definition of a session file. The pattern
+# goes through --regexp (which allows a leading `-`), not as a bare arg. rg exit
+# 1 means "no match" (empty); only a real failure (exit 2+) errors — fail fast on
+# a broken pattern instead of silently returning nothing.
+def rg-session-files [pattern: string --all-projects]: nothing -> table {
+    let root = if $all_projects { projects-root } else { get-sessions-dir }
+    if not ($root | path exists) { return [] }
+    let res = rg --no-ignore --hidden --files-with-matches --glob '*.jsonl' --glob '!**/subagents/**' --regexp $pattern -- $root | complete
+    let files = match $res.exit_code {
+        0 => ($res.stdout | lines)
+        1 => []
+        _ => (error make {msg: $"rg failed \(exit ($res.exit_code)): ($res.stderr | str trim)"})
+    }
+    $files
+    | where ($it | path basename) =~ $UUID_JSONL_PATTERN
+    | each {|p| {path: $p modified: (ls $p | get 0.modified) } }
+}
+
 # Completer for --columns: comma-separated session column names. Returns full
 # comma-joined values (e.g. `slug,version`) so the menu re-spawns after each
 # comma and accumulates; names already chosen in the token are excluded.

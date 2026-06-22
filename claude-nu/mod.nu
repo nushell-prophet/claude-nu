@@ -14,6 +14,7 @@
 #   claude-nu sessions | where parent_session_id == null | claude-nu messages 'regex'
 
 export use commands.nu [ projects messages sessions export-session save-markdown ]
+use commands.nu [ find-session-files ]
 
 # Umbrella entry point: search user messages for a regex and return every match
 # with its `session` column (a pipeline-safe selector — pipe it into
@@ -27,6 +28,11 @@ export use commands.nu [ projects messages sessions export-session save-markdown
 # matches by injecting ansi codes into the cell values (which corrupt the
 # path/session selectors) and only sees columns already computed; this reads the
 # raw message text instead.
+# Why (speed): find-session-files uses rg to narrow to the files whose raw JSONL
+# can match before any JSON parsing, then `messages` parses and re-applies the
+# real regex only to those — so a wide --all-projects search no longer parses
+# every session in every project. It also skips `sessions` entirely: that pass
+# computed summary/user_messages columns `messages` then threw away.
 export def main [
     --find (-f): string # Regex matched against user message text
     --all-projects # Search every project under ~/.claude/projects, not just the current one
@@ -37,8 +43,7 @@ export def main [
             help: "search messages:  claude-nu -f 'regex'  (--all-projects to widen)\nsubcommands:  projects, sessions, messages, export-session, save-markdown"
         }
     }
-    # Why: top-level sessions only — subagent transcripts carry no human-typed
-    # messages, so parent_session_id == null keeps the search to real dialogue.
-    let scoped = if $all_projects { sessions --all-projects } else { sessions }
-    $scoped | where parent_session_id == null | messages $find
+    let files = find-session-files $find --all-projects=$all_projects
+    if ($files | is-empty) { return [] }
+    $files | wrap path | messages $find
 }
