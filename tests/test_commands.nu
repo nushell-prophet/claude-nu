@@ -244,7 +244,9 @@ def "sessions extracts all overview fields from session file" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file | first
+    # Request the asserted columns explicitly: this test pins extraction logic,
+    # not the default set, so it must not depend on which columns default in.
+    let result = sessions $temp_file --columns summary,user_msg_count,user_msg_length,response_length,agent_count,agents,mentioned_files,read_files,edited_files | first
 
     rm $temp_file
 
@@ -293,7 +295,7 @@ def "sessions handles empty file" [] {
 
     "" | save --force $temp_file
 
-    let result = sessions $temp_file | first
+    let result = sessions $temp_file --columns summary,user_msg_count,first_timestamp,last_timestamp,agents,mentioned_files | first
 
     rm $temp_file
 
@@ -316,11 +318,11 @@ def "sessions default columns are the overview set" [] {
 
     rm $temp_file
 
-    assert equal $cols [
-        summary first_timestamp last_timestamp user_msg_count user_msg_length
-        response_length agent_count agents mentioned_files read_files
-        edited_files path parent_session_id
-    ]
+    # Golden assertion: a deliberate, hand-maintained copy of the default policy.
+    # Not derived from SESSION_COLUMNS on purpose — that would be a tautology and
+    # could never catch an accidental `default` flip. Changing the overview set
+    # is meant to trip this test so the change stays intentional.
+    assert equal $cols [summary last_timestamp user_messages path parent_session_id]
 }
 
 @test
