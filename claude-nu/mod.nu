@@ -1,6 +1,7 @@
 # claude-nu - Nushell utilities for Claude Code
 #
 # Public commands (see README.md for details):
+#   claude-nu -f    # Search this project's user messages (umbrella entry point)
 #   projects        # List Claude Code projects, most recent first
 #   sessions        # Parse sessions into a structured table
 #   messages        # Extract user messages from a session
@@ -9,6 +10,35 @@
 #
 # Usage:
 #   use claude-nu
+#   claude-nu -f 'regex'                # quick message search, current project
 #   claude-nu sessions | where parent_session_id == null | claude-nu messages 'regex'
 
 export use commands.nu [ projects messages sessions export-session save-markdown ]
+
+# Umbrella entry point: search user messages for a regex and return every match
+# with its `session` column (a pipeline-safe selector — pipe it into
+# export-session/messages/sessions). Searches the current project by default;
+# --all-projects widens to every project. With no --find it points at the
+# subcommands. Mirrors `help -f`, which greps commands the same way.
+# Why: a shorthand for the documented `sessions | where parent_session_id == null
+# | messages 'regex'` idiom, so message search is one verb. Lives in mod.nu
+# because a directory module's `main` is only picked up when defined here, not
+# when re-exported from a submodule. Not built on `find` because: `find` marks
+# matches by injecting ansi codes into the cell values (which corrupt the
+# path/session selectors) and only sees columns already computed; this reads the
+# raw message text instead.
+export def main [
+    --find (-f): string # Regex matched against user message text
+    --all-projects # Search every project under ~/.claude/projects, not just the current one
+]: nothing -> table {
+    if $find == null {
+        error make {
+            msg: "claude-nu needs a subcommand or a search term"
+            help: "search messages:  claude-nu -f 'regex'  (--all-projects to widen)\nsubcommands:  projects, sessions, messages, export-session, save-markdown"
+        }
+    }
+    # Why: top-level sessions only — subagent transcripts carry no human-typed
+    # messages, so parent_session_id == null keeps the search to real dialogue.
+    let scoped = if $all_projects { sessions --all-projects } else { sessions }
+    $scoped | where parent_session_id == null | messages $find
+}

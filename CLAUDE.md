@@ -46,6 +46,8 @@ use /path/to/completions/claude.nu *
 use /path/to/completions/nu.nu *
 
 # Core commands
+claude-nu -f 'regex'                   # Search this project's user messages (shorthand for the sessions|where|messages idiom below)
+claude-nu -f 'regex' --all-projects    # Same search across every project
 claude-nu projects                     # Projects by recency (name, path, count, modified)
 claude-nu projects | where name =~ nu | claude-nu sessions | claude-nu messages # pipe chain scoping
 claude-nu messages                     # User messages from current session

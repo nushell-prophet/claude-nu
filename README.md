@@ -31,6 +31,18 @@ use claude-nu
 
 ## Commands
 
+### `claude-nu -f` (search)
+
+The umbrella entry point. Searches user messages for a regex and returns every match with its `session` column — a pipeline-safe selector you can drill into. Mirrors `help -f`.
+
+```nushell
+claude-nu -f 'regex'                # search this project's user messages
+claude-nu -f 'regex' --all-projects # search every project under ~/.claude/projects
+claude-nu -f 'regex' | claude-nu export-session  # drill matched sessions into markdown
+```
+
+It is a shorthand for `sessions | where parent_session_id == null | messages 'regex'`. Use `find` for filtering a `sessions` table you already have on screen, and `-f` for content search from scratch.
+
 ### `claude-nu messages`
 
 Extract user messages from Claude Code session files.
