@@ -3,6 +3,9 @@ use std/testing *
 
 # Import all functions from commands.nu (including internals not re-exported via mod.nu)
 use ../claude-nu/commands.nu *
+# Import the module entry point too, so its `main` is callable as `claude-nu` (the
+# `-f` search command lives there, not in commands.nu — see mod.nu).
+use ../claude-nu
 
 # Vendored real-session fixtures covering Claude Code 2.1.x record shapes
 # Each fixture's first record type and special properties are documented inline.
@@ -502,6 +505,96 @@ def "sessions --all-projects piped into messages covers every session" [] {
     assert ("a-new" in $all)
     assert ("b-only" in $all)
     assert ("project" in ($result | columns))
+}
+
+@test
+def "claude-nu -f searches the current project user messages" [] {
+    # A real proj dir + cd so get-sessions-dir resolves to the fixture dir.
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+    mkdir $proj_dir
+    let encoded = $proj_dir | path expand | str replace --all '/' '-'
+    let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+    mkdir $sessions_dir
+
+    '{"type":"user","message":{"content":"the needle is here"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($sessions_dir | path join "11111111-1111-1111-1111-111111111111.jsonl")
+    '{"type":"user","message":{"content":"only hay in this one"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($sessions_dir | path join "22222222-2222-2222-2222-222222222222.jsonl")
+
+    let result = with-env {HOME: $fake_home} {
+        do { cd $proj_dir; claude-nu -f 'needle' }
+    }
+
+    rm -rf $fake_home $proj_dir
+
+    # Only the matching message returns, tagged with its session — a selector
+    # callers can pipe straight back into export-session/messages.
+    assert equal ($result | length) 1
+    assert ($result.0.message | str contains "needle")
+    assert equal $result.0.session "11111111-1111-1111-1111-111111111111"
+}
+
+@test
+def "claude-nu -f --all-projects searches every project" [] {
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let projects_dir = $fake_home | path join ".claude" "projects"
+    let proj_a = $projects_dir | path join "-proj-a"
+    let proj_b = $projects_dir | path join "-proj-b"
+    mkdir $proj_a $proj_b
+
+    '{"type":"user","message":{"content":"needle in A"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($proj_a | path join "11111111-1111-1111-1111-111111111111.jsonl")
+    '{"type":"user","message":{"content":"needle in B"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($proj_b | path join "22222222-2222-2222-2222-222222222222.jsonl")
+    '{"type":"user","message":{"content":"no match here"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($proj_b | path join "33333333-3333-3333-3333-333333333333.jsonl")
+
+    let result = with-env {HOME: $fake_home} {
+        claude-nu -f 'needle' --all-projects
+    }
+
+    rm -rf $fake_home
+
+    let msgs = $result | get message
+    assert equal ($result | length) 2
+    assert ("needle in A" in $msgs)
+    assert ("needle in B" in $msgs)
+    # Scope spans >1 project, so each row is tagged with its project.
+    assert ("project" in ($result | columns))
+}
+
+@test
+def "claude-nu -f skips subagent transcripts" [] {
+    # Why: subagents carry no human-typed messages, so `-f` searches only
+    # top-level sessions (parent_session_id == null).
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+    mkdir $proj_dir
+    let encoded = $proj_dir | path expand | str replace --all '/' '-'
+    let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+    let sub = $sessions_dir | path join "11111111-1111-1111-1111-111111111111" "subagents"
+    mkdir $sub
+
+    '{"type":"user","message":{"content":"needle in top level"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($sessions_dir | path join "11111111-1111-1111-1111-111111111111.jsonl")
+    '{"type":"user","message":{"content":"needle in subagent"},"timestamp":"2024-01-15T10:00:01Z"}'
+        | save --force ($sub | path join "agent-abc123.jsonl")
+
+    let result = with-env {HOME: $fake_home} {
+        do { cd $proj_dir; claude-nu -f 'needle' }
+    }
+
+    rm -rf $fake_home $proj_dir
+
+    assert equal ($result | length) 1
+    assert ($result.0.message | str contains "top level")
+}
+
+@test
+def "claude-nu without a search term errors with guidance" [] {
+    let result = try { claude-nu; "no error" } catch {|e| $e.msg }
+    assert ($result | str contains "search term")
 }
 
 @test
