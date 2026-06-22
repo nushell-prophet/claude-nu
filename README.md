@@ -51,15 +51,16 @@ claude-nu messages --session <uuid> # Specific session (tab-completable)
 
 ### `claude-nu sessions`
 
-Parse session files into structured data. Column flags select what to compute — lazy evaluation, only requested extractions run.
+Parse session files into structured data. `--columns` selects what to compute — lazy evaluation, only requested extractions run; the column names tab-complete.
 
 ```nushell
-claude-nu sessions                        # All sessions in current project (overview columns)
-claude-nu sessions ~/other/project        # Sessions from another path
-claude-nu sessions --all-projects         # Every project under ~/.claude/projects
-claude-nu sessions --session <uuid>       # Single session (tab-completable)
-claude-nu sessions --last --token-usage   # Most recent session, just the requested column
-claude-nu sessions --all-columns          # All available columns
+claude-nu sessions                                # All sessions in current project (overview columns)
+claude-nu sessions ~/other/project                # Sessions from another path
+claude-nu sessions --all-projects                 # Every project under ~/.claude/projects
+claude-nu sessions --session <uuid>               # Single session (tab-completable)
+claude-nu sessions --last --columns token_usage   # Most recent session, just the requested column
+claude-nu sessions --columns slug,cwd,git_branch  # Several columns, comma-separated
+claude-nu sessions --all-columns                  # All available columns
 ```
 
 **Default (overview) columns:**
@@ -79,29 +80,28 @@ claude-nu sessions --all-columns          # All available columns
 | `path` | Session file path |
 | `parent_session_id` | Parent UUID for subagent transcripts |
 
-**Column flags:** any column flag switches output to `path`/`parent_session_id` plus the requested columns. Overview columns have flags too (`--summary`, `--first-timestamp`, …); the rest:
+**Additional columns:** request via `--columns name1,name2` (or `--all-columns` for everything). Any `--columns` selection narrows output to `path`/`parent_session_id` plus the requested columns.
 
-| Flag | Description |
-|------|-------------|
-| `--user-messages` | List of user message texts |
-| `--session-id` | UUID |
-| `--slug` | Human-readable name |
-| `--version` | Claude Code version |
-| `--cwd` | Working directory |
-| `--git-branch` | Branch at session start |
-| `--thinking-level` | Thinking mode used |
-| `--bash-commands` | List of bash commands run |
-| `--bash-count` | Number of bash commands |
-| `--skill-invocations` | Skills used |
-| `--tool-errors` | Failed tool calls |
-| `--ask-user-count` | User questions asked |
-| `--plan-mode-used` | Whether plan mode was used |
-| `--tool-counts` | Per-tool call counts (TaskCreate/Update/Stop, Monitor, ToolSearch) |
-| `--turn-count` | User→assistant turns |
-| `--assistant-msg-count` | Assistant messages |
-| `--tool-call-count` | Total tool invocations |
-| `--token-usage` | Token totals (input/output/cache) |
-| `--all-columns` | Include everything |
+| Column | Description |
+|--------|-------------|
+| `user_messages` | List of user message texts |
+| `session_id` | UUID |
+| `slug` | Human-readable name |
+| `version` | Claude Code version |
+| `cwd` | Working directory |
+| `git_branch` | Branch at session start |
+| `thinking_level` | Thinking mode used |
+| `bash_commands` | List of bash commands run |
+| `bash_count` | Number of bash commands |
+| `skill_invocations` | Skills used |
+| `tool_errors` | Failed tool calls |
+| `ask_user_count` | User questions asked |
+| `plan_mode_used` | Whether plan mode was used |
+| `tool_counts` | Per-tool call counts (TaskCreate/Update/Stop, Monitor, ToolSearch) |
+| `turn_count` | Authored user turns (excludes meta and tool replies) |
+| `assistant_msg_count` | Assistant messages |
+| `tool_call_count` | Total tool invocations |
+| `token_usage` | Token totals (input/output/cache) |
 
 ### `claude-nu export-session`
 
@@ -149,7 +149,7 @@ claude --resume <TAB>
 **Dynamic script completions:**
 ```
 nu toolkit.nu <TAB>
-# test │ vendor-skills │ fetch-claude-docs │ …
+# test │ test-unit │ check │ fetch-claude-docs │ …
 ```
 
 ### Claude Code Skills
@@ -193,10 +193,10 @@ nu toolkit.nu test --fail   # Non-zero exit on failures
 ### Toolkit
 
 ```nushell
+nu toolkit.nu check <file>             # Static syntax check with diagnostics
 nu toolkit.nu fetch-claude-docs        # Download Claude Code docs
 nu toolkit.nu fetch-nushell-docs       # Sparse clone of Nushell docs
-nu toolkit.nu vendor-skills            # Copy skills from ~/.claude/skills to repo
-nu toolkit.nu install-skills-globally  # Copy skills from repo to ~/.claude/skills
+nu toolkit.nu vendor-sessions          # Obfuscate real sessions into test fixtures
 ```
 
 ## License
