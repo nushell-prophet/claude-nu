@@ -632,10 +632,16 @@ def parse-session-columns [selected: list<string>]: path -> record {
 export def resolve-piped-sessions [input: any]: nothing -> any {
     if ($input | describe) == "nothing" { return null }
     let cols = $input | columns
+    # Why: `find` is handy for searching every column at once (it recurses into
+    # nested cells like user_messages), but it marks matches by injecting ansi
+    # codes into the string values themselves — which corrupts the path/session
+    # selectors so `path exists`/`open` then fail. Strip ansi here, the one
+    # chokepoint every piped command shares, so `find … | export-session` works.
+    # Stopgap until a dedicated message-search command lands (see todo/).
     if "path" in $cols {
-        $input | get path | compact | uniq
+        $input | get path | compact | ansi strip | uniq
     } else if "session" in $cols {
-        $input | get session | uniq | each {|s| resolve-session-file $s }
+        $input | get session | ansi strip | uniq | each {|s| resolve-session-file $s }
     } else {
         error make {msg: "Piped input must have 'path' or 'session' column"}
     }
