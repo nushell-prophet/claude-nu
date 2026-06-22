@@ -710,12 +710,16 @@ export def discover-session-files [dir: path]: nothing -> table {
         | where name =~ $UUID_JSONL_PATTERN
         | each {|f| {path: $f.name parent_session_id: null modified: $f.modified} }
 
-    # Why: subagent transcripts are nested out of reach of a flat `ls`, so glob
+    # Why: subagent transcripts are nested out of reach of a flat `ls`, so a glob
     # descends to them; the parent UUID is two levels up from the file.
-    let subagent_files = glob ($dir | path join "*/subagents/*.jsonl")
-        | where $it =~ $AGENT_JSONL_PATTERN
-        | each {|p|
-            {path: $p parent_session_id: ($p | path dirname | path dirname | path basename) modified: (ls $p | get 0.modified)}
+    # Why (speed): one `ls <glob>` stats every transcript in a single directory
+    # walk; the old `glob | each { ls }` re-stated each file individually (~10x
+    # slower on a project with many subagents). `ls` errors on a no-match glob, so
+    # try/catch keeps the empty case graceful (matching `glob`'s old behavior).
+    let subagent_files = try { ls (($dir | path join "*/subagents/*.jsonl") | into glob) } catch { [] }
+        | where name =~ $AGENT_JSONL_PATTERN
+        | each {|f|
+            {path: $f.name parent_session_id: ($f.name | path dirname | path dirname | path basename) modified: $f.modified}
         }
 
     $top_level | append $subagent_files | sort-by modified --reverse
