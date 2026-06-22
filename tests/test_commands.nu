@@ -1715,3 +1715,205 @@ def "messages --include-thinking prefixes thinking blocks" [] {
     assert ($assistant_msg | str contains "[thinking] pondering the question")
     assert ($assistant_msg | str contains "answer")
 }
+
+# =============================================================================
+# Tests for resolve-session-file resolution branches
+# =============================================================================
+
+@test
+def "resolve-session-file passes through a .jsonl path unchanged" [] {
+    # Why: an explicit path is taken as-is (no existence check); UUID lookup is
+    # the only branch that touches disk.
+    assert equal (resolve-session-file "/made/up/path.jsonl") "/made/up/path.jsonl"
+}
+
+@test
+def "resolve-session-file resolves a bare UUID against the sessions dir" [] {
+    let dir = $nu.temp-dir | path join $"test-resolve-(random uuid)"
+    mkdir $dir
+    let uuid = "12345678-1234-1234-1234-123456789abc"
+    "" | save --force ($dir | path join $"($uuid).jsonl")
+
+    let result = resolve-session-file $uuid --sessions-dir $dir
+
+    rm -rf $dir
+
+    assert equal ($result | path basename) $"($uuid).jsonl"
+}
+
+@test
+def "resolve-session-file finds a UUID in another project via glob" [] {
+    # Why: UUIDs are globally unique, so a session from another project resolves
+    # by scanning every project under ~/.claude when it is not in the local dir.
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj = $fake_home | path join ".claude" "projects" "-proj-x"
+    mkdir $proj
+    let uuid = "abcdabcd-1234-1234-1234-123456789abc"
+    "" | save --force ($proj | path join $"($uuid).jsonl")
+    let empty_dir = $nu.temp-dir | path join $"empty-(random uuid)"
+    mkdir $empty_dir
+
+    let result = with-env {HOME: $fake_home} {
+        resolve-session-file $uuid --sessions-dir $empty_dir
+    }
+
+    rm -rf $fake_home $empty_dir
+
+    assert equal ($result | path basename) $"($uuid).jsonl"
+}
+
+@test
+def "resolve-session-file errors when a UUID exists nowhere" [] {
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    mkdir ($fake_home | path join ".claude" "projects")
+    let empty_dir = $nu.temp-dir | path join $"empty-(random uuid)"
+    mkdir $empty_dir
+
+    let err = with-env {HOME: $fake_home} {
+        try {
+            resolve-session-file "ffffffff-0000-0000-0000-000000000000" --sessions-dir $empty_dir
+            ""
+        } catch {|e| $e.msg }
+    }
+
+    rm -rf $fake_home $empty_dir
+
+    assert str contains $err "not found in any project"
+}
+
+# =============================================================================
+# Tests for resolve-piped-sessions input routing
+# =============================================================================
+
+@test
+def "resolve-piped-sessions returns null for nothing input" [] {
+    assert equal (resolve-piped-sessions null) null
+}
+
+@test
+def "resolve-piped-sessions reads the path column, deduped" [] {
+    let result = resolve-piped-sessions [{path: "/a.jsonl"} {path: "/a.jsonl"} {path: "/b.jsonl"}]
+    assert equal $result ["/a.jsonl" "/b.jsonl"]
+}
+
+@test
+def "resolve-piped-sessions resolves the session column via UUID lookup" [] {
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj = $fake_home | path join ".claude" "projects" "-proj-x"
+    mkdir $proj
+    let uuid = "abcdabcd-1234-1234-1234-123456789abc"
+    "" | save --force ($proj | path join $"($uuid).jsonl")
+
+    let result = with-env {HOME: $fake_home} { resolve-piped-sessions [{session: $uuid}] }
+
+    rm -rf $fake_home
+
+    assert equal ($result | each { path basename }) [$"($uuid).jsonl"]
+}
+
+@test
+def "resolve-piped-sessions errors on input lacking path or session" [] {
+    let err = try { resolve-piped-sessions [{foo: 1}]; "" } catch {|e| $e.msg }
+    assert str contains $err "must have 'path' or 'session' column"
+}
+
+# =============================================================================
+# Tests for messages --raw and regex filtering
+# =============================================================================
+
+@test
+def "messages --raw returns raw records without the rendered text column" [] {
+    let f = $nu.temp-dir | path join $"test-raw-(random uuid).jsonl"
+    [
+        '{"type":"user","message":{"content":"hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<bash-stdout>noise"},"timestamp":"2024-01-15T10:00:01Z"}'
+    ] | str join "\n" | save --force $f
+
+    let raw = messages --session $f --raw
+
+    rm $f
+
+    # System wrapper still filtered; the raw row keeps the nested message record
+    assert equal ($raw | length) 1
+    assert ("text" not-in ($raw | columns))
+    assert ("message" in ($raw | columns))
+    assert equal ($raw | first | get message.content) "hello"
+}
+
+@test
+def "messages regex argument filters by rendered text" [] {
+    let f = $nu.temp-dir | path join $"test-regex-(random uuid).jsonl"
+    [
+        '{"type":"user","message":{"content":"deploy the service"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"write the tests"},"timestamp":"2024-01-15T10:00:01Z"}'
+    ] | str join "\n" | save --force $f
+
+    let result = messages --session $f "deploy" | get message
+
+    rm $f
+
+    assert equal $result ["deploy the service"]
+}
+
+# =============================================================================
+# Tests for save-markdown file output and collisions
+# =============================================================================
+
+@test
+def "save-markdown writes a file and returns its path for a record" [] {
+    let out = $nu.temp-dir | path join $"md-out-(random uuid)"
+    let row = {session: "11111111-1111-1111-1111-111111111111" date: "20240115" topic: "my-topic" markdown: "# Hello\n\nbody"}
+
+    let filepath = $row | save-markdown --output-dir $out
+
+    let written = open --raw $filepath
+    let basename = $filepath | path basename
+    rm -rf $out
+
+    # Record input -> a single filepath string back
+    assert equal ($filepath | describe) "string"
+    assert equal $basename "20240115-my-topic.md"
+    assert equal $written "# Hello\n\nbody"
+}
+
+@test
+def "save-markdown disambiguates colliding filenames with the session id" [] {
+    # Why: two sessions sharing a date+topic would clobber one file; the writer
+    # appends a session-id prefix so both survive.
+    let out = $nu.temp-dir | path join $"md-out-(random uuid)"
+    let rows = [
+        {session: "aaaa1111-1111-1111-1111-111111111111" date: "20240115" topic: "topic-x" markdown: "# A"}
+        {session: "bbbb2222-2222-2222-2222-222222222222" date: "20240115" topic: "topic-x" markdown: "# B"}
+    ]
+
+    let result = $rows | save-markdown --output-dir $out
+    let names = ls $out | get name | path basename | sort
+    rm -rf $out
+
+    assert equal ($result | length) 2
+    assert equal $names ["20240115-topic-x-aaaa11.md" "20240115-topic-x-bbbb22.md"]
+}
+
+# =============================================================================
+# Tests for export-session dialogue rendering
+# =============================================================================
+
+@test
+def "export-session merges consecutive same-role turns" [] {
+    # Why: two user turns with no assistant between them collapse into one
+    # "## User" section joined by a blank line, not two headers.
+    let f = $nu.temp-dir | path join $"test-merge-(random uuid).jsonl"
+    [
+        '{"type":"user","message":{"content":"first"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"second"},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"reply"}]},"timestamp":"2024-01-15T10:00:02Z"}'
+    ] | str join "\n" | save --force $f
+
+    let md = export-session --session $f | get markdown
+
+    rm $f
+
+    assert equal ($md | lines | where $it == "## User" | length) 1
+    assert equal ($md | lines | where $it == "## Assistant" | length) 1
+    assert ($md | str contains "first\n\nsecond")
+}
