@@ -176,9 +176,14 @@ def session-id-from-path []: path -> string {
 # (and any future empty/corrupt-line handling has a single home).
 # Why (speed): `from json --objects` decodes the whole NDJSON stream in one call
 # instead of `lines | each { from json }`, which restarts the parser per line —
-# ~1.25x faster across every session parse.
-def read-session-records []: path -> table {
-    open --raw $in | from json --objects
+# ~1.25x faster across every session parse. --contains pre-screens the raw lines
+# by substring before decoding, so a caller wanting one record type (messages
+# wants user turns — only ~30% of lines) never parses the rest; the caller still
+# re-filters the decoded `type`, so a line merely quoting the marker can't slip in.
+def read-session-records [--contains: string]: path -> table {
+    open --raw $in
+    | if $contains == null { } else { lines | where ($it | str contains $contains) | str join "\n" }
+    | from json --objects
 }
 
 # Completion for session UUIDs
@@ -280,8 +285,16 @@ export def messages [
             }
         }
 
-        let dialogue = $session_file
-            | read-session-records
+        # Why (speed): the default keeps only user turns, so pre-screen the raw
+        # JSONL for the user-type marker before decoding — assistant turns, tool
+        # results, and summaries (the ~70% bulk) never reach the JSON parser. The
+        # `where type? == "user"` below still runs, so the prefilter only narrows.
+        let records = if $include_responses {
+            $session_file | read-session-records
+        } else {
+            $session_file | read-session-records --contains '"type":"user"'
+        }
+        let dialogue = $records
             | if $include_responses { } else { where type? == "user" }
             | extract-dialogue $extract_text --keep-system=$include_system
 
