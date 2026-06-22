@@ -33,9 +33,15 @@ use commands.nu [ find-session-files ]
 # real regex only to those — so a wide --all-projects search no longer parses
 # every session in every project. It also skips `sessions` entirely: that pass
 # computed summary/user_messages columns `messages` then threw away.
+# Why (--no-rg): rg scans the raw, escaped JSON, so a pattern leaning on a line
+# anchor (^/$) or a JSON-escaped quote/backslash/newline can match the extracted
+# text yet not the raw bytes — rg would then skip a file it shouldn't. --no-rg
+# parses every session in nushell and matches against the extracted text, so the
+# regex behaves exactly; slower, but correct for those patterns.
 export def main [
     --find (-f): string # Regex matched against user message text
     --all-projects # Search every project under ~/.claude/projects, not just the current one
+    --no-rg # Skip the ripgrep pre-filter and match entirely in-engine (exact regex semantics, slower)
 ]: nothing -> table {
     if $find == null {
         error make {
@@ -43,7 +49,7 @@ export def main [
             help: "search messages:  claude-nu -f 'regex'  (--all-projects to widen)\nsubcommands:  projects, sessions, messages, export-session, save-markdown"
         }
     }
-    let files = find-session-files $find --all-projects=$all_projects
+    let files = find-session-files $find --all-projects=$all_projects --no-rg=$no_rg
     if ($files | is-empty) { return [] }
     $files | wrap path | messages $find
 }

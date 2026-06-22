@@ -703,12 +703,15 @@ export def discover-session-files [dir: path]: nothing -> table {
 # hit, because `claude-nu -f` re-applies the real regex to the parsed text. For
 # ordinary word/phrase/regex searches rg and the structured filter agree (both
 # use Rust's regex engine), and we open only the few files that can match
-# instead of parsing every session in every project.
+# instead of parsing every session in every project. --no-rg forces the full
+# enumeration so the caller's regex runs against the extracted text with exact
+# semantics — the escape hatch for a pattern rg's raw scan would under-match.
 export def find-session-files [
     pattern: string # Regex (Rust syntax) matched against raw session JSONL
     --all-projects # Search every project under ~/.claude/projects, not just the current one
+    --no-rg # Skip the ripgrep pre-filter; return every top-level file for the caller to filter
 ]: nothing -> list<path> {
-    let rows = if (which rg | is-empty) {
+    let rows = if $no_rg or (which rg | is-empty) {
         top-level-session-files --all-projects=$all_projects
     } else {
         rg-session-files $pattern --all-projects=$all_projects

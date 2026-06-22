@@ -647,6 +647,36 @@ def "claude-nu -f matches a regex, not just a literal" [] {
 }
 
 @test
+def "claude-nu -f --no-rg matches an anchored pattern the rg pre-filter misses" [] {
+    # Why: rg scans the raw JSONL, whose every record line starts with `{`, so
+    # `^deploy` never matches there — the default path under-matches. --no-rg
+    # parses in-engine and applies `^` to the extracted text, so it finds the
+    # message that actually starts with "deploy".
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+    mkdir $proj_dir
+    let encoded = $proj_dir | path expand | str replace --all '/' '-'
+    let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+    mkdir $sessions_dir
+
+    '{"type":"user","message":{"content":"deploy to staging"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($sessions_dir | path join "11111111-1111-1111-1111-111111111111.jsonl")
+    '{"type":"user","message":{"content":"please deploy now"},"timestamp":"2024-01-15T10:00:01Z"}'
+        | save --force ($sessions_dir | path join "22222222-2222-2222-2222-222222222222.jsonl")
+
+    let default = with-env {HOME: $fake_home} { do { cd $proj_dir; claude-nu -f '^deploy' } }
+    let no_rg = with-env {HOME: $fake_home} { do { cd $proj_dir; claude-nu -f '^deploy' --no-rg } }
+
+    rm -rf $fake_home $proj_dir
+
+    # rg can't see the anchored match in the raw bytes; in-engine it finds the
+    # one message that starts with "deploy" and excludes the mid-string one.
+    assert equal ($default | length) 0
+    assert equal ($no_rg | length) 1
+    assert equal $no_rg.0.message "deploy to staging"
+}
+
+@test
 def "claude-nu without a search term errors with guidance" [] {
     let result = try { claude-nu; "no error" } catch {|e| $e.msg }
     assert ($result | str contains "search term")
