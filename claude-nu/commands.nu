@@ -635,9 +635,10 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
     # Why: `find` is handy for searching every column at once (it recurses into
     # nested cells like user_messages), but it marks matches by injecting ansi
     # codes into the string values themselves — which corrupts the path/session
-    # selectors so `path exists`/`open` then fail. Strip ansi here, the one
-    # chokepoint every piped command shares, so `find … | export-session` works.
-    # Stopgap until a dedicated message-search command lands (see todo/).
+    # selectors so `path exists`/`open` then fail. `find --no-highlight` (-n)
+    # skips the injection, but stripping ansi here — the one chokepoint every
+    # piped command shares — is more forgiving than asking callers to remember
+    # the flag, so plain `find … | export-session` works too.
     if "path" in $cols {
         $input | get path | compact | ansi strip | uniq
     } else if "session" in $cols {
