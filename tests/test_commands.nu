@@ -15,33 +15,8 @@ const FIXTURE_USER_FIRST = 'ef27ae6d-c8d1-4ce8-b0ff-bcfff3954193.jsonl' # 2.1.12
 const FIXTURES_SESSIONS_DIR = path self fixtures/sessions
 
 # =============================================================================
-# Tests for get-sessions-dir path transformation logic
+# Tests for get-sessions-dir
 # =============================================================================
-
-@test
-def "path transformation replaces slashes with dashes" [] {
-    # Test the core transformation logic used by get-sessions-dir
-    let path = "/Users/test/project"
-    let result = $path | str replace --all '/' '-'
-
-    assert equal $result "-Users-test-project"
-}
-
-@test
-def "path transformation handles root path" [] {
-    let path = "/"
-    let result = $path | str replace --all '/' '-'
-
-    assert equal $result "-"
-}
-
-@test
-def "path transformation handles nested path" [] {
-    let path = "/home/user/code/my-project/src"
-    let result = $path | str replace --all '/' '-'
-
-    assert equal $result "-home-user-code-my-project-src"
-}
 
 @test
 def "get-sessions-dir returns valid path for current directory" [] {
@@ -149,116 +124,6 @@ def "system prefixes filter multiple message types correctly" [] {
     assert equal ($filtered | length) 2
     assert equal ($filtered | first) "Hello Claude"
     assert equal ($filtered | last) "Regular message"
-}
-
-# =============================================================================
-# Tests for regex filtering logic
-# =============================================================================
-
-@test
-def "regex filtering matches content" [] {
-    let messages = [
-        {content: "fix the bug in login"}
-        {content: "add new feature"}
-        {content: "bugfix for authentication"}
-        {content: "update readme"}
-    ]
-
-    let filtered = $messages | where { $in.content =~ "bug" }
-
-    assert equal ($filtered | length) 2
-    assert ($filtered.0.content | str contains "bug")
-    assert ($filtered.1.content | str contains "bug")
-}
-
-@test
-def "regex filtering handles case sensitivity" [] {
-    let messages = [
-        {content: "Fix the BUG"}
-        {content: "found a bug"}
-        {content: "no issues here"}
-    ]
-
-    # Case-insensitive regex
-    let filtered = $messages | where { $in.content =~ "(?i)bug" }
-
-    assert equal ($filtered | length) 2
-}
-
-# =============================================================================
-# Tests for list content handling
-# =============================================================================
-
-@test
-def "list content joins correctly" [] {
-    let list_content = [
-        {content: "First part"}
-        {content: "Second part"}
-    ]
-
-    let joined = $list_content | each { $in.content } | str join "\n"
-
-    assert equal $joined "First part\nSecond part"
-}
-
-@test
-def "list content type detection works" [] {
-    let string_content = "simple string"
-    let list_content = [{content: "part1"} {content: "part2"}]
-
-    assert equal ($string_content | describe) "string"
-    # In Nushell, lists of records are described as "table<...>" or "list<...>"
-    let list_type = $list_content | describe
-    assert (($list_type | str starts-with "list") or ($list_type | str starts-with "table"))
-}
-
-# =============================================================================
-# Tests for session file parsing
-# =============================================================================
-
-@test
-def "session jsonl parsing extracts user messages" [] {
-    # Simulate parsing a JSONL session line
-    let line = '{"type": "user", "message": {"content": "Hello"}, "timestamp": "2024-01-15T10:00:00Z"}'
-    let parsed = $line | from json
-
-    assert equal $parsed.type "user"
-    assert equal $parsed.message.content "Hello"
-}
-
-@test
-def "session jsonl parsing handles assistant messages" [] {
-    let line = '{"type": "assistant", "message": {"content": "Hi there!"}, "timestamp": "2024-01-15T10:00:01Z"}'
-    let parsed = $line | from json
-
-    assert equal $parsed.type "assistant"
-}
-
-@test
-def "session filtering selects only user messages" [] {
-    let messages = [
-        {type: "user" message: {content: "Hello"}}
-        {type: "assistant" message: {content: "Hi"}}
-        {type: "user" message: {content: "Thanks"}}
-        {type: "summary" summary: "Session summary"}
-    ]
-
-    let user_messages = $messages | where type == "user"
-
-    assert equal ($user_messages | length) 2
-}
-
-@test
-def "isMeta filtering excludes meta messages" [] {
-    let messages = [
-        {type: "user" message: {content: "Hello"} isMeta: false}
-        {type: "user" message: {content: "System info"} isMeta: true}
-        {type: "user" message: {content: "Thanks"}}
-    ]
-
-    let non_meta = $messages | where isMeta? != true
-
-    assert equal ($non_meta | length) 2
 }
 
 # =============================================================================
@@ -704,32 +569,8 @@ def "sessions rejects --columns combined with --all-columns" [] {
 }
 
 # =============================================================================
-# Tests for --session flag path detection
+# Tests for --session flag and session-file resolution
 # =============================================================================
-
-@test
-def "session flag detects jsonl extension as path" [] {
-    let input = "/Users/user/.claude/projects/-test/abc123.jsonl"
-    let is_path = $input | str ends-with '.jsonl'
-
-    assert equal $is_path true
-}
-
-@test
-def "session flag detects uuid without extension" [] {
-    let input = "b8890913-730d-4621-b108-9c565d5cea3a"
-    let is_path = $input | str ends-with '.jsonl'
-
-    assert equal $is_path false
-}
-
-@test
-def "session flag works with windows-style paths" [] {
-    let input = 'C:\Users\user\.claude\projects\-test\abc123.jsonl'
-    let is_path = $input | str ends-with '.jsonl'
-
-    assert equal $is_path true
-}
 
 @test
 def "messages command accepts full path via --session" [] {
