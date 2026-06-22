@@ -629,7 +629,7 @@ def "sessions column flag narrows output to base plus requested" [] {
     '{"type":"user","slug":"narrow-test","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
         | save --force $temp_file
 
-    let result = sessions $temp_file --columns [slug] | first
+    let result = sessions $temp_file --columns slug | first
 
     rm $temp_file
 
@@ -647,11 +647,25 @@ def "session-columns completer offers exactly the selectable columns" [] {
     # The completer must offer exactly what --all-columns can produce (sans the
     # always-present path/parent_session_id), so the two never drift apart.
     let produced = sessions $temp_file --all-columns | first | columns | where $it not-in [path parent_session_id]
-    let offered = nu-complete claude session-columns
+    # Empty token (cursor right after the flag) → the bare column names.
+    let offered = nu-complete claude session-columns "sessions --columns "
 
     rm $temp_file
 
     assert equal ($offered | sort) ($produced | sort)
+}
+
+@test
+def "session-columns completer accumulates comma-separated picks" [] {
+    # After a pick + comma, the completer returns full comma-joined values and
+    # drops the already-chosen column, so the menu keeps working for the next
+    # element — the reason --columns is a comma string, not a list<string>.
+    let offered = nu-complete claude session-columns "sessions --columns slug,"
+
+    assert ("slug,version" in $offered)
+    assert ("slug,cwd" in $offered)
+    assert ("slug,slug" not-in $offered)
+    assert ($offered | all {|c| $c | str starts-with "slug," })
 }
 
 @test
@@ -662,7 +676,7 @@ def "sessions --columns fails fast on unknown column name" [] {
         | save --force $temp_file
 
     let msg = try {
-        sessions $temp_file --columns [not_a_column]
+        sessions $temp_file --columns not_a_column
         ""
     } catch {|e| $e.msg }
 
@@ -680,7 +694,7 @@ def "sessions rejects --columns combined with --all-columns" [] {
         | save --force $temp_file
 
     let failed = try {
-        sessions $temp_file --columns [slug] --all-columns
+        sessions $temp_file --columns slug --all-columns
         false
     } catch { true }
 
@@ -837,7 +851,7 @@ def "sessions extracts session_id from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [session_id] | first
+    let result = sessions $temp_file --columns session_id | first
 
     rm $temp_file
 
@@ -854,7 +868,7 @@ def "sessions extracts slug from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [slug] | first
+    let result = sessions $temp_file --columns slug | first
 
     rm $temp_file
 
@@ -871,7 +885,7 @@ def "sessions extracts version from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [version] | first
+    let result = sessions $temp_file --columns version | first
 
     rm $temp_file
 
@@ -888,7 +902,7 @@ def "sessions extracts cwd from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [cwd] | first
+    let result = sessions $temp_file --columns cwd | first
 
     rm $temp_file
 
@@ -905,7 +919,7 @@ def "sessions extracts git_branch from first record" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [git_branch] | first
+    let result = sessions $temp_file --columns git_branch | first
 
     rm $temp_file
 
@@ -922,7 +936,7 @@ def "sessions handles missing metadata with empty defaults" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [session_id slug version cwd git_branch] | first
+    let result = sessions $temp_file --columns session_id,slug,version,cwd,git_branch | first
 
     rm $temp_file
 
@@ -947,7 +961,7 @@ def "sessions extracts thinking_level from user records" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [thinking_level] | first
+    let result = sessions $temp_file --columns thinking_level | first
 
     rm $temp_file
 
@@ -964,7 +978,7 @@ def "sessions handles missing thinking metadata" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [thinking_level] | first
+    let result = sessions $temp_file --columns thinking_level | first
 
     rm $temp_file
 
@@ -987,7 +1001,7 @@ def "sessions extracts bash_commands list" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [bash_commands] | first
+    let result = sessions $temp_file --columns bash_commands | first
 
     rm $temp_file
 
@@ -1008,7 +1022,7 @@ def "sessions counts bash commands correctly" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [bash_count] | first
+    let result = sessions $temp_file --columns bash_count | first
 
     rm $temp_file
 
@@ -1027,7 +1041,7 @@ def "sessions extracts skill_invocations list" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [skill_invocations] | first
+    let result = sessions $temp_file --columns skill_invocations | first
 
     rm $temp_file
 
@@ -1048,7 +1062,7 @@ def "sessions counts tool_errors from tool_result" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [tool_errors] | first
+    let result = sessions $temp_file --columns tool_errors | first
 
     rm $temp_file
 
@@ -1068,7 +1082,7 @@ def "sessions counts ask_user_count" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [ask_user_count] | first
+    let result = sessions $temp_file --columns ask_user_count | first
 
     rm $temp_file
 
@@ -1086,7 +1100,7 @@ def "sessions detects plan_mode_used true" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [plan_mode_used] | first
+    let result = sessions $temp_file --columns plan_mode_used | first
 
     rm $temp_file
 
@@ -1104,7 +1118,7 @@ def "sessions detects plan_mode_used false" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [plan_mode_used] | first
+    let result = sessions $temp_file --columns plan_mode_used | first
 
     rm $temp_file
 
@@ -1128,7 +1142,7 @@ def "sessions counts turn_count excluding meta messages" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [turn_count] | first
+    let result = sessions $temp_file --columns turn_count | first
 
     rm $temp_file
 
@@ -1149,7 +1163,7 @@ def "sessions counts assistant_msg_count" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [assistant_msg_count] | first
+    let result = sessions $temp_file --columns assistant_msg_count | first
 
     rm $temp_file
 
@@ -1168,7 +1182,7 @@ def "sessions counts tool_call_count" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [tool_call_count] | first
+    let result = sessions $temp_file --columns tool_call_count | first
 
     rm $temp_file
 
@@ -1186,7 +1200,7 @@ def "sessions handles empty session for derived metrics" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [turn_count assistant_msg_count tool_call_count] | first
+    let result = sessions $temp_file --columns turn_count,assistant_msg_count,tool_call_count | first
 
     rm $temp_file
 
@@ -1718,7 +1732,7 @@ def "extract-agents still recognizes legacy Task tool name" [] {
 @test
 def "sessions finds agents in Agent-tool fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
-    let result = sessions $p --columns [agents] | first
+    let result = sessions $p --columns agents | first
     assert (($result.agents | length) > 0)
 }
 
@@ -1758,7 +1772,7 @@ def "extract-session-metadata returns empty defaults when no records carry a fie
 @test
 def "sessions metadata works for file-history-snapshot-first fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_TASKFAMILY
-    let result = sessions $p --columns [session_id cwd version git_branch] | first
+    let result = sessions $p --columns session_id,cwd,version,git_branch | first
     assert (($result.session_id | str length) > 0)
     assert (($result.cwd | str length) > 0)
     assert (($result.version | str length) > 0)
@@ -1767,7 +1781,7 @@ def "sessions metadata works for file-history-snapshot-first fixture" [] {
 @test
 def "sessions metadata works for permission-mode-first fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
-    let result = sessions $p --columns [session_id cwd version git_branch] | first
+    let result = sessions $p --columns session_id,cwd,version,git_branch | first
     assert (($result.session_id | str length) > 0)
     assert (($result.cwd | str length) > 0)
     assert (($result.version | str length) > 0)
@@ -1776,7 +1790,7 @@ def "sessions metadata works for permission-mode-first fixture" [] {
 @test
 def "sessions metadata still works for older user-first fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST
-    let result = sessions $p --columns [session_id cwd version git_branch] | first
+    let result = sessions $p --columns session_id,cwd,version,git_branch | first
     assert (($result.session_id | str length) > 0)
     assert (($result.cwd | str length) > 0)
     assert equal $result.version "2.1.129"
@@ -1786,7 +1800,7 @@ def "sessions metadata still works for older user-first fixture" [] {
 def "sessions falls back to ai-title aiTitle when no summary record" [] {
     # All vendored fixtures lack a summary record but have ai-title
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
-    let result = sessions $p --columns [summary] | first
+    let result = sessions $p --columns summary | first
     assert (($result.summary | str length) > 0)
 }
 
@@ -1800,7 +1814,7 @@ def "sessions uses summary record when present in preference to ai-title" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [summary] | first
+    let result = sessions $temp_file --columns summary | first
     rm $temp_file
 
     assert equal $result.summary "Real summary record"
@@ -1826,14 +1840,14 @@ def "sessions derives plan_mode_used true from permission-mode record" [] {
     # Why: 2.1.x replaced EnterPlanMode tool calls with top-level
     # permission-mode records carrying permissionMode value
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
-    let result = sessions $p --columns [plan_mode_used] | first
+    let result = sessions $p --columns plan_mode_used | first
     assert equal $result.plan_mode_used true
 }
 
 @test
 def "sessions plan_mode_used false when no plan in permission-mode" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
-    let result = sessions $p --columns [plan_mode_used] | first
+    let result = sessions $p --columns plan_mode_used | first
     assert equal $result.plan_mode_used false
 }
 
@@ -1846,7 +1860,7 @@ def "sessions plan_mode_used still detects legacy EnterPlanMode tool" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns [plan_mode_used] | first
+    let result = sessions $temp_file --columns plan_mode_used | first
     rm $temp_file
 
     assert equal $result.plan_mode_used true
@@ -1889,7 +1903,7 @@ def "extract-tool-stats keeps backward-compat columns" [] {
 @test
 def "sessions counts new tool names from fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_TASKFAMILY
-    let result = sessions $p --columns [tool_counts] | first
+    let result = sessions $p --columns tool_counts | first
     # ae3bbbf7 fixture has TaskCreate, TaskUpdate, TaskStop calls
     assert ($result.tool_counts.TaskCreate > 0)
     assert ($result.tool_counts.TaskUpdate > 0)
@@ -1928,7 +1942,7 @@ def "sessions token-usage sums usage across turns" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let u = sessions $temp_file --columns [token_usage] | first | get token_usage
+    let u = sessions $temp_file --columns token_usage | first | get token_usage
     rm $temp_file
 
     assert equal $u.input_tokens 13

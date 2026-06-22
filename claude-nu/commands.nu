@@ -721,9 +721,22 @@ export def discover-session-files [dir: path]: nothing -> table {
     $top_level | append $subagent_files | sort-by modified --reverse
 }
 
-# Completer for --columns: selectable session column names.
-export def "nu-complete claude session-columns" []: nothing -> list<string> {
-    $SESSION_COLUMNS | get name
+# Completer for --columns: comma-separated session column names. Returns full
+# comma-joined values (e.g. `slug,version`) so the menu re-spawns after each
+# comma and accumulates; names already chosen in the token are excluded.
+# Why: --columns is a string, not list<string>, because Nushell completes a
+# list-typed flag only outside its `[ ]` — where a bare value won't parse — and
+# offers nothing inside the brackets. A string flag completes at the value
+# position, where the inserted text is valid, so the menu actually works.
+export def "nu-complete claude session-columns" [context: string]: nothing -> list<string> {
+    let token = $context | split row ' ' | last
+    let parts = $token | split row ','
+    let chosen = $parts | drop 1
+    let prefix = $chosen | str join ','
+    $SESSION_COLUMNS
+    | get name
+    | where $it not-in $chosen
+    | each {|c| if ($prefix | is-empty) { $c } else { $"($prefix),($c)" } }
 }
 
 # Parse Claude Code sessions for structured information.
@@ -735,7 +748,7 @@ export def sessions [
     --session: string@"nu-complete claude sessions" # Single session UUID or path
     --last # Only the most recent session of the current project
     --all-projects # Enumerate sessions across every project under ~/.claude/projects
-    --columns (-c): list<string>@"nu-complete claude session-columns" # Columns to include (default: overview set)
+    --columns (-c): string@"nu-complete claude session-columns" # Comma-separated columns to include (default: overview set)
     --all-columns # Include all columns
 ]: [nothing -> table string -> table table -> table] {
     let input = $in
@@ -812,27 +825,35 @@ export def sessions [
         error make {msg: "No session files found"}
     }
 
-    if $all_columns and ($columns | is-not-empty) {
+    let all_names = $SESSION_COLUMNS | get name
+
+    # Why: --columns is a comma-separated string (see the completer) — split,
+    # trim, and drop empties so "slug, cwd" and a trailing comma are forgiving.
+    let requested = $columns
+        | default ""
+        | split row ','
+        | each { str trim }
+        | where $it != ""
+
+    if $all_columns and ($requested | is-not-empty) {
         error make {msg: "--columns and --all-columns are mutually exclusive"}
     }
 
-    let all_names = $SESSION_COLUMNS | get name
-
     let selected = if $all_columns {
         $all_names
-    } else if ($columns | is-empty) {
+    } else if ($requested | is-empty) {
         $SESSION_COLUMNS | where default | get name
     } else {
         # Why: fail fast on a typo'd column name — parse-session-columns would
         # otherwise silently omit it, hiding the mistake.
-        let unknown = $columns | where $it not-in $all_names
+        let unknown = $requested | where $it not-in $all_names
         if ($unknown | is-not-empty) {
             error make {
                 msg: $"Unknown session column\(s): ($unknown | str join ', ')"
                 help: $"valid columns: ($all_names | str join ', ')"
             }
         }
-        $columns
+        $requested
     }
 
     $session_rows | each {|row|

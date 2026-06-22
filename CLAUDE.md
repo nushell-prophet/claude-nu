@@ -55,7 +55,7 @@ claude-nu messages 'regex' --all-sessions | claude-nu messages --include-respons
 claude-nu messages 'regex' --all-sessions | claude-nu export-session | claude-nu save-markdown # export matched sessions to markdown
 claude-nu sessions                     # All sessions with summaries and stats
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, thinking level...
-claude-nu sessions --last --columns [token_usage] # Just the requested columns, most recent session
+claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
 claude-nu export-session               # Export to markdown with YAML frontmatter
 ```
 
