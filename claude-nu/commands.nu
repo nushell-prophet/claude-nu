@@ -67,6 +67,22 @@ export def get-sessions-dir []: nothing -> path {
     projects-root | path join ($env.PWD | path expand | str replace --all '/' '-')
 }
 
+# Project directory name a session file belongs to — the first path segment
+# under ~/.claude/projects. Why: `path dirname` is right for top-level files
+# (<root>/<proj>/<uuid>.jsonl) but wrong for subagent transcripts
+# (<root>/<proj>/<uuid>/subagents/agent-*.jsonl), where it yields "subagents" —
+# that mislabels rows and falsely trips multi-project tagging inside one
+# project. Files outside the root fall back to their parent directory name.
+def project-dir-name []: path -> string {
+    let file = $in
+    let rel = try { $file | path relative-to (projects-root) } catch { null }
+    if $rel == null {
+        $file | path dirname | path basename
+    } else {
+        $rel | path split | first
+    }
+}
+
 # List Claude Code projects under ~/.claude/projects, most recent first.
 # `name` is the last two segments of the real project path; `path` is the
 # sessions directory, so rows pipe straight into `sessions`.
@@ -228,7 +244,7 @@ export def messages [
     # Why: when the piped sessions span more than one project, tag each row with
     # its project so cross-project search stays traceable; a single-project
     # scope keeps the lean output.
-    let multi_project = ($session_files | each { path dirname } | uniq | length) > 1
+    let multi_project = ($session_files | each { project-dir-name } | uniq | length) > 1
 
     $session_files
     | each {|session_file|
@@ -275,7 +291,7 @@ export def messages [
         # can pipe back into messages/export-session/sessions.
         | each { insert session $session_uuid }
         | if $multi_project {
-            insert project ($session_file | path dirname | path basename)
+            insert project ($session_file | project-dir-name)
         } else { }
     }
     | flatten

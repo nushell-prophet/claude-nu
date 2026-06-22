@@ -503,6 +503,34 @@ def "sessions --all-projects piped into messages covers every session" [] {
 }
 
 @test
+def "messages keys subagent rows by real project, not the subagents folder" [] {
+    # Why: subagent transcripts live at <proj>/<uuid>/subagents/agent-*.jsonl, so
+    # `path dirname` labelled them "subagents" and falsely tripped multi-project
+    # tagging inside one project. project-dir-name resolves both layouts to the
+    # same project, so a single-project scope adds no project column.
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj = $fake_home | path join ".claude" "projects" "-proj-a"
+    let sub = $proj | path join "11111111-1111-1111-1111-111111111111" "subagents"
+    mkdir $sub
+
+    '{"type":"user","message":{"content":"top-level msg"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($proj | path join "11111111-1111-1111-1111-111111111111.jsonl")
+    '{"type":"user","message":{"content":"subagent msg"},"timestamp":"2024-01-15T10:00:01Z"}'
+        | save --force ($sub | path join "agent-abc123.jsonl")
+
+    let result = with-env {HOME: $fake_home} {
+        sessions $proj | messages
+    }
+
+    rm -rf $fake_home
+
+    assert equal ("project" in ($result | columns)) false
+    let all = $result | get message
+    assert ("top-level msg" in $all)
+    assert ("subagent msg" in $all)
+}
+
+@test
 def "save-markdown fails fast on messages-shaped input" [] {
     let err = try {
         [{role: "user" message: "hi" timestamp: "2024-01-15T10:00:00Z" session: "abc"}] | save-markdown
