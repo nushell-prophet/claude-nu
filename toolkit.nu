@@ -138,9 +138,9 @@ export def 'main vendor-sessions' [
     --count (-n): int = 3 # Number of most recent sessions when no UUIDs given
     --commit # Also create a git commit after copying
 ] {
-    use claude-nu
+    use claude-nu/commands.nu get-sessions-dir
 
-    let sessions_dir = claude-nu get-sessions-dir
+    let sessions_dir = get-sessions-dir
     if not ($sessions_dir | path exists) {
         print $"(ansi red)✗(ansi reset) No sessions directory at ($sessions_dir)"
         return
