@@ -49,10 +49,10 @@ use /path/to/completions/nu.nu *
 claude-nu projects                     # Projects by recency (name, path, count, modified)
 claude-nu projects | where name =~ nu | claude-nu sessions | claude-nu messages # pipe chain scoping
 claude-nu messages                     # User messages from current session
-claude-nu messages 'regex' --all-sessions # Search across all sessions in project
-claude-nu messages --all-projects      # Search across all projects
-claude-nu messages 'regex' --all-sessions | claude-nu messages --include-responses # full dialogues of matched sessions
-claude-nu messages 'regex' --all-sessions | claude-nu export-session | claude-nu save-markdown # export matched sessions to markdown
+claude-nu sessions | where parent_session_id == null | claude-nu messages 'regex' # search all sessions in project
+claude-nu sessions --all-projects | where parent_session_id == null | claude-nu messages 'regex' # search across all projects
+claude-nu sessions | where parent_session_id == null | claude-nu messages 'regex' | claude-nu messages --include-responses # full dialogues of matched sessions
+claude-nu sessions | where parent_session_id == null | claude-nu messages 'regex' | claude-nu export-session | claude-nu save-markdown # export matched sessions to markdown
 claude-nu sessions                     # All sessions with summaries and stats
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, thinking level...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session

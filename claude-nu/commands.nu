@@ -62,38 +62,9 @@ def projects-root []: nothing -> path {
     $env.HOME | path join ".claude" "projects"
 }
 
-# Helper to get project sessions directory
-export def get-sessions-dir [
-    project?: path # Project path, or `parent/name` shorthand (default: $env.PWD)
-]: nothing -> path {
-    let projects_root = projects-root
-    let direct = ($project | default $env.PWD) | path expand | str replace --all '/' '-'
-    let direct_dir = $projects_root | path join $direct
-
-    # Why: the completer inserts a `parent/name` shorthand, which `path expand`
-    # would wrongly anchor to $PWD. A real path always resolves directly, so
-    # only fall back to shorthand matching when the expanded dir is absent.
-    if $project == null or ($direct_dir | path exists) {
-        return $direct_dir
-    }
-
-    # Why: only the completer's `parent/name` shape may suffix-match. A bare
-    # or path-like value (e.g. `--project foo` meaning ./foo) must fail on
-    # the missing dir, not silently resolve to another project whose encoded
-    # name happens to end in the same suffix.
-    if not ($project =~ '^[^/~.][^/]*/[^/]+$') {
-        return $direct_dir
-    }
-
-    let encoded = $project | str replace --all '/' '-'
-    let matches = ls $projects_root
-        | where type == dir
-        | where {|row| $row.name | path basename | str ends-with $"-($encoded)" }
-    match ($matches | length) {
-        0 => $direct_dir # let downstream report the missing dir
-        1 => ($matches | get 0.name)
-        _ => (error make {msg: $"Ambiguous project shorthand '($project)' matches: (($matches | get name | path basename | str join ', '))"})
-    }
+# Sessions directory for the current project: ~/.claude/projects/<encoded-pwd>
+export def get-sessions-dir []: nothing -> path {
+    projects-root | path join ($env.PWD | path expand | str replace --all '/' '-')
 }
 
 # List Claude Code projects under ~/.claude/projects, most recent first.
@@ -136,14 +107,6 @@ export def projects []: nothing -> table {
         }
     }
     | compact
-}
-
-# Completer for --project: existing projects by recency, shown as `parent/name`
-export def "nu-complete claude projects" []: nothing -> record {
-    {
-        options: {sort: false}
-        completions: (projects | each {|p| {value: $p.name description: ($p.modified | date humanize)} })
-    }
 }
 
 # Resolve session file path from UUID, path, or default to most recent
@@ -233,13 +196,17 @@ export def "nu-complete claude sessions" []: nothing -> record {
     }
 }
 
-# Extract user messages from Claude Code session files
+# Extract user messages from Claude Code session files.
+# Scope by piping session rows in — `sessions --all-projects | messages` for
+# every project, or `sessions | where parent_session_id == null | messages` for
+# one project's top-level sessions. With no input it reads the current project's
+# most recent session.
+# Why: selection lives in one place (`sessions`); messages just reads what it's
+# handed. This also kills the old `--all-projects` take-1 footgun (see
+# todo/20260618-225035) — "all" now means all, because the caller controls it.
 export def messages [
     regex?: string # Filter messages by regex pattern
     --session: string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
-    --all-sessions # Search across all project sessions
-    --project: path@"nu-complete claude projects" # Project path to search in (default: current directory)
-    --all-projects # Search across all projects
     --include-system # Include system/meta messages (not just user-typed)
     --include-thinking # Include assistant thinking blocks (prefixed with [thinking])
     --raw # Return raw message records instead of just content
@@ -248,55 +215,20 @@ export def messages [
     let input = $in
     let piped_files = resolve-piped-sessions $input
 
-    if $piped_files != null {
-        if $session != null { error make {msg: "Piped input conflicts with --session"} }
-        if $all_sessions { error make {msg: "Piped input conflicts with --all-sessions"} }
-        if $all_projects { error make {msg: "Piped input conflicts with --all-projects"} }
-        if $project != null { error make {msg: "Piped input conflicts with --project"} }
+    if $piped_files != null and $session != null {
+        error make {msg: "Piped input conflicts with --session"}
     }
 
     let session_files = if $piped_files != null {
         $piped_files
-    } else if $all_projects {
-        if $session != null {
-            error make {msg: "--all-projects and --session are mutually exclusive"}
-        }
-        if $project != null {
-            error make {msg: "--all-projects and --project are mutually exclusive"}
-        }
-        let projects_dir = projects-root
-        if not ($projects_dir | path exists) {
-            error make {msg: "No projects directory found"}
-        }
-        ls $projects_dir
-        | where type == dir
-        | each {|dir|
-            # Why: messages reports human-typed turns, so restrict to top-level
-            # sessions — subagent transcripts hold agent-driven turns, not the
-            # user's. Newest-first comes from the discoverer, so `take 1` is
-            # each project's most recent session.
-            discover-session-files $dir.name
-            | where parent_session_id == null
-            | if $all_sessions { } else { take 1 }
-            | get path
-        }
-        | flatten
-    } else if $all_sessions {
-        if $session != null {
-            error make {msg: "--all-sessions and --session are mutually exclusive"}
-        }
-        let dir = get-sessions-dir $project
-        if not ($dir | path exists) {
-            error make {msg: $"Sessions directory not found: ($dir)"}
-        }
-        # Why: top-level only — subagent transcripts aren't the user's messages.
-        discover-session-files $dir
-        | where parent_session_id == null
-        | get path
     } else {
-        let dir = get-sessions-dir $project
-        [(resolve-session-file $session --sessions-dir $dir)]
+        [(resolve-session-file $session)]
     }
+
+    # Why: when the piped sessions span more than one project, tag each row with
+    # its project so cross-project search stays traceable; a single-project
+    # scope keeps the lean output.
+    let multi_project = ($session_files | each { path dirname } | uniq | length) > 1
 
     $session_files
     | each {|session_file|
@@ -374,7 +306,7 @@ export def messages [
         # output a valid session selector for resolve-piped-sessions, so it
         # can pipe back into messages/export-session/sessions.
         | each { insert session $session_uuid }
-        | if $all_projects {
+        | if $multi_project {
             insert project ($session_file | path dirname | path basename)
         } else { }
     }

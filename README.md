@@ -6,7 +6,7 @@ Nushell utilities for working with [Claude Code](https://claude.ai/code) session
 
 ## Highlights
 
-- **Search past sessions** — Find what you asked Claude last week with `messages 'pattern' --all-projects`
+- **Search past sessions** — Find what you asked Claude last week with `sessions --all-projects | messages 'pattern'`
 - **Session analytics** — See what Claude actually did: files touched, tools called, agents spawned, errors hit
 - **Smart session picker** — `claude --resume <TAB>` shows age, size, and summary instead of raw UUIDs
 - **Export to markdown** — Keep session history in git with YAML frontmatter

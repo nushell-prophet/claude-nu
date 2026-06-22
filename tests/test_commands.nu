@@ -768,9 +768,10 @@ def "messages always includes session column" [] {
 }
 
 @test
-def "messages --all-sessions covers top-level sessions but not subagents" [] {
-    # Why: --all-sessions routes through the shared discoverer and filters to
-    # top-level — subagent transcripts hold agent-driven turns, not the user's.
+def "piping top-level sessions into messages excludes subagents" [] {
+    # Why: messages no longer enumerates sessions — the caller scopes via
+    # `sessions | where parent_session_id == null`. Subagent transcripts hold
+    # agent-driven turns, so dropping them is the caller's choice, not messages'.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let sessions_dir = $fake_home | path join ".claude" "projects" "-work-proj"
     let parent_uuid = "11111111-1111-1111-1111-111111111111"
@@ -783,9 +784,7 @@ def "messages --all-sessions covers top-level sessions but not subagents" [] {
     '{"type":"user","message":{"content":"gamma subagent message"},"timestamp":"2024-01-15T10:00:00Z"}'
         | save --force ($sessions_dir | path join $parent_uuid "subagents" "agent-abc123.jsonl")
 
-    let msgs = with-env {HOME: $fake_home} {
-        messages --all-sessions --project "/work/proj" | get message
-    }
+    let msgs = sessions $sessions_dir | where parent_session_id == null | messages | get message
 
     rm -rf $fake_home
 
@@ -795,9 +794,11 @@ def "messages --all-sessions covers top-level sessions but not subagents" [] {
 }
 
 @test
-def "messages --all-projects takes newest per project, --all-sessions takes all" [] {
-    # Why: --all-projects without --all-sessions is the newest session of each
-    # project; with it, every session. Both restrict to top-level files.
+def "sessions --all-projects piped into messages covers every session" [] {
+    # Why: replaces the old `messages --all-projects`, which silently read only
+    # the newest session per project (todo/20260618-225035). Routing scope
+    # through `sessions --all-projects` makes "all" actually mean all, and tags
+    # rows with their project when the scope spans more than one.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let projects_dir = $fake_home | path join ".claude" "projects"
     let proj_a = $projects_dir | path join "-proj-a"
@@ -808,22 +809,20 @@ def "messages --all-projects takes newest per project, --all-sessions takes all"
     let a_new = $proj_a | path join "22222222-2222-2222-2222-222222222222.jsonl"
     '{"type":"user","message":{"content":"a-old"},"timestamp":"2024-01-15T10:00:00Z"}' | save --force $a_old
     '{"type":"user","message":{"content":"a-new"},"timestamp":"2024-01-15T10:00:00Z"}' | save --force $a_new
-    touch -m -t ((date now) - 2hr) $a_old
-    touch -m -t ((date now) - 1hr) $a_new
     '{"type":"user","message":{"content":"b-only"},"timestamp":"2024-01-15T10:00:00Z"}'
         | save --force ($proj_b | path join "33333333-3333-3333-3333-333333333333.jsonl")
 
-    let newest = with-env {HOME: $fake_home} { messages --all-projects | get message }
-    let all = with-env {HOME: $fake_home} { messages --all-projects --all-sessions | get message }
+    let result = with-env {HOME: $fake_home} {
+        sessions --all-projects | where parent_session_id == null | messages
+    }
 
     rm -rf $fake_home
 
-    assert ("a-new" in $newest)
-    assert ("b-only" in $newest)
-    assert ("a-old" not-in $newest)
+    let all = $result | get message
     assert ("a-old" in $all)
     assert ("a-new" in $all)
     assert ("b-only" in $all)
+    assert ("project" in ($result | columns))
 }
 
 @test
@@ -1599,29 +1598,6 @@ def "projects falls back to older sessions when newest lacks cwd" [] {
     assert equal ($result | length) 1
     assert equal $result.0.name "parent/proj"
     assert equal $result.0.count 2
-}
-
-@test
-def "get-sessions-dir suffix-matches only parent/name shorthands" [] {
-    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
-    mkdir ($fake_home | path join ".claude" "projects" "-other-place-foo")
-
-    let results = with-env {HOME: $fake_home} {
-        do {
-            cd /tmp
-            {
-                bare: (get-sessions-dir foo)
-                shorthand: (get-sessions-dir "place/foo")
-            }
-        }
-    }
-
-    rm -rf $fake_home
-
-    # Why: a bare name is a relative path (./foo), not a shorthand — it must
-    # resolve to its own (missing) dir, never to another project's sessions.
-    assert equal $results.bare ($fake_home | path join ".claude" "projects" "-tmp-foo")
-    assert equal $results.shorthand ($fake_home | path join ".claude" "projects" "-other-place-foo")
 }
 
 @test
