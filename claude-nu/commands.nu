@@ -900,7 +900,7 @@ export def export-session [
 
     let export_one = {|session_file|
         if not ($session_file | path exists) {
-            error make {msg: $"Session file not found: ($session_file)"}
+            error make --unspanned {msg: $"Session file not found: ($session_file)"}
         }
 
         let records = open --raw $session_file | lines | each { from json }
