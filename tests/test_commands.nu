@@ -293,6 +293,30 @@ def "sessions user_msg_count and turn_count exclude tool-result user records" []
 }
 
 @test
+def "sessions user message columns exclude command and caveat wrappers" [] {
+    # Why: `messages` drops the command/caveat wrappers Claude Code synthesizes
+    # (via is-user-text) and meta turns; the user_msg_* columns and turn_count
+    # must agree, or `sessions` reports a /clear or a caveat block as a message.
+    let temp_file = $nu.temp-dir | path join $"test-wrappers-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","isMeta":true,"message":{"content":"<command-name>/clear</command-name>"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<local-command-caveat>Caveat: ran a local command</local-command-caveat>"},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"user","message":{"content":"Real question"},"timestamp":"2024-01-15T10:00:02Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = sessions $temp_file --columns user_msg_count,user_messages,turn_count | first
+
+    rm $temp_file
+
+    assert equal $result.user_msg_count 1
+    assert equal $result.turn_count 1
+    assert equal $result.user_messages ["Real question"]
+}
+
+@test
 def "sessions handles empty file" [] {
     let temp_file = $nu.temp-dir | path join $"test-empty-(random uuid).jsonl"
 

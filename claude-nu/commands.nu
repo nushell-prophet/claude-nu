@@ -348,6 +348,20 @@ def extract-dialogue [extract: closure --keep-system]: table -> table {
     }
 }
 
+# Authored user-message text from a record set — exactly the user messages
+# `messages` returns: tool-result records (render to ""), meta turns, and the
+# command/caveat wrappers Claude Code synthesizes are all dropped (via
+# extract-dialogue / is-user-text).
+# Why: the user_msg_* columns and turn_count must agree with `messages` on what
+# a user message is. The old "any non-empty user record" rule counted /clear and
+# <local-command-caveat> wrappers as messages, inflating every count and dumping
+# that wrapper text into the default `user_messages` column.
+def user-message-texts []: table -> list<string> {
+    where type? == "user"
+    | extract-dialogue {|r| $r | extract-text-content }
+    | get text
+}
+
 # Helper to extract tool calls from assistant messages
 export def extract-tool-calls []: record -> table {
     $in.message?.content?
@@ -472,9 +486,10 @@ export def extract-derived-metrics [
     tool_calls: table
 ]: table -> record {
     {
-        # Why: tool results are type:"user" records too; exclude them (empty
-        # rendered text) so a turn counts an authored message, not a tool reply.
-        turn_count: ($in | where isMeta? != true | where {|r| ($r | extract-text-content) != "" } | length)
+        # Why: a turn is one authored user message — same definition as the
+        # user_msg_* columns and `messages` (tool-result, meta, and command/
+        # caveat wrapper records all excluded), so the metrics can't disagree.
+        turn_count: ($in | user-message-texts | length)
         assistant_msg_count: ($assistant_records | length)
         tool_call_count: ($tool_calls | length)
     }
@@ -524,12 +539,12 @@ def parse-session-columns [selected: list<string>]: path -> record {
     } else { [] }
 
     # Why: user_msg_count/length/list all describe user-authored text, so one
-    # pass feeds all three. Tool results are type:"user" records too, but their
-    # content renders to "" — drop empties here so none of the three count them.
-    # Not counting raw user records because: that balloons the count with tool
-    # replies (e.g. 175 records for 3 real messages).
+    # pass feeds all three. user-message-texts is the single definition of "a
+    # user message" shared with `messages` and turn_count — it drops tool-result
+    # records (render to ""), meta turns, and command/caveat wrappers, so none of
+    # the three count tool replies or a /clear invocation as a message.
     let user_messages = if (do $need [user_messages user_msg_length user_msg_count]) {
-        $user_records | each { extract-text-content } | where $it != ""
+        $user_records | user-message-texts
     } else { [] }
 
     let user_msg_length = $user_messages
