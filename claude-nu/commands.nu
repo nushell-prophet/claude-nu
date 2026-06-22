@@ -239,59 +239,27 @@ export def messages [
         let session_uuid = $session_file | session-id-from-path
 
         # Why: --include-thinking surfaces thinking-only assistant turns
-        # (otherwise dropped by the visible-text filter below). Keep
-        # extract-text-content's contract intact for other callers.
+        # (otherwise dropped by the empty-text filter). User text always goes
+        # through extract-text-content, keeping its contract for other callers.
         let extract_assistant = if $include_thinking {
             {|r| $r | extract-text-with-thinking }
         } else {
             {|r| $r | extract-text-content }
         }
+        let extract_text = {|r|
+            match $r.type? {
+                "assistant" => (do $extract_assistant $r)
+                _ => ($r | extract-text-content)
+            }
+        }
 
-        # Parse and filter messages
-        let messages = open --raw $session_file
+        let dialogue = open --raw $session_file
             | lines
             | each { from json }
-            | if $include_responses {
-                where type in ["user" "assistant"]
-            } else {
-                where type == "user"
-            }
-            | if $include_system { } else {
-                where {|r|
-                    match $r.type? {
-                        "assistant" => true
-                        _ => {
-                            if $r.isMeta? == true { false } else {
-                                let content = $r.message?.content?
-                                match ($content | describe) {
-                                    "string" if ($content | is-not-empty) => {
-                                        $SYSTEM_PREFIXES | all {|p| not ($content | str starts-with $p) }
-                                    }
-                                    _ => false
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            # Extract visible text once; the regex filter and output read it
-            | insert text {|r|
-                match $r.type? {
-                    "assistant" => (do $extract_assistant $r)
-                    _ => {
-                        let content = $r.message?.content?
-                        if ($content | describe) =~ '^(list|table)' {
-                            $content | get content --optional | str join "\n"
-                        } else {
-                            $content
-                        }
-                    }
-                }
-            }
-            # Drop assistant messages with no visible text
-            | where {|r| $r.type? != "assistant" or ($r.text | str trim | is-not-empty) }
+            | if $include_responses { } else { where type? == "user" }
+            | extract-dialogue $extract_text --keep-system=$include_system
 
-        let filtered = $messages
+        let filtered = $dialogue
             | if $regex == null { } else { where text =~ $regex }
 
         if $raw {
@@ -338,6 +306,30 @@ export def extract-text-content []: record -> string {
 # the visible-text filter would otherwise drop.
 export def extract-text-with-thinking []: record -> string {
     render-content --thinking
+}
+
+# False when text is one of the command/tool/caveat wrappers Claude Code
+# synthesizes around a turn — i.e. not a human-typed message (see SYSTEM_PREFIXES).
+def is-user-text []: string -> bool {
+    let text = $in
+    $SYSTEM_PREFIXES | all {|p| not ($text | str starts-with $p) }
+}
+
+# Build a dialogue table from raw session records: the user and assistant turns
+# with their visible text. Drops meta turns, empty-text turns, and the user-side
+# system/command wrappers Claude Code synthesizes. `extract` renders each record's
+# text, so callers pick plain text, +thinking, or tool placeholders. Pass
+# --keep-system to retain meta and system-wrapper turns (messages --include-system).
+# Why: messages and export-session both built this same dialogue+filter pass; one
+# source keeps the system-prefix rule from drifting between them.
+def extract-dialogue [extract: closure --keep-system]: table -> table {
+    where type? in ["user" "assistant"]
+    | if $keep_system { } else { where isMeta? != true }
+    | insert text {|r| do $extract $r }
+    | where {|r| $r.text | str trim | is-not-empty }
+    | if $keep_system { } else {
+        where {|r| $r.type? != "user" or ($r.text | is-user-text) }
+    }
 }
 
 # Helper to extract tool calls from assistant messages
@@ -913,12 +905,7 @@ export def export-session [
 
         # Extract dialogue: user messages and assistant responses
         let dialogue = $records
-            | where type? in ["user" "assistant"]
-            | where isMeta? != true
-            | insert text { if $tools { render-content --tools } else { extract-text-content } }
-            | where { $in.text | str trim | is-not-empty }
-            # Keep assistant messages; filter user messages starting with system prefixes
-            | where {|r| $r.type != "user" or ($SYSTEM_PREFIXES | all {|p| not ($r.text | str starts-with $p) }) }
+            | extract-dialogue {|r| if $tools { $r | render-content --tools } else { $r | extract-text-content }}
             | select type text
             | rename role content
             # Merge consecutive same-role messages
