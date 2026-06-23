@@ -229,10 +229,11 @@ export def "nu-complete claude sessions" []: nothing -> record {
 }
 
 # Extract user messages from Claude Code session files.
-# Scope by piping session rows in — `sessions --all-projects | messages` for
-# every project, or `sessions | where parent_session_id == null | messages` for
-# one project's top-level sessions. With no input it reads the current project's
-# most recent session.
+# Scope by piping session rows in — `sessions | messages` for one project,
+# `sessions --all-projects | messages` for every project. `sessions` lists only
+# top-level human sessions by default, so these carry no agent turns; add
+# `sessions --subagents` if you deliberately want subagent transcripts too. With
+# no input it reads the current project's most recent session.
 # Why: selection lives in one place (`sessions`); messages just reads what it's
 # handed. This also kills the old `--all-projects` take-1 footgun (see
 # todo/20260618-225035) — "all" now means all, because the caller controls it.
@@ -814,11 +815,14 @@ export def "nu-complete claude session-columns" [context: string]: nothing -> li
 # `--columns` selects what to compute (lazy — only requested extractions run);
 # omit it for the default overview set, `--all-columns` for everything. Column
 # names are listed in SESSION_COLUMNS (and tab-complete on --columns).
+# By default only top-level (human-driven) sessions are listed; pass --subagents
+# to also include subagent transcripts (those rows carry a non-null parent_session_id).
 export def sessions [
     ...paths: path # Session files or directories to parse (default: current project sessions)
     --session: string@"nu-complete claude sessions" # Single session UUID or path
     --last # Only the most recent session of the current project
     --all-projects # Enumerate sessions across every project under ~/.claude/projects
+    --subagents # Also list subagent transcripts (<uuid>/subagents/agent-*.jsonl); off by default
     --columns (-c): string@"nu-complete claude session-columns" # Comma-separated columns to include (default: overview set)
     --all-columns # Include all columns
 ]: [nothing -> table string -> table record -> table table -> table] {
@@ -841,6 +845,11 @@ export def sessions [
     }
     if ($piped_files != null or $piped_path != null) and ($session != null or $last or $all_projects or ($paths | is-not-empty)) {
         error make {msg: "Piped input conflicts with --session/--last/--all-projects/paths"}
+    }
+    # Why: --last/--session resolve to a single top-level file, so there are no
+    # subagents to include — flag it as a no-op rather than silently ignore.
+    if $subagents and ($last or $session != null) {
+        print -e "claude-nu sessions: --subagents has no effect with --last/--session — those select a single top-level session"
     }
 
     let session_rows = if $piped_files != null {
@@ -891,6 +900,12 @@ export def sessions [
         }
         | flatten
     }
+
+    # Why: subagent transcripts hold agent-driven turns, not human messages, so
+    # they are opt-in — the default scope is top-level sessions only. Explicitly
+    # named/piped files carry parent_session_id == null, so they always pass.
+    let session_rows = $session_rows
+        | if $subagents { } else { where parent_session_id == null }
 
     if ($session_rows | is-empty) {
         error make {msg: "No session files found"}

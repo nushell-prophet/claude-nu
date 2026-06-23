@@ -51,11 +51,12 @@ claude-nu -f 'regex' --all-projects    # Same search across every project
 claude-nu projects                     # Projects by recency (name, path, count, modified)
 claude-nu projects | where name =~ nu | claude-nu sessions | claude-nu messages # pipe chain scoping
 claude-nu messages                     # User messages from current session
-claude-nu sessions | where parent_session_id == null | claude-nu messages 'regex' # search all sessions in project
-claude-nu sessions --all-projects | where parent_session_id == null | claude-nu messages 'regex' # search across all projects
-claude-nu sessions | where parent_session_id == null | claude-nu messages 'regex' | claude-nu messages --include-responses # full dialogues of matched sessions
-claude-nu sessions | where parent_session_id == null | claude-nu messages 'regex' | claude-nu export-session | claude-nu save-markdown # export matched sessions to markdown
-claude-nu sessions                     # All sessions with summaries and stats
+claude-nu sessions | claude-nu messages 'regex' # search all sessions in project
+claude-nu sessions --all-projects | claude-nu messages 'regex' # search across all projects
+claude-nu sessions | claude-nu messages 'regex' | claude-nu messages --include-responses # full dialogues of matched sessions
+claude-nu sessions | claude-nu messages 'regex' | claude-nu export-session | claude-nu save-markdown # export matched sessions to markdown
+claude-nu sessions                     # Top-level (human) sessions with summaries and stats
+claude-nu sessions --subagents         # Also include subagent transcripts (parent_session_id set)
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, thinking level...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
 claude-nu export-session               # Export to markdown with YAML frontmatter

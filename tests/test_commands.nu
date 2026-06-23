@@ -699,7 +699,7 @@ def "messages keys subagent rows by real project, not the subagents folder" [] {
         | save --force ($sub | path join "agent-abc123.jsonl")
 
     let result = with-env {HOME: $fake_home} {
-        sessions $proj | messages
+        sessions $proj --subagents | messages
     }
 
     rm -rf $fake_home
@@ -1300,17 +1300,19 @@ def "sessions --all-projects rejects explicit paths" [] {
 }
 
 @test
-def "sessions enumerates subagent files alongside top-level sessions" [] {
-    # Why: 2.1.138+ stores subagent transcripts at
-    # `<dir>/<uuid>/subagents/agent-*.jsonl`; they must be discoverable.
+def "sessions lists subagents only with --subagents" [] {
+    # Why: subagent transcripts (2.1.138+: `<dir>/<uuid>/subagents/agent-*.jsonl`)
+    # hold agent-driven turns, so they are opt-in — the default scope is top-level
+    # human sessions only, and --subagents adds them back.
     let parent_uuid = "b370af1e-c96f-46a2-a3fe-66b16f38bc03"
-    let result = null | sessions $FIXTURES_SESSIONS_DIR
 
-    let subagent_rows = $result | where parent_session_id == $parent_uuid
-    assert (($subagent_rows | length) > 0)
+    let default = null | sessions $FIXTURES_SESSIONS_DIR
+    assert (($default | where parent_session_id == null | length) > 0)
+    assert equal ($default | where parent_session_id == $parent_uuid | length) 0
 
-    let top_level = $result | where parent_session_id == null
-    assert (($top_level | length) > 0)
+    let opted_in = null | sessions $FIXTURES_SESSIONS_DIR --subagents
+    assert (($opted_in | where parent_session_id == $parent_uuid | length) > 0)
+    assert (($opted_in | where parent_session_id == null | length) > 0)
 }
 
 @test
@@ -1501,8 +1503,8 @@ def "projects skips dirs without session files" [] {
 def "sessions expands piped project dirs like positional dirs" [] {
     # Why: `projects | sessions` pipes dirs through the path column —
     # they must discover subagent files exactly as positional dirs do.
-    let piped = [{path: $FIXTURES_SESSIONS_DIR}] | sessions
-    let positional = null | sessions $FIXTURES_SESSIONS_DIR
+    let piped = [{path: $FIXTURES_SESSIONS_DIR}] | sessions --subagents
+    let positional = null | sessions $FIXTURES_SESSIONS_DIR --subagents
 
     assert equal ($piped | sort-by path) ($positional | sort-by path)
     assert (($piped | where parent_session_id != null | length) > 0)
