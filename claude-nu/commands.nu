@@ -712,15 +712,19 @@ export def discover-session-files [dir: path]: nothing -> table {
         | each {|f| {path: $f.name parent_session_id: null modified: $f.modified} }
 
     # Why: subagent transcripts are nested out of reach of a flat `ls`, so a glob
-    # descends to them; the parent UUID is two levels up from the file.
+    # descends to them. The `**` is load-bearing: Workflow agents nest deeper, at
+    # `<uuid>/subagents/workflows/wf_*/agent-*.jsonl`, so a single-level
+    # `*/subagents/*.jsonl` silently misses them. The parent UUID is therefore the
+    # first path segment under $dir (depth-independent), not "two levels up" —
+    # two-up would yield `workflows` for the nested ones.
     # Why (speed): one `ls <glob>` stats every transcript in a single directory
     # walk; the old `glob | each { ls }` re-stated each file individually (~10x
     # slower on a project with many subagents). `ls` errors on a no-match glob, so
     # try/catch keeps the empty case graceful (matching `glob`'s old behavior).
-    let subagent_files = try { ls (($dir | path join "*/subagents/*.jsonl") | into glob) } catch { [] }
+    let subagent_files = try { ls (($dir | path join "*/subagents/**/*.jsonl") | into glob) } catch { [] }
         | where name =~ $AGENT_JSONL_PATTERN
         | each {|f|
-            {path: $f.name parent_session_id: ($f.name | path dirname | path dirname | path basename) modified: $f.modified}
+            {path: $f.name parent_session_id: ($f.name | path relative-to $dir | path split | first) modified: $f.modified}
         }
 
     $top_level | append $subagent_files | sort-by modified --reverse

@@ -1359,6 +1359,28 @@ def "discover-session-files extracts parent UUID from subagent path" [] {
 }
 
 @test
+def "discover-session-files finds workflow-nested subagents" [] {
+    # Why: Workflow agents nest deeper at
+    # `<uuid>/subagents/workflows/wf_*/agent-*.jsonl`; a single-level glob misses
+    # them, and the parent UUID must still resolve to the session, not `workflows`.
+    let temp_dir = $nu.temp-dir | path join $"test-discover-(random uuid)"
+    let parent_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    let nested = $temp_dir | path join $parent_uuid "subagents" "workflows" "wf_abc123"
+    mkdir $nested
+
+    let agent_file = $nested | path join "agent-deadbeef1234.jsonl"
+    "" | save --force $agent_file
+
+    let result = discover-session-files $temp_dir
+
+    rm -rf $temp_dir
+
+    let agent_rows = $result | where parent_session_id == $parent_uuid
+    assert equal ($agent_rows | length) 1
+    assert equal $agent_rows.0.path $agent_file
+}
+
+@test
 def "discover-session-files orders rows newest first" [] {
     # Why: the recency callers (most-recent session, newest-of-each-project)
     # trust this order instead of re-sorting, so it is a contract.
