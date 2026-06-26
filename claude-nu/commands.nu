@@ -1175,3 +1175,182 @@ export def save-markdown [
         $results
     }
 }
+
+# =============================================================================
+# gi-hook — a per-repo Stop hook that keeps the chat terse (gi protocol)
+#
+# The gi protocol moves all "what/why" into git: the diff and the commit body
+# carry the record, the chat carries almost nothing. That rule rests on prose
+# alone and fights the model's training — the agent drifts back to long chat
+# answers. This installs a structural barrier instead of self-control: a
+# Claude Code Stop hook that blocks the turn when the final chat message is
+# more than `done`/`noted` or a short pointer, and tells the agent to move the
+# answer into a document. Opt-in and per-repo, so the classic mode is untouched.
+# =============================================================================
+
+# Substring that identifies our Stop entry inside settings.local.json. Why: the
+# command line is the only stable signature to match on for idempotent enable
+# and surgical disable — see `gi-hook disable`.
+const GI_HOOK_MARKER = "gi-hook check"
+
+# Absolute path to this module's directory, resolved at parse time. Why a const:
+# `path self` only runs at parse time, and the hook needs an absolute `use`
+# target — relative paths are not resolved when Claude Code runs the hook.
+const GI_HOOK_MODULE_DIR = (path self | path dirname)
+
+# Root of the current repo (git top-level), falling back to PWD outside a repo.
+def gi-hook-repo-root []: nothing -> path {
+    let top = do { ^git rev-parse --show-toplevel } | complete
+    if $top.exit_code == 0 { $top.stdout | str trim } else { $env.PWD | path expand }
+}
+
+# Path to the per-repo, per-machine settings file the hook lives in. Why this
+# file: it is already gitignored by Claude Code, so the hook stays local — it
+# never reaches another checkout or the classic mode.
+def gi-hook-settings-path [root: path]: nothing -> path {
+    $root | path join ".claude" "settings.local.json"
+}
+
+# The shell command Claude Code runs for the Stop event. Single-quote the `-c`
+# body so the outer shell does not expand `$in`; `--stdin` feeds the event JSON
+# to nushell as `$in`. The absolute module path is required — relative paths are
+# not resolved at hook time. `path self` anchors it to this file's directory.
+def gi-hook-command []: nothing -> string {
+    $"nu --stdin -c 'use \"($GI_HOOK_MODULE_DIR)\"; $in | claude-nu gi-hook check'"
+}
+
+# The Stop hook entry as stored under hooks.Stop[].
+def gi-hook-entry [command: string]: nothing -> record {
+    { hooks: [ { type: "command", command: $command } ] }
+}
+
+# The gi working-doc template that ships inside the module (so it vendors with
+# it) and the place `enable` drops it in a target repo. Why a repo-local `gi/`:
+# the gi protocol keeps the live working doc under version control, so it sits
+# next to the code it drives, not in a dotfile.
+def gi-hook-template-src []: nothing -> path {
+    $GI_HOOK_MODULE_DIR | path join "gi" "scratchpad-template.md"
+}
+
+def gi-hook-template-dst [root: path]: nothing -> path {
+    $root | path join "gi" "scratchpad-template.md"
+}
+
+# True if a Stop entry is one we installed (matches by command signature).
+def gi-hook-is-ours []: record -> bool {
+    $in.hooks?
+    | default []
+    | any {|h| ($h.command? | default "") | str contains $GI_HOOK_MARKER }
+}
+
+def gi-hook-open-settings [path: path]: nothing -> record {
+    if ($path | path exists) { open $path } else { {} }
+}
+
+# gi-hook — install/remove a Stop hook that enforces terse chat (gi protocol).
+# Run a subcommand: enable, disable, status, or check.
+export def "gi-hook" []: nothing -> nothing {
+    print "gi-hook: per-repo Stop hook for terse chat (gi protocol)"
+    print "  claude-nu gi-hook enable    # install the hook in this repo"
+    print "  claude-nu gi-hook disable   # remove it"
+    print "  claude-nu gi-hook status    # show whether it is installed"
+    print "  claude-nu gi-hook check     # hook body (reads the Stop event on stdin)"
+}
+
+# Install the Stop hook into this repo's .claude/settings.local.json.
+# Idempotent: a second enable does not add a duplicate.
+export def "gi-hook enable" [
+    --root: path # Repo root to install into (default: git top-level)
+]: nothing -> record {
+    let root = $root | default (gi-hook-repo-root)
+    let path = gi-hook-settings-path $root
+    let command = gi-hook-command
+    let settings = gi-hook-open-settings $path
+
+    let stop = $settings.hooks?.Stop? | default []
+    let already = $stop | any {|e| $e | gi-hook-is-ours }
+    let stop = if $already { $stop } else { $stop | append (gi-hook-entry $command) }
+
+    let hooks = $settings.hooks? | default {} | upsert Stop $stop
+    mkdir ($path | path dirname)
+    $settings | upsert hooks $hooks | save --force $path
+
+    # Seed the gi working-doc template. Why not clobber: once it exists it is
+    # the user's live doc — refreshing it would destroy their edits.
+    let template = gi-hook-template-dst $root
+    if not ($template | path exists) {
+        mkdir ($template | path dirname)
+        cp (gi-hook-template-src) $template
+    }
+    gi-hook status --root $root
+}
+
+# Remove our Stop hook, leaving any other hooks intact. No-op if absent.
+export def "gi-hook disable" [
+    --root: path # Repo root to remove from (default: git top-level)
+]: nothing -> record {
+    let root = $root | default (gi-hook-repo-root)
+    let path = gi-hook-settings-path $root
+    if not ($path | path exists) { return (gi-hook status --root $root) }
+
+    let settings = gi-hook-open-settings $path
+    let stop = $settings.hooks?.Stop? | default [] | where {|e| not ($e | gi-hook-is-ours) }
+    # Prune emptied containers so disable leaves no orphan keys behind.
+    let hooks = $settings.hooks? | default {}
+    let hooks = if ($stop | is-empty) { $hooks | reject Stop? } else { $hooks | upsert Stop $stop }
+    let settings = if ($hooks | is-empty) { $settings | reject hooks? } else { $settings | upsert hooks $hooks }
+    $settings | save --force $path
+    gi-hook status --root $root
+}
+
+# Report whether the hook is installed in this repo. Pipeline-friendly record.
+export def "gi-hook status" [
+    --root: path # Repo root to inspect (default: git top-level)
+]: nothing -> record {
+    let root = $root | default (gi-hook-repo-root)
+    let path = gi-hook-settings-path $root
+    let stop = (gi-hook-open-settings $path).hooks?.Stop? | default []
+    let template = gi-hook-template-dst $root
+    {
+        enabled: ($stop | any {|e| $e | gi-hook-is-ours })
+        settings_path: $path
+        command: (gi-hook-command)
+        template_path: $template
+        template_present: ($template | path exists)
+    }
+}
+
+# Stop-hook body. Reads the event JSON on stdin and returns either nothing
+# (allow the turn to end) or the block-decision JSON string. `nu -c` renders
+# the return value to stdout, which is the Stop hook's control channel; the
+# command always exits 0, per the contract. Returning (not printing) keeps it
+# unit-testable.
+export def "gi-hook check" []: string -> any {
+    let payload = try { $in | default "" | from json } catch { {} }
+    # Already continuing from a prior block — let it end to avoid a loop.
+    if ($payload.stop_hook_active? | default false) { return }
+
+    let message = $payload.last_assistant_message? | default ""
+    if (gi-hook-allowed $message) { return }
+
+    let reason = "Chat may carry only `done`/`noted` or a short pointer (one line with a path/link). Move the full answer into the working document and commit it; leave only a pointer in chat."
+    { decision: "block", reason: $reason } | to json --raw
+}
+
+# The allow-rule: what may stand alone in chat. True (allowed) when, after trim:
+# empty; or `done`/`noted` (trailing punctuation ok); or a short pointer — one
+# line, within the length budget, carrying a link signal (backtick, `→`, or a
+# filename). Everything else (prose, long unanchored lines) is blocked.
+# Why a budget env-var: "short pointer" is fuzzy; GI_HOOK_MAX_LEN makes the
+# threshold tunable without editing the hook. Default is strict — prose fails.
+export def gi-hook-allowed [message: string]: nothing -> bool {
+    let text = $message | str trim
+    if ($text | is-empty) { return true }
+    if (($text | str downcase | str replace -r '[.!…]+$' '') in ["done" "noted"]) { return true }
+
+    let max = $env.GI_HOOK_MAX_LEN? | default 120 | into int
+    let single_line = not ($text | str contains "\n")
+    let within = ($text | str length) <= $max
+    let has_signal = ($text =~ '`') or ($text =~ '→') or ($text =~ '[\w./-]+\.\w+')
+    $single_line and $within and $has_signal
+}

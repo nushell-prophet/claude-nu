@@ -7,13 +7,17 @@
 #   messages        # Extract user messages from a session
 #   export-session  # Render a session's dialogue to markdown
 #   save-markdown   # Write exported markdown to files
+#   gi-hook         # Install/remove a per-repo Stop hook that keeps chat terse
 #
 # Usage:
 #   use claude-nu
 #   claude-nu -f 'regex'                # quick message search, current project
 #   claude-nu sessions | where parent_session_id == null | claude-nu messages 'regex'
 
-export use commands.nu [ projects messages sessions export-session save-markdown ]
+export use commands.nu [
+    projects messages sessions export-session save-markdown
+    "gi-hook" "gi-hook enable" "gi-hook disable" "gi-hook status" "gi-hook check"
+]
 use commands.nu [ find-session-files ]
 
 # Umbrella entry point: search user messages for a regex and return every match

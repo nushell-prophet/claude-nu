@@ -131,6 +131,21 @@ claude-nu export-session | claude-nu save-markdown --output-dir ./tmp # Custom o
 
 Filters out system-generated messages, keeping only user prompts and assistant responses.
 
+### `claude-nu gi-hook`
+
+Install a per-repo Claude Code **Stop hook** that keeps the chat terse — for the gi protocol, where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing. When enabled, the agent's final chat message must be `done`/`noted` or a short pointer (one line with a path/link); anything longer blocks the turn with an instruction to move the answer into a document and commit it. Opt-in and per-repo, so the classic mode is untouched.
+
+```nushell
+claude-nu gi-hook enable     # install into this repo's .claude/settings.local.json
+claude-nu gi-hook disable    # remove it (leaves any other hooks intact)
+claude-nu gi-hook status     # { enabled, settings_path, command }
+claude-nu gi-hook check      # hook body — reads the Stop event JSON on stdin
+```
+
+The hook lives in `.claude/settings.local.json` (already gitignored by Claude Code), so it never reaches another checkout. `enable` is idempotent and preserves foreign hooks; `disable` removes only our entry and prunes emptied keys. The "short pointer" length budget defaults to 120 and is tunable via the `GI_HOOK_MAX_LEN` environment variable.
+
+`enable` also seeds `gi/scratchpad-template.md` — the live working-doc template that the gi protocol keeps under version control. The template ships inside the module (`claude-nu/gi/scratchpad-template.md`); `enable` copies it into the target repo but never overwrites an existing one, so your edits are safe.
+
 ## CLI Completions
 
 The repo includes hand-crafted completions for several CLI tools. Add any combination to your `config.nu`:
