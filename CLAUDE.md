@@ -27,8 +27,8 @@ claude-nu/
 │   └── sandbox-exec.nu  # macOS sandbox-exec
 ├── tests/               # 60+ tests (nutest framework)
 ├── toolkit.nu           # Dev tools: test, fetch-docs, vendor-sessions, check
-├── claude-code-docs/    # Downloaded Claude Code documentation (60+ pages)
-└── nushell-docs/        # Sparse clone of Nushell docs (book, cookbook, blog)
+├── ../claude-code-docs/    # Downloaded Claude Code documentation (60+ pages)
+└── ../nushell-docs/        # Sparse clone of Nushell docs (book, cookbook, blog)
 ```
 
 **Key concepts:**
@@ -60,6 +60,8 @@ claude-nu sessions --subagents         # Also include subagent transcripts (pare
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, thinking level...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
 claude-nu export-session               # Export to markdown with YAML frontmatter
+claude-nu gi-hook enable               # Install a per-repo Stop hook that keeps chat terse (gi protocol)
+claude-nu gi-hook status               # { enabled, settings_path, command }
 ```
 
 ## Development
