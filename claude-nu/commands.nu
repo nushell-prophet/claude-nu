@@ -1274,11 +1274,11 @@ def gi-hook-entry [command: string]: nothing -> record {
 # the gi protocol keeps the live working doc under version control, so it sits
 # next to the code it drives, not in a dotfile.
 def gi-hook-template-src []: nothing -> path {
-    $GI_HOOK_MODULE_DIR | path join "gi" "scratchpad-template.md"
+    $GI_HOOK_MODULE_DIR | path join "gi" "canvas-header.md"
 }
 
 def gi-hook-template-dst [root: path]: nothing -> path {
-    $root | path join "gi" "scratchpad-template.md"
+    $root | path join "gi" "canvas-header.md"
 }
 
 # True if a Stop entry is one we installed (matches by command signature).

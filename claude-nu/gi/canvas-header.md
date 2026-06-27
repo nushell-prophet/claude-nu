@@ -1,9 +1,9 @@
-# Intent
+# Canvas (.md file as an interface)
 
 Let's replace the Claude Code chat with this version-controlled file.
 We invent the rules as we go and just lean on common sense, so the work stays convenient and efficient.
 
-## Rules
+## Protocol
 
 - **Git carries everything.** The diff and the commit body are the only carrier of "what/why" and the whole journal. The chat and the live document hold only the current state, not a retelling of changes (no "X resolved" in the text). To the chat — `done`/`noted` or a short pointer; write the full answer in the document (even if the question arrived in the chat and you weren't asked to answer there), a large one — in a separate file with a link (a short summary in the document is navigation, not a duplicate). A pointer to the chat is also a reminder: the user may drift back into the chat and forget the file — pull them back.
 - **Commit atomically and right away.** A step = a commit = a rollback point. Body: Decision / Why / Propagation (omit if empty), don't retell the diff. Propagate the decision to stale references; if a symbol/path/key is named — grep across the whole repo, not just the file.
@@ -12,5 +12,5 @@ We invent the rules as we go and just lean on common sense, so the work stays co
 
 _The rules above are fixed — don't change them without a separate request. Below is the work on the current task._
 
-## Draft
+## Work area
 

@@ -106,7 +106,7 @@ def "disable is a no-op when nothing is installed" [] {
 def "enable seeds the gi working-doc template" [] {
     let root = temp-root
     let status = gi-hook enable --root $root
-    let deployed = $root | path join "gi" "scratchpad-template.md"
+    let deployed = $root | path join "gi" "canvas-header.md"
     let exists = $deployed | path exists
     let body = if $exists { open --raw $deployed } else { "" }
     rm -rf $root
@@ -120,7 +120,7 @@ def "enable seeds the gi working-doc template" [] {
 def "enable does not clobber an edited template" [] {
     let root = temp-root
     mkdir ($root | path join "gi")
-    let deployed = $root | path join "gi" "scratchpad-template.md"
+    let deployed = $root | path join "gi" "canvas-header.md"
     "my edited working doc" | save $deployed
     gi-hook enable --root $root | ignore
     let body = open --raw $deployed
