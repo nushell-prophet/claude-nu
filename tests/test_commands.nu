@@ -48,8 +48,6 @@ def "messages drops every system/command wrapper prefix" [] {
         '{"type":"user","message":{"content":"<local-command-caveat>baz"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<local-command-stdout>out"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<local-command-stderr>err"},"timestamp":"2024-01-15T10:00:00Z"}'
-        '{"type":"user","message":{"content":"<bash-input>ls"},"timestamp":"2024-01-15T10:00:00Z"}'
-        '{"type":"user","message":{"content":"<bash-stdout>files"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"Caveat: heads up"},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
     $lines | str join "\n" | save --force $temp_file
@@ -66,7 +64,7 @@ def "messages --include-system keeps the wrapper messages" [] {
     let temp_file = $nu.temp-dir | path join $"test-sysprefix-(random uuid).jsonl"
     let lines = [
         '{"type":"user","message":{"content":"real human message"},"timestamp":"2024-01-15T10:00:00Z"}'
-        '{"type":"user","message":{"content":"<bash-stdout>files"},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"user","message":{"content":"<command-name>foo</command-name>"},"timestamp":"2024-01-15T10:00:01Z"}'
     ]
     $lines | str join "\n" | save --force $temp_file
 
@@ -75,7 +73,45 @@ def "messages --include-system keeps the wrapper messages" [] {
     rm $temp_file
 
     assert ("real human message" in $result)
-    assert ("<bash-stdout>files" in $result)
+    assert ("<command-name>foo</command-name>" in $result)
+}
+
+@test
+def "messages renders ! bash commands as user turns" [] {
+    # Why: a `!` command is a real user action; its <bash-input>/<bash-stdout>
+    # wrappers must surface as readable markdown, not be dropped as system noise.
+    let f = $nu.temp-dir | path join $"test-bash-(random uuid).jsonl"
+    [
+        '{"type":"user","message":{"content":"<bash-input>git diff</bash-input>"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<bash-stdout>+ added &lt;tag&gt;</bash-stdout><bash-stderr>warn: x</bash-stderr>"},"timestamp":"2024-01-15T10:00:01Z"}'
+    ] | str join "\n" | save --force $f
+
+    let result = messages --session $f | get message
+
+    rm $f
+
+    assert equal $result.0 "```sh\ngit diff\n```"
+    # stdout HTML-unescaped into a plain block; stderr flagged in its own block
+    assert ($result.1 | str contains "+ added <tag>")
+    assert ($result.1 | str contains "[stderr]\nwarn: x")
+}
+
+@test
+def "export-session merges a ! command and its output into one user turn" [] {
+    let f = $nu.temp-dir | path join $"test-bash-export-(random uuid).jsonl"
+    [
+        '{"type":"user","message":{"content":"<bash-input>ls</bash-input>"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<bash-stdout>file.txt</bash-stdout><bash-stderr></bash-stderr>"},"timestamp":"2024-01-15T10:00:01Z"}'
+    ] | str join "\n" | save --force $f
+
+    let md = export-session --session $f | get markdown
+
+    rm $f
+
+    # Single User heading; command block and output block both under it
+    assert equal ($md | parse --regex '## User' | length) 1
+    assert ($md | str contains "```sh\nls\n```")
+    assert ($md | str contains "file.txt")
 }
 
 # =============================================================================
@@ -2090,7 +2126,7 @@ def "messages --raw returns raw records without the rendered text column" [] {
     let f = $nu.temp-dir | path join $"test-raw-(random uuid).jsonl"
     [
         '{"type":"user","message":{"content":"hello"},"timestamp":"2024-01-15T10:00:00Z"}'
-        '{"type":"user","message":{"content":"<bash-stdout>noise"},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"user","message":{"content":"<command-name>noise</command-name>"},"timestamp":"2024-01-15T10:00:01Z"}'
     ] | str join "\n" | save --force $f
 
     let raw = messages --session $f --raw

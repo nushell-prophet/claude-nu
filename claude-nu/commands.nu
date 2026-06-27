@@ -7,15 +7,17 @@ const UUID_JSONL_PATTERN = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 # `<project>/<session-uuid>/subagents/agent-<id>.jsonl`)
 const AGENT_JSONL_PATTERN = 'agent-[0-9a-f]+\.jsonl$'
 
-# System-generated message prefixes to filter out
+# System-generated message prefixes to filter out.
+# Why: `!`-command wrappers (<bash-input>/<bash-stdout>/<bash-stderr>) are NOT
+# here — they're a real user action, rendered as readable markdown by
+# render-bash-wrapper instead of dropped. Only Claude Code's synthesized
+# slash-command and caveat wrappers are filtered.
 const SYSTEM_PREFIXES = [
     "<command-name>"
     "<command-message>"
     "<local-command-caveat>"
     "<local-command-stdout>"
     "<local-command-stderr>"
-    "<bash-input>"
-    "<bash-stdout>"
     "Caveat:"
 ]
 
@@ -321,12 +323,55 @@ export def messages [
     | flatten
 }
 
+# Reverse the HTML entity escaping Claude Code applies to `!`-command output
+# (the `<`/`>`/`&` inside <bash-stdout>/<bash-stderr> arrive as &lt;/&gt;/&amp;).
+# &amp; is undone last so a literal "&amp;lt;" decodes to "&lt;", not "<".
+def unescape-html []: string -> string {
+    str replace --all '&lt;' '<'
+    | str replace --all '&gt;' '>'
+    | str replace --all '&quot;' '"'
+    | str replace --all '&#39;' "'"
+    | str replace --all '&amp;' '&'
+}
+
+# Render a `!`-command user record's string content as readable markdown.
+# `<bash-input>CMD</bash-input>` -> a `sh` code block; the paired
+# `<bash-stdout>OUT</bash-stdout><bash-stderr>ERR</bash-stderr>` record -> the
+# captured output as a plain code block (stderr flagged). Non-bash strings pass
+# through untouched. Tags are split by literal string (not regex): real output
+# has its own `<`/`>` HTML-escaped, so the wrapper tags are the only literal
+# ones, and a missing closing tag (test fixtures) still degrades cleanly.
+# Why: a `!` command is a real user action, but Claude Code stores it in these
+# wrappers; without rendering, export-session/messages drop the user's command.
+def render-bash-wrapper []: string -> string {
+    let s = $in
+    if ($s | str starts-with "<bash-input>") {
+        let cmd = $s
+            | str replace "<bash-input>" "" | str replace "</bash-input>" ""
+            | unescape-html | str trim
+        $"```sh\n($cmd)\n```"
+    } else if ($s | str starts-with "<bash-stdout>") {
+        let parts = $s | split row "<bash-stderr>"
+        let out = $parts.0
+            | str replace "<bash-stdout>" "" | str replace "</bash-stdout>" ""
+            | unescape-html | str trim
+        let err = $parts.1? | default ""
+            | str replace "</bash-stderr>" ""
+            | unescape-html | str trim
+        [
+            (if ($out | is-not-empty) { $"```\n($out)\n```" })
+            (if ($err | is-not-empty) { $"```\n[stderr]\n($err)\n```" })
+        ] | compact | str join "\n\n"
+    } else { $s }
+}
+
 # Shared dispatch on message content shape: string content passes through
-# as-is, content block lists go through $render, anything else yields "".
+# render-bash-wrapper (a no-op unless it's a `!`-command wrapper), content block
+# lists go through $render, anything else yields "".
 def render-message-content [render: closure]: record -> string {
     let content = $in.message?.content?
     match ($content | describe) {
-        "string" => { $content }
+        "string" => { $content | render-bash-wrapper }
         $t if ($t =~ '^(list|table)') => { $content | do $render }
         _ => { "" }
     }
