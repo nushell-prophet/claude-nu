@@ -1247,19 +1247,44 @@ def gi-hook-open-settings [path: path]: nothing -> record {
     if ($path | path exists) { open $path } else { {} }
 }
 
-# gi-hook — install/remove a Stop hook that enforces terse chat (gi protocol).
-# Run a subcommand: enable, disable, status, or check.
-export def "gi-hook" []: nothing -> nothing {
-    print "gi-hook: per-repo Stop hook for terse chat (gi protocol)"
-    print "  claude-nu gi-hook enable    # install the hook in this repo"
-    print "  claude-nu gi-hook disable   # remove it"
-    print "  claude-nu gi-hook status    # show whether it is installed"
-    print "  claude-nu gi-hook check     # hook body (reads the Stop event on stdin)"
+# The four gi-hook actions, surfaced as tab completions on the positional below.
+def "nu-complete gi-hook-actions" []: nothing -> table {
+    [
+        [value description];
+        [enable  "install the Stop hook in this repo"]
+        [disable "remove it (leaves any other hooks intact)"]
+        [status  "show whether it is installed"]
+        [check   "hook body — reads the Stop event JSON on stdin"]
+    ]
+}
+
+# gi-hook — install/remove a per-repo Stop hook that enforces terse chat (gi
+# protocol). One command, one positional action (tab-completes); with no action
+# it reports status. Why one command, not four subcommands: the four were just
+# verbs on the same object — a positional with a completer is the same call
+# surface (`gi-hook enable` still parses) with a single export to maintain.
+export def "gi-hook" [
+    action?: string@"nu-complete gi-hook-actions" # enable | disable | status | check (default: status)
+    --root: path # Repo root (default: git top-level); ignored by check
+]: any -> any {
+    let event = $in # check reads the Stop event here; the others ignore it
+    match $action {
+        null | "status" => (gi-hook-status --root $root)
+        "enable" => (gi-hook-enable --root $root)
+        "disable" => (gi-hook-disable --root $root)
+        "check" => ($event | gi-hook-check)
+        _ => {
+            error make {
+                msg: $"unknown gi-hook action: ($action)"
+                label: { text: "expected enable, disable, status, or check", span: (metadata $action).span }
+            }
+        }
+    }
 }
 
 # Install the Stop hook into this repo's .claude/settings.local.json.
 # Idempotent: a second enable does not add a duplicate.
-export def "gi-hook enable" [
+def gi-hook-enable [
     --root: path # Repo root to install into (default: git top-level)
 ]: nothing -> record {
     let root = $root | default (gi-hook-repo-root)
@@ -1282,16 +1307,16 @@ export def "gi-hook enable" [
         mkdir ($template | path dirname)
         cp (gi-hook-template-src) $template
     }
-    gi-hook status --root $root
+    gi-hook-status --root $root
 }
 
 # Remove our Stop hook, leaving any other hooks intact. No-op if absent.
-export def "gi-hook disable" [
+def gi-hook-disable [
     --root: path # Repo root to remove from (default: git top-level)
 ]: nothing -> record {
     let root = $root | default (gi-hook-repo-root)
     let path = gi-hook-settings-path $root
-    if not ($path | path exists) { return (gi-hook status --root $root) }
+    if not ($path | path exists) { return (gi-hook-status --root $root) }
 
     let settings = gi-hook-open-settings $path
     let stop = $settings.hooks?.Stop? | default [] | where {|e| not ($e | gi-hook-is-ours) }
@@ -1300,11 +1325,11 @@ export def "gi-hook disable" [
     let hooks = if ($stop | is-empty) { $hooks | reject Stop? } else { $hooks | upsert Stop $stop }
     let settings = if ($hooks | is-empty) { $settings | reject hooks? } else { $settings | upsert hooks $hooks }
     $settings | save --force $path
-    gi-hook status --root $root
+    gi-hook-status --root $root
 }
 
 # Report whether the hook is installed in this repo. Pipeline-friendly record.
-export def "gi-hook status" [
+def gi-hook-status [
     --root: path # Repo root to inspect (default: git top-level)
 ]: nothing -> record {
     let root = $root | default (gi-hook-repo-root)
@@ -1325,7 +1350,7 @@ export def "gi-hook status" [
 # the return value to stdout, which is the Stop hook's control channel; the
 # command always exits 0, per the contract. Returning (not printing) keeps it
 # unit-testable.
-export def "gi-hook check" []: string -> any {
+def gi-hook-check []: string -> any {
     let payload = try { $in | default "" | from json } catch { {} }
     # Already continuing from a prior block — let it end to avoid a loop.
     if ($payload.stop_hook_active? | default false) { return }

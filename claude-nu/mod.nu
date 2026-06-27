@@ -16,7 +16,7 @@
 
 export use commands.nu [
     projects messages sessions export-session save-markdown
-    "gi-hook" "gi-hook enable" "gi-hook disable" "gi-hook status" "gi-hook check"
+    "gi-hook"
 ]
 use commands.nu [ find-session-files ]
 
