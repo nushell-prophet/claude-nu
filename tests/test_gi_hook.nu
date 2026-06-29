@@ -130,6 +130,50 @@ def "enable does not clobber an edited template" [] {
 }
 
 @test
+def "enable distributes the output style and sets outputStyle" [] {
+    let root = temp-root
+    let status = gi-hook enable --root $root
+    let style = $root | path join ".claude" "output-styles" "canvas.md"
+    let exists = $style | path exists
+    let body = if $exists { open --raw $style } else { "" }
+    let settings = open (settings-of $root)
+    rm -rf $root
+
+    assert $status.style_present
+    assert $status.output_style_set
+    assert $exists
+    assert ($body | str contains "name: Canvas")
+    assert equal $settings.outputStyle "Canvas"
+}
+
+@test
+def "enable does not clobber an edited style" [] {
+    let root = temp-root
+    let style = $root | path join ".claude" "output-styles" "canvas.md"
+    mkdir ($style | path dirname)
+    "my edited style" | save $style
+    gi-hook enable --root $root | ignore
+    let body = open --raw $style
+    rm -rf $root
+
+    assert equal $body "my edited style"
+}
+
+@test
+def "disable drops our outputStyle but keeps a foreign one" [] {
+    let root = temp-root
+    gi-hook enable --root $root | ignore
+    # User switched to their own style while canvas mode was on; disable must
+    # leave it, removing only the value we set.
+    open (settings-of $root) | upsert outputStyle "Explanatory" | save --force (settings-of $root)
+    gi-hook disable --root $root | ignore
+    let settings = open (settings-of $root)
+    rm -rf $root
+
+    assert equal $settings.outputStyle "Explanatory"
+}
+
+@test
 def "status reflects enabled and disabled state" [] {
     let root = temp-root
     let before = gi-hook status --root $root
