@@ -24,7 +24,7 @@ Nushell utilities for working with [Claude Code](https://claude.ai/code) session
 
 Add to your `config.nu`:
 
-```nushell
+```nushell no-run
 # From the repo directory (or use full paths like ~/git/claude-nu)
 use claude-nu
 ```
@@ -35,7 +35,7 @@ use claude-nu
 
 The umbrella entry point. Searches user messages for a regex and returns every match with its `session` column — a pipeline-safe selector you can drill into. Mirrors `help -f`.
 
-```nushell
+```nushell no-run
 claude-nu -f 'regex'                # search this project's user messages
 claude-nu -f 'regex' --all-projects # search every project under ~/.claude/projects
 claude-nu -f 'regex' | claude-nu export-session  # drill matched sessions into markdown
@@ -47,7 +47,7 @@ It is a shorthand for `sessions | where parent_session_id == null | messages 're
 
 Extract user messages from Claude Code session files.
 
-```nushell
+```nushell no-run
 claude-nu messages              # Messages from current session
 claude-nu messages 'pattern'    # Filter by regex
 claude-nu messages --include-system # Include system/meta messages
@@ -65,7 +65,7 @@ claude-nu messages --session <uuid> # Specific session (tab-completable)
 
 Parse session files into structured data. `--columns` selects what to compute — lazy evaluation, only requested extractions run; the column names tab-complete.
 
-```nushell
+```nushell no-run
 claude-nu sessions                                # All sessions in current project (overview columns)
 claude-nu sessions ~/other/project                # Sessions from another path
 claude-nu sessions --all-projects                 # Every project under ~/.claude/projects
@@ -119,7 +119,7 @@ claude-nu sessions --all-columns                  # All available columns
 
 Export session dialogue to a markdown file for git tracking.
 
-```nushell
+```nushell no-run
 claude-nu export-session                    # Uses session summary as topic
 claude-nu export-session "auth-refactor"    # Custom topic
 claude-nu export-session --session <uuid>   # Specific session
@@ -135,7 +135,7 @@ Filters out system-generated messages, keeping only user prompts and assistant r
 
 Install a per-repo Claude Code **Stop hook** that keeps the chat terse — for the gi protocol, where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing. When enabled, the agent's final chat message must be `done`/`noted` or a short pointer (one line with a path/link); anything longer blocks the turn with an instruction to move the answer into a document and commit it. Opt-in and per-repo, so the classic mode is untouched.
 
-```nushell
+```nushell no-run
 claude-nu gi-hook enable     # install into this repo's .claude/settings.local.json
 claude-nu gi-hook disable    # remove it (leaves any other hooks intact)
 claude-nu gi-hook status     # { enabled, settings_path, command }
@@ -150,7 +150,7 @@ The hook lives in `.claude/settings.local.json` (already gitignored by Claude Co
 
 The repo includes hand-crafted completions for several CLI tools. Add any combination to your `config.nu`:
 
-```nushell
+```nushell no-run
 use completions/claude.nu *
 use completions/nu.nu *
 use completions/zellij.nu *
@@ -211,7 +211,7 @@ This module parses these files to extract useful information for analysis, debug
 
 Uses [nutest](https://github.com/vyadh/nutest) framework (expected at `../nutest`).
 
-```nushell
+```nushell no-run
 nu toolkit.nu test          # Run all tests
 nu toolkit.nu test --json   # JSON output for CI
 nu toolkit.nu test --fail   # Non-zero exit on failures
@@ -219,7 +219,7 @@ nu toolkit.nu test --fail   # Non-zero exit on failures
 
 ### Toolkit
 
-```nushell
+```nushell no-run
 nu toolkit.nu check <file>             # Static syntax check with diagnostics
 nu toolkit.nu fetch-claude-docs        # Download Claude Code docs
 nu toolkit.nu fetch-nushell-docs       # Sparse clone of Nushell docs
