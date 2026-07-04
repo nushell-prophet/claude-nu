@@ -183,10 +183,12 @@ def gi-hook-status [
         style_present: ($paths.style_dst | path exists)
         output_style_set: ($settings.outputStyle? == $GI_HOOK_STYLE)
     }
-    # Display-only: strip the PWD prefix; operational paths stay absolute.
-    # Not `path relative-to` because: it errors when the path is not under the
-    # base — the anchored regex is simply a no-op then.
-    | update cells --columns [settings_path template_path style_path] { str replace -r $'^($env.PWD)/' '' }
+    # Display-only: paths under PWD show relative; operational paths stay
+    # absolute. try because: `path relative-to` errors when the path is not
+    # under the base — that error is exactly the leave-it-absolute case.
+    | update cells --columns [settings_path template_path style_path] {|p|
+        try { $p | path relative-to $env.PWD } catch { $p }
+    }
 }
 
 # Stop-hook body. Reads the event JSON on stdin and returns either nothing
