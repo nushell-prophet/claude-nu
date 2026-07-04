@@ -238,19 +238,18 @@ def gi-hook-disable [
     let path = (gi-hook-paths $root).settings
     if not ($path | path exists) { return (gi-hook-status --root $root) }
 
-    let settings = gi-hook-open-settings $path
-    let stop = $settings.hooks?.Stop? | default [] | where {|e| not ($e | gi-hook-is-ours) }
-    # Prune emptied containers so disable leaves no orphan keys behind.
-    let hooks = $settings.hooks? | default {}
-    let hooks = if ($stop | is-empty) { $hooks | reject Stop? } else { $hooks | upsert Stop $stop }
-    let settings = if ($hooks | is-empty) { $settings | reject hooks? } else { $settings | upsert hooks $hooks }
+    # Emptied containers (hooks: {Stop: []}, env: {}) stay behind on purpose:
+    # harmless in a gitignored machine-local file, and pruning them tripled
+    # this body.
+    gi-hook-open-settings $path
+    | if ($in.hooks?.Stop? == null) { } else {
+        update hooks.Stop { where {|e| not ($e | gi-hook-is-ours) } }
+    }
     # Drop outputStyle only if it is still ours — never clobber a value the user
     # set themselves. The seeded style and working doc are left in place (user files).
-    let settings = if ($settings.outputStyle? == $GI_HOOK_STYLE) { $settings | reject outputStyle? } else { $settings }
-    # Same for env: remove only our GI_HOOK_DOC key, prune env if that empties it.
-    let env_block = $settings.env? | default {} | reject GI_HOOK_DOC?
-    let settings = if ($env_block | is-empty) { $settings | reject env? } else { $settings | upsert env $env_block }
-    $settings | save --force $path
+    | if ($in.outputStyle? == $GI_HOOK_STYLE) { reject outputStyle } else { }
+    | reject env?.GI_HOOK_DOC?
+    | save --force $path
     gi-hook-status --root $root
 }
 

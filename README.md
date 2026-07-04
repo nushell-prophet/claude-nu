@@ -143,7 +143,7 @@ claude-nu gi-hook status            # { enabled, settings, doc, style, output_st
 claude-nu gi-hook check             # hook body — reads the Stop event JSON on stdin
 ```
 
-The hook lives in `.claude/settings.local.json` (already gitignored by Claude Code), so it never reaches another checkout. `enable` is idempotent and preserves foreign hooks: re-running keeps the recorded working doc, passing a path switches it. `disable` removes only our entries and prunes emptied keys. The "short pointer" length budget defaults to 120 and is tunable via the `GI_HOOK_MAX_LEN` environment variable.
+The hook lives in `.claude/settings.local.json` (already gitignored by Claude Code), so it never reaches another checkout. `enable` is idempotent and preserves foreign hooks: re-running keeps the recorded working doc, passing a path switches it. `disable` removes only our entries. The "short pointer" length budget defaults to 120 and is tunable via the `GI_HOOK_MAX_LEN` environment variable.
 
 The chosen working-doc path is recorded as `env.GI_HOOK_DOC` in the same settings file; Claude Code exports it into the session, so the agent can locate the canvas via `$env.GI_HOOK_DOC` without being blocked first. `enable` seeds the doc from a template and installs the **Canvas** output style (the proactive half — the hook is the reactive floor) as `.claude/output-styles/canvas.md`, setting `outputStyle` so both turn on together. Seeded files are never overwritten, so your edits are safe; the style loads at session start, so run `/clear` or start a new session after enabling.
 

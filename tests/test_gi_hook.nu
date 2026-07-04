@@ -96,15 +96,18 @@ def "disable removes only our entry and leaves foreign hooks" [] {
 }
 
 @test
-def "disable prunes emptied containers" [] {
+def "disable removes every value gi-hook set" [] {
     let root = temp-root
     gi-hook enable --root $root | ignore
     gi-hook disable --root $root | ignore
     let settings = open (settings-of $root)
     rm -rf $root
 
-    # No orphan hooks/Stop keys left behind once our only entry is gone.
-    assert equal $settings {}
+    # Emptied containers stay behind (harmless in a gitignored local file);
+    # what matters is that no gi-hook entry, doc, or style survives.
+    assert equal $settings.hooks.Stop []
+    assert equal $settings.env {}
+    assert equal $settings.outputStyle? null
 }
 
 @test
