@@ -51,9 +51,9 @@ def gi-hook-entry [command: string]: nothing -> record {
 }
 
 # The gi working-doc template that ships inside the module (so it vendors with
-# it) and the place `enable` drops it in a target repo. Why a repo-local `gi/`:
-# the gi protocol keeps the live working doc under version control, so it sits
-# next to the code it drives, not in a dotfile.
+# it) and the place `enable` drops it in a target repo. Why a repo-local
+# `gi-md-src/`: the gi protocol keeps the live working doc under version
+# control, so it sits next to the code it drives, not in a dotfile.
 def gi-hook-template-src []: nothing -> path {
     $GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-header.md"
 }
