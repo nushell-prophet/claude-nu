@@ -284,14 +284,24 @@ def "check treats an empty message as allowed" [] {
 
 @test
 def "check names the recorded doc in the block reason" [] {
-    let blocked = { last_assistant_message: "Long prose without any link signal that must be blocked by the rule" }
-    let generic = block-decision $blocked | from json | get reason
-    let named = with-env { GI_HOOK_DOC: "gi/canvas-20260704_173256.md" } {
-        block-decision $blocked | from json | get reason
-    }
+    let root = temp-root
+    gi-hook enable gi/plan.md --root $root | ignore
+    let prose = "Long prose without any link signal that must be blocked by the rule"
+    let named = block-decision { last_assistant_message: $prose, cwd: $root } | from json | get reason
+    rm -rf $root
+
+    assert ($named | str contains "`gi/plan.md`")
+}
+
+@test
+def "check falls back to generic wording when no doc is recorded" [] {
+    let root = temp-root
+    mkdir $root
+    let prose = "Long prose without any link signal that must be blocked by the rule"
+    let generic = block-decision { last_assistant_message: $prose, cwd: $root } | from json | get reason
+    rm -rf $root
 
     assert ($generic | str contains "the working document")
-    assert ($named | str contains "`gi/canvas-20260704_173256.md`")
 }
 
 # =============================================================================

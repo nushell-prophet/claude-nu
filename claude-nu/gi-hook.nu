@@ -6,7 +6,8 @@
 # answers. This installs a structural barrier instead of self-control: a
 # Claude Code Stop hook that blocks the turn when the final chat message is
 # more than `done`/`noted` or a short pointer, and tells the agent to move the
-# answer into a document. Opt-in and per-repo, so the classic mode is untouched.
+# answer into the repo's recorded working doc. Opt-in and per-repo, so the
+# classic mode is untouched.
 
 # Substring that identifies our Stop entry inside settings.local.json. Why: the
 # command line is the only stable signature to match on for idempotent enable
@@ -40,8 +41,8 @@ def gi-hook-repo-root []: nothing -> path {
 # - settings: per-repo, per-machine file the hook lives in. Why this file: it is
 #   already gitignored by Claude Code, so the hook stays local — it never
 #   reaches another checkout or the classic mode.
-# - template_src: the gi working-doc seed; its destination is per-enable (see
-#   gi-hook-doc), so only the src lives here.
+# - template_src: the gi working-doc seed; its destination is chosen per-enable
+#   (see gi-hook-enable), so only the src lives here.
 # - style: the Canvas output style. Why distribute a local copy: gi-hook is
 #   vendored on its own, so it must carry the style itself rather than depend on
 #   a Claude plugin being installed — `enable` drops it as a per-repo project
@@ -55,10 +56,13 @@ def gi-hook-paths [root: path]: nothing -> record {
     }
 }
 
-# The working doc recorded in settings (env.GI_HOOK_DOC), or null. Why settings
-# env: the doc name is timestamped or user-chosen, so it can't be recomputed —
-# it must be persisted where both the check hook (inherits the env from Claude
-# Code) and status (reads the file) can see it, without a second state file.
+# The working doc recorded in settings (env.GI_HOOK_DOC), or null. The doc name
+# is timestamped or user-chosen, so it can't be recomputed — it must be
+# persisted; the sole reader is this command (status and check both come through
+# here), so a re-enable with a new doc applies on the next Stop event, no
+# session restart. Why the `env` key and not a custom one: it is schema-valid
+# in settings.local.json, and Claude Code exports it into the session — the
+# agent itself can locate the canvas via $env.GI_HOOK_DOC.
 def gi-hook-doc [settings: record]: nothing -> any {
     $settings.env?.GI_HOOK_DOC?
 }
@@ -239,11 +243,14 @@ def gi-hook-check []: string -> any {
     let message = $payload.last_assistant_message? | default ""
     if (gi-hook-allowed $message) { return }
 
-    # Name the exact working doc when enable recorded one (env.GI_HOOK_DOC —
-    # hooks inherit the settings env). Why: the doc name is timestamped or
-    # user-chosen, so a blocked agent can't guess it; naming it makes the
-    # correction actionable without a discovery step.
-    let doc = match ($env.GI_HOOK_DOC? | default "") {
+    # Name the exact working doc when enable recorded one. Why: the doc name is
+    # timestamped or user-chosen, so a blocked agent can't guess it; naming it
+    # makes the correction actionable without a discovery step. Read fresh from
+    # settings at the event's cwd — not from $env, which Claude Code snapshots
+    # at session start and would go stale on a mid-session re-enable.
+    let root = $payload.cwd? | default $env.PWD
+    let doc = gi-hook-doc (gi-hook-open-settings (gi-hook-paths $root).settings)
+    let doc = match ($doc | default "") {
         "" => "the working document"
         $p => $"`($p)`"
     }
