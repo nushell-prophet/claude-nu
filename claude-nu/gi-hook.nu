@@ -45,13 +45,14 @@ const GI_HOOK_COMMAND = $"nu --stdin -c 'use \"($GI_HOOK_MODULE_DIR)\"; $in | cl
 # git-intent-squash-archive skill).
 const GI_HOOK_PROTECTED_BRANCHES = ["main" "master"]
 
-# Root of the current repo (git top-level), falling back to PWD outside a repo.
-# Both branches yield a physical (symlink-resolved) path — git canonicalizes
-# --show-toplevel itself. Callers expand a user-given --root to match, so every
-# path comparison downstream stays within one path family.
-def gi-hook-repo-root []: nothing -> path {
-    let top = do { ^git rev-parse --show-toplevel } | complete
-    if $top.exit_code == 0 { $top.stdout | str trim } else { $env.PWD | path expand }
+# Repo root (git top-level) of dir — default PWD — falling back to dir itself
+# outside a repo. Both branches yield a physical (symlink-resolved) path — git
+# canonicalizes --show-toplevel itself. Callers expand a user-given --root to
+# match, so every path comparison downstream stays within one path family.
+def gi-hook-repo-root [dir?: path]: nothing -> path {
+    let dir = $dir | default $env.PWD
+    let top = do { ^git -C $dir rev-parse --show-toplevel } | complete
+    if $top.exit_code == 0 { $top.stdout | str trim } else { $dir | path expand }
 }
 
 # Current branch at root, or null outside a repo / on detached HEAD — nothing
@@ -293,7 +294,10 @@ def gi-hook-check []: string -> any {
 # The actual gi rules, free to throw; gi-hook-check owns the exit-0 contract.
 def gi-hook-check-rules []: record -> any {
     let payload = $in
-    let root = $payload.cwd? | default $env.PWD
+    # Toplevel, not the raw event cwd: the session's cwd may have drifted into
+    # a subdirectory, but the settings enable wrote (and the recorded doc in
+    # them) live at the repo root.
+    let root = gi-hook-repo-root ($payload.cwd? | default $env.PWD)
 
     # Branch guard, before the message rule: even a perfect `done` may not end
     # a turn on a protected branch — gi commits are internal working history,

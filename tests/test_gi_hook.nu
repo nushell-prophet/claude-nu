@@ -378,6 +378,19 @@ def "check converts internal errors into a block, not a crash" [] {
 }
 
 @test
+def "check finds the settings from a subdirectory cwd" [] {
+    let root = temp-root
+    git init -qb canvas-work $root
+    mkdir ($root | path join "sub")
+    gi-hook enable gi/plan.md --root $root | ignore
+    let prose = "Long prose without any link signal that must be blocked by the rule"
+    let out = block-decision { last_assistant_message: $prose, cwd: ($root | path join "sub") }
+    rm -rf $root
+
+    assert ($out | from json | get reason | str contains "`gi/plan.md`")
+}
+
+@test
 def "check falls back to generic wording when no doc is recorded" [] {
     let root = temp-root
     mkdir $root
