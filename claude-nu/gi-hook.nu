@@ -55,6 +55,7 @@ def gi-hook-paths [root: path]: nothing -> record {
         style_src: ($GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-output-style.md")
         style_dst: ($root | path join ".claude" "output-styles" "canvas.md")
     }
+    | update cells {|i| $i | str replace $'(pwd)/' ''} # I use str replace here because `path relative-to` isn't nice with me
 }
 
 # True if a Stop entry is one we installed (matches by command signature).
