@@ -57,16 +57,6 @@ def gi-hook-paths [root: path]: nothing -> record {
     }
 }
 
-# Shorten a path for display: relative to PWD when it sits underneath it.
-# Only `gi-hook-status` uses this — operational paths stay absolute so file
-# operations never depend on where the command was run from.
-# Not `path relative-to` because: it errors when the path is not under the
-# base (no `../`), e.g. when run from a subfolder of the repo.
-def gi-hook-shorten []: path -> string {
-    let p = $in
-    $p | if ($p | str starts-with $"($env.PWD)/") { str replace $"($env.PWD)/" "" } else { }
-}
-
 # True if a Stop entry is one we installed (matches by command signature).
 def gi-hook-is-ours []: record -> bool {
     $in.hooks?
@@ -82,10 +72,10 @@ def gi-hook-open-settings [path: path]: nothing -> record {
 def "nu-complete gi-hook-actions" []: nothing -> table {
     [
         [value description];
-        [enable  "install the Stop hook in this repo"]
+        [enable "install the Stop hook in this repo"]
         [disable "remove it (leaves any other hooks intact)"]
-        [status  "show whether it is installed"]
-        [check   "hook body — reads the Stop event JSON on stdin"]
+        [status "show whether it is installed"]
+        [check "hook body — reads the Stop event JSON on stdin"]
     ]
 }
 
@@ -109,7 +99,7 @@ export def main [
         _ => {
             error make {
                 msg: $"unknown gi-hook action: ($action)"
-                label: { text: "expected enable, disable, status, or check", span: (metadata $action).span }
+                label: {text: "expected enable, disable, status, or check" span: (metadata $action).span}
             }
         }
     }
@@ -127,7 +117,7 @@ def gi-hook-enable [
     let stop = $settings.hooks?.Stop? | default []
     let already = $stop | any {|e| $e | gi-hook-is-ours }
     let stop = if $already { $stop } else {
-        $stop | append { hooks: [ { type: "command", command: $GI_HOOK_COMMAND } ] }
+        $stop | append {hooks: [{type: "command" command: $GI_HOOK_COMMAND}]}
     }
 
     let hooks = $settings.hooks? | default {} | upsert Stop $stop
@@ -193,7 +183,10 @@ def gi-hook-status [
         style_present: ($paths.style_dst | path exists)
         output_style_set: ($settings.outputStyle? == $GI_HOOK_STYLE)
     }
-    | update cells --columns [settings_path template_path style_path] {|p| $p | gi-hook-shorten }
+    # Display-only: strip the PWD prefix; operational paths stay absolute.
+    # Not `path relative-to` because: it errors when the path is not under the
+    # base — the anchored regex is simply a no-op then.
+    | update cells --columns [settings_path template_path style_path] { str replace -r $'^($env.PWD)/' '' }
 }
 
 # Stop-hook body. Reads the event JSON on stdin and returns either nothing
@@ -210,7 +203,7 @@ def gi-hook-check []: string -> any {
     if (gi-hook-allowed $message) { return }
 
     let reason = "Chat may carry only `done`/`noted` or a short pointer (one line with a path/link). Move the full answer into the working document and commit it; leave only a pointer in chat."
-    { decision: "block", reason: $reason } | to json --raw
+    {decision: "block" reason: $reason} | to json --raw
 }
 
 # The allow-rule: what may stand alone in chat. True (allowed) when, after trim:
