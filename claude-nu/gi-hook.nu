@@ -40,9 +40,8 @@ def gi-hook-repo-root []: nothing -> path {
 # - settings: per-repo, per-machine file the hook lives in. Why this file: it is
 #   already gitignored by Claude Code, so the hook stays local — it never
 #   reaches another checkout or the classic mode.
-# - template: the gi working-doc seed. Why a repo-local `gi-md-src/` dst: the gi
-#   protocol keeps the live working doc under version control, so it sits next
-#   to the code it drives, not in a dotfile.
+# - template_src: the gi working-doc seed; its destination is per-enable (see
+#   gi-hook-doc), so only the src lives here.
 # - style: the Canvas output style. Why distribute a local copy: gi-hook is
 #   vendored on its own, so it must carry the style itself rather than depend on
 #   a Claude plugin being installed — `enable` drops it as a per-repo project
@@ -51,10 +50,17 @@ def gi-hook-paths [root: path]: nothing -> record {
     {
         settings: ($root | path join ".claude" "settings.local.json")
         template_src: ($GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-header.md")
-        template_dst: ($root | path join "gi" $"canvas-(date now | format date '%J_%Q').md")
         style_src: ($GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-output-style.md")
         style_dst: ($root | path join ".claude" "output-styles" "canvas.md")
     }
+}
+
+# The working doc recorded in settings (env.GI_HOOK_DOC), or null. Why settings
+# env: the doc name is timestamped or user-chosen, so it can't be recomputed —
+# it must be persisted where both the check hook (inherits the env from Claude
+# Code) and status (reads the file) can see it, without a second state file.
+def gi-hook-doc [settings: record]: nothing -> any {
+    $settings.env?.GI_HOOK_DOC?
 }
 
 # True if a Stop entry is one we installed (matches by command signature).
@@ -88,12 +94,19 @@ def "nu-complete gi-hook-actions" []: nothing -> table {
 # module — importing this file yields the `gi-hook` command.
 export def main [
     action?: string@"nu-complete gi-hook-actions" # enable | disable | status | check (default: status)
+    doc?: path # enable only: working-doc path (default: keep the recorded one, else gi/canvas-<timestamp>.md)
     --root: path # Repo root (default: git top-level); ignored by check
 ]: any -> any {
     let event = $in # check reads the Stop event here; the others ignore it
+    if $doc != null and $action != "enable" {
+        error make {
+            msg: "a working-doc path only makes sense with enable"
+            label: {text: "drop this, or use: gi-hook enable <doc>" span: (metadata $doc).span}
+        }
+    }
     match $action {
         null | "status" => (gi-hook-status --root $root)
-        "enable" => (gi-hook-enable --root $root)
+        "enable" => (gi-hook-enable --root $root --doc $doc)
         "disable" => (gi-hook-disable --root $root)
         "check" => ($event | gi-hook-check)
         _ => {
@@ -109,10 +122,19 @@ export def main [
 # Idempotent: a second enable does not add a duplicate.
 def gi-hook-enable [
     --root: path # Repo root to install into (default: git top-level)
+    --doc: path # Working-doc path, relative to root (absolute also accepted)
 ]: nothing -> record {
     let root = $root | default (gi-hook-repo-root)
     let paths = gi-hook-paths $root
     let settings = gi-hook-open-settings $paths.settings
+
+    # Resolve the working doc: explicit arg wins; else keep the recorded one so
+    # re-enable is idempotent; else mint a timestamped default. Stored
+    # root-relative when under root — the hook runs with cwd at the project, so
+    # the short form works in the block message and survives a checkout move.
+    let doc = $doc | default (gi-hook-doc $settings) | default $"gi/canvas-(date now | format date '%J_%Q').md"
+    let doc_abs = $root | path join $doc
+    let doc = if ($doc_abs | str starts-with $"($root)/") { $doc_abs | path relative-to $root } else { $doc_abs }
 
     let stop = $settings.hooks?.Stop? | default []
     let already = $stop | any {|e| $e | gi-hook-is-ours }
@@ -121,17 +143,22 @@ def gi-hook-enable [
     }
 
     let hooks = $settings.hooks? | default {} | upsert Stop $stop
+    let env_block = $settings.env? | default {} | upsert GI_HOOK_DOC $doc
     mkdir ($paths.settings | path dirname)
     # Set outputStyle alongside the hook so the proactive style and the reactive
     # hook turn on together. Why both: the style shapes what gets written, the
     # hook is the hard floor — LLMs are non-deterministic, so the floor stays.
-    $settings | upsert hooks $hooks | upsert outputStyle $GI_HOOK_STYLE | save --force $paths.settings
+    $settings
+    | upsert hooks $hooks
+    | upsert env $env_block
+    | upsert outputStyle $GI_HOOK_STYLE
+    | save --force $paths.settings
 
     # Seed the working-doc template and the output style. Why not clobber: once
     # they exist they are the user's files — refreshing would destroy their edits.
     for seed in [
         [src dst];
-        [$paths.template_src $paths.template_dst]
+        [$paths.template_src $doc_abs]
         [$paths.style_src $paths.style_dst]
     ] {
         if not ($seed.dst | path exists) {
@@ -162,6 +189,9 @@ def gi-hook-disable [
     # Drop outputStyle only if it is still ours — never clobber a value the user
     # set themselves. The seeded style and working doc are left in place (user files).
     let settings = if ($settings.outputStyle? == $GI_HOOK_STYLE) { $settings | reject outputStyle? } else { $settings }
+    # Same for env: remove only our GI_HOOK_DOC key, prune env if that empties it.
+    let env_block = $settings.env? | default {} | reject GI_HOOK_DOC?
+    let settings = if ($env_block | is-empty) { $settings | reject env? } else { $settings | upsert env $env_block }
     $settings | save --force $path
     gi-hook-status --root $root
 }
@@ -173,10 +203,11 @@ def gi-hook-status [
     let root = $root | default (gi-hook-repo-root)
     let paths = gi-hook-paths $root
     let settings = gi-hook-open-settings $paths.settings
+    let doc = gi-hook-doc $settings
     {
         enabled: ($settings.hooks?.Stop? | default [] | any {|e| $e | gi-hook-is-ours })
         settings: $paths.settings
-        template: $paths.template_dst
+        doc: (if $doc != null { $root | path join $doc })
         style: $paths.style_dst
         output_style_set: ($settings.outputStyle? == $GI_HOOK_STYLE)
     }
@@ -186,13 +217,13 @@ def gi-hook-status [
     # The guard needs the trailing slash: starts-with compares strings while
     # relative-to compares path components — without it a sibling dir like
     # /a/bc passes the /a/b guard and relative-to puts a CantConvert in the cell.
-    | update cells --columns [settings template style] {
-        if ($in | str starts-with $"($env.PWD)/") { path relative-to $env.PWD } else { }
+    | update cells --columns [settings doc style] {
+        if $in != null and ($in | str starts-with $"($env.PWD)/") { path relative-to $env.PWD } else { }
     }
     # Seed fields carry presence by value: the path when the file exists, null
     # (an empty cell) when it does not. Runs after the shortening on purpose —
     # a relative path resolves against PWD, exactly what the strip took off.
-    | update cells --columns [template style] {|p| if ($p | path exists) { $p } }
+    | update cells --columns [doc style] {|p| if $p != null and ($p | path exists) { $p } }
 }
 
 # Stop-hook body. Reads the event JSON on stdin and returns either nothing
@@ -208,7 +239,15 @@ def gi-hook-check []: string -> any {
     let message = $payload.last_assistant_message? | default ""
     if (gi-hook-allowed $message) { return }
 
-    let reason = "Chat may carry only `done`/`noted` or a short pointer (one line with a path/link). Move the full answer into the working document and commit it; leave only a pointer in chat."
+    # Name the exact working doc when enable recorded one (env.GI_HOOK_DOC —
+    # hooks inherit the settings env). Why: the doc name is timestamped or
+    # user-chosen, so a blocked agent can't guess it; naming it makes the
+    # correction actionable without a discovery step.
+    let doc = match ($env.GI_HOOK_DOC? | default "") {
+        "" => "the working document"
+        $p => $"`($p)`"
+    }
+    let reason = $"Chat may carry only `done`/`noted` or a short pointer \(one line with a path/link). Move the full answer into ($doc) and commit it; leave only a pointer in chat."
     {decision: "block" reason: $reason} | to json --raw
 }
 

@@ -103,30 +103,81 @@ def "disable is a no-op when nothing is installed" [] {
 }
 
 @test
-def "enable seeds the gi working-doc template" [] {
+def "enable seeds a timestamped working doc under gi and records it" [] {
     let root = temp-root
     let status = gi-hook enable --root $root
-    let deployed = $root | path join "gi-md-src" "canvas-header.md"
+    let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
+    let deployed = $root | path join $recorded
     let exists = $deployed | path exists
     let body = if $exists { open --raw $deployed } else { "" }
     rm -rf $root
 
-    assert ($status.template != null)
+    assert ($status.doc != null)
+    assert ($recorded | str starts-with "gi/canvas-")
     assert $exists
     assert ($body | is-not-empty)
 }
 
 @test
-def "enable does not clobber an edited template" [] {
+def "enable accepts a custom working-doc path" [] {
     let root = temp-root
-    mkdir ($root | path join "gi-md-src")
-    let deployed = $root | path join "gi-md-src" "canvas-header.md"
-    "my edited working doc" | save $deployed
+    gi-hook enable notes/plan.md --root $root | ignore
+    let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
+    let exists = $root | path join "notes" "plan.md" | path exists
+    rm -rf $root
+
+    assert equal $recorded "notes/plan.md"
+    assert $exists
+}
+
+@test
+def "re-enable keeps the recorded doc unless a new one is given" [] {
+    let root = temp-root
     gi-hook enable --root $root | ignore
+    let first = open (settings-of $root) | get env.GI_HOOK_DOC
+    gi-hook enable --root $root | ignore
+    let second = open (settings-of $root) | get env.GI_HOOK_DOC
+    gi-hook enable other.md --root $root | ignore
+    let third = open (settings-of $root) | get env.GI_HOOK_DOC
+    rm -rf $root
+
+    assert equal $first $second
+    assert equal $third "other.md"
+}
+
+@test
+def "enable does not clobber an existing working doc" [] {
+    let root = temp-root
+    mkdir ($root | path join "gi")
+    let deployed = $root | path join "gi" "doc.md"
+    "my edited working doc" | save $deployed
+    gi-hook enable gi/doc.md --root $root | ignore
     let body = open --raw $deployed
     rm -rf $root
 
     assert equal $body "my edited working doc"
+}
+
+@test
+def "a doc path with a non-enable action errors" [] {
+    let root = temp-root
+    let out = try { gi-hook status some.md --root $root; null } catch {|e| $e.msg }
+    rm -rf $root
+
+    assert ($out != null)
+}
+
+@test
+def "disable removes the recorded doc and preserves foreign env vars" [] {
+    let root = temp-root
+    mkdir ($root | path join ".claude")
+    { env: { OTHER: "kept" } } | save (settings-of $root)
+    gi-hook enable --root $root | ignore
+    gi-hook disable --root $root | ignore
+    let settings = open (settings-of $root)
+    rm -rf $root
+
+    assert equal $settings.env { OTHER: "kept" }
 }
 
 @test
@@ -184,8 +235,8 @@ def "status reflects enabled and disabled state" [] {
     assert (not $before.enabled)
     assert $after.enabled
     # Presence-by-value: seed fields are null before enable, paths after.
-    assert equal $before.template null
-    assert ($after.template != null)
+    assert equal $before.doc null
+    assert ($after.doc != null)
 }
 
 # =============================================================================
@@ -229,6 +280,18 @@ def "check blocks a long single line with no link signal" [] {
 @test
 def "check treats an empty message as allowed" [] {
     assert equal (block-decision { last_assistant_message: "" }) null
+}
+
+@test
+def "check names the recorded doc in the block reason" [] {
+    let blocked = { last_assistant_message: "Long prose without any link signal that must be blocked by the rule" }
+    let generic = block-decision $blocked | from json | get reason
+    let named = with-env { GI_HOOK_DOC: "gi/canvas-20260704_173256.md" } {
+        block-decision $blocked | from json | get reason
+    }
+
+    assert ($generic | str contains "the working document")
+    assert ($named | str contains "`gi/canvas-20260704_173256.md`")
 }
 
 # =============================================================================
