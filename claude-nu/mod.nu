@@ -50,7 +50,7 @@ export def main [
     if $find == null {
         error make {
             msg: "claude-nu needs a subcommand or a search term"
-            help: "search messages:  claude-nu -f 'regex'  (--all-projects to widen)\nsubcommands:  projects, sessions, messages, export-session, save-markdown"
+            help: "search messages:  claude-nu -f 'regex'  (--all-projects to widen)\nsubcommands:  projects, sessions, messages, export-session, save-markdown, gi-hook"
         }
     }
     let files = find-session-files $find --all-projects=$all_projects --no-rg=$no_rg
