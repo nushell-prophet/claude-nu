@@ -133,18 +133,19 @@ Filters out system-generated messages, keeping only user prompts and assistant r
 
 ### `claude-nu gi-hook`
 
-Install a per-repo Claude Code **Stop hook** that keeps the chat terse — for the gi protocol, where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing. When enabled, the agent's final chat message must be `done`/`noted` or a short pointer (one line with a path/link); anything longer blocks the turn with an instruction to move the answer into a document and commit it. Opt-in and per-repo, so the classic mode is untouched.
+Install a per-repo Claude Code **Stop hook** that keeps the chat terse — for the gi protocol, where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing. When enabled, the agent's final chat message must be `done`/`noted` or a short pointer (one line with a path/link); anything longer blocks the turn with an instruction to move the answer into the working doc and commit it — the block message names the exact file. The hook also blocks any turn ending on `main`/`master`: gi commits are internal working history; they reach a public branch only squash-merged, after finalization. Opt-in and per-repo, so the classic mode is untouched.
 
 ```nushell no-run
-claude-nu gi-hook enable     # install into this repo's .claude/settings.local.json
-claude-nu gi-hook disable    # remove it (leaves any other hooks intact)
-claude-nu gi-hook status     # { enabled, settings, template, style, output_style_set }
-claude-nu gi-hook check      # hook body — reads the Stop event JSON on stdin
+claude-nu gi-hook enable            # install into this repo's .claude/settings.local.json
+claude-nu gi-hook enable notes/x.md # same, choosing the working-doc path (default: gi/canvas-<timestamp>.md)
+claude-nu gi-hook disable           # remove it (leaves any other hooks intact)
+claude-nu gi-hook status            # { enabled, settings, doc, style, output_style_set }
+claude-nu gi-hook check             # hook body — reads the Stop event JSON on stdin
 ```
 
-The hook lives in `.claude/settings.local.json` (already gitignored by Claude Code), so it never reaches another checkout. `enable` is idempotent and preserves foreign hooks; `disable` removes only our entry and prunes emptied keys. The "short pointer" length budget defaults to 120 and is tunable via the `GI_HOOK_MAX_LEN` environment variable.
+The hook lives in `.claude/settings.local.json` (already gitignored by Claude Code), so it never reaches another checkout. `enable` is idempotent and preserves foreign hooks: re-running keeps the recorded working doc, passing a path switches it. `disable` removes only our entries and prunes emptied keys. The "short pointer" length budget defaults to 120 and is tunable via the `GI_HOOK_MAX_LEN` environment variable.
 
-`enable` also seeds `gi/scratchpad-template.md` — the live working-doc template that the gi protocol keeps under version control. The template ships inside the module (`claude-nu/gi/scratchpad-template.md`); `enable` copies it into the target repo but never overwrites an existing one, so your edits are safe.
+The chosen working-doc path is recorded as `env.GI_HOOK_DOC` in the same settings file; Claude Code exports it into the session, so the agent can locate the canvas via `$env.GI_HOOK_DOC` without being blocked first. `enable` seeds the doc from a template and installs the **Canvas** output style (the proactive half — the hook is the reactive floor) as `.claude/output-styles/canvas.md`, setting `outputStyle` so both turn on together. Seeded files are never overwritten, so your edits are safe; the style loads at session start, so run `/clear` or start a new session after enabling.
 
 ## CLI Completions
 
