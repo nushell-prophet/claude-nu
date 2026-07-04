@@ -184,10 +184,10 @@ def gi-hook-status [
         output_style_set: ($settings.outputStyle? == $GI_HOOK_STYLE)
     }
     # Display-only: paths under PWD show relative; operational paths stay
-    # absolute. try because: `path relative-to` errors when the path is not
-    # under the base — that error is exactly the leave-it-absolute case.
+    # absolute. Not `path relative-to` under try because: the error path costs
+    # ~10x the guard and error-as-control-flow reads worse than a plain check.
     | update cells --columns [settings_path template_path style_path] {|p|
-        try { $p | path relative-to $env.PWD } catch { $p }
+        $p | if ($p | str starts-with $"($env.PWD)/") { str replace $"($env.PWD)/" "" } else { }
     }
 }
 
