@@ -1280,11 +1280,11 @@ def gi-hook-entry [command: string]: nothing -> record {
 # the gi protocol keeps the live working doc under version control, so it sits
 # next to the code it drives, not in a dotfile.
 def gi-hook-template-src []: nothing -> path {
-    $GI_HOOK_MODULE_DIR | path join "gi" "canvas-header.md"
+    $GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-header.md"
 }
 
 def gi-hook-template-dst [root: path]: nothing -> path {
-    $root | path join "gi" "canvas-header.md"
+    $root | path join "gi-md-src" "canvas-header.md"
 }
 
 # The output style gi-hook distributes: the template that ships inside the module
@@ -1292,7 +1292,7 @@ def gi-hook-template-dst [root: path]: nothing -> path {
 # vendored on its own, so it must carry the style itself rather than depend on a
 # Claude plugin being installed — `enable` drops it as a per-repo project style.
 def gi-hook-style-src []: nothing -> path {
-    $GI_HOOK_MODULE_DIR | path join "gi" "canvas-output-style.md"
+    $GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-output-style.md"
 }
 
 def gi-hook-style-dst [root: path]: nothing -> path {
