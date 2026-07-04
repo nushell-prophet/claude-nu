@@ -349,6 +349,11 @@ export def gi-hook-allowed [message: string]: nothing -> bool {
     let max = $env.GI_HOOK_MAX_LEN? | default 120 | into int
     let single_line = not ($text | str contains "\n")
     let within = ($text | str length) <= $max
-    let has_signal = ($text =~ '`') or ($text =~ '→') or ($text =~ '[\w./-]+\.\w+')
+    # The filename signal needs a 2+ char lowercase/digit extension: `\w+`
+    # also matched abbreviations (`e.g`) and glued sentences (`end.Next`),
+    # letting short prose through as a "pointer". Real one-letter-extension
+    # files (main.c) are indistinguishable from abbreviations; a pointer to
+    # one still passes via backticks.
+    let has_signal = ($text =~ '`') or ($text =~ '→') or ($text =~ '[\w./-]+\.[a-z0-9]{2,}')
     $single_line and $within and $has_signal
 }

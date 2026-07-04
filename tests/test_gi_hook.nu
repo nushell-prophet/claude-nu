@@ -464,6 +464,9 @@ def "allow-rule passes empty, done, noted, and short pointers" [] {
 def "allow-rule blocks prose and unanchored lines" [] {
     assert (not (gi-hook-allowed "Here is a plain sentence with no link that should not be allowed in chat"))
     assert (not (gi-hook-allowed "line one\nline two"))
+    # Abbreviations and glued sentences are not filename signals.
+    assert (not (gi-hook-allowed "short prose with e.g an aside"))
+    assert (not (gi-hook-allowed "First thought ends.Next one starts"))
 }
 
 @test
