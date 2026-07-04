@@ -279,6 +279,20 @@ def gi-hook-check []: string -> any {
     # Already continuing from a prior block — let it end to avoid a loop.
     if ($payload.stop_hook_active? | default false) { return }
 
+    # Contract boundary: an internal error (hand-broken settings file, git not
+    # on PATH, a typo in GI_HOOK_MAX_LEN) must not become a non-zero exit —
+    # Claude Code treats that as a non-blocking error and enforcement silently
+    # vanishes. Convert it to a block whose reason carries the error: loud,
+    # in front of the agent, and the loop guard above still lets the turn end
+    # on the retry. Not a fail-fast violation — this IS the failure surface.
+    try { $payload | gi-hook-check-rules } catch {|err|
+        {decision: "block" reason: $"gi-hook check failed internally — fix this before continuing: ($err.msg)"} | to json --raw
+    }
+}
+
+# The actual gi rules, free to throw; gi-hook-check owns the exit-0 contract.
+def gi-hook-check-rules []: record -> any {
+    let payload = $in
     let root = $payload.cwd? | default $env.PWD
 
     # Branch guard, before the message rule: even a perfect `done` may not end

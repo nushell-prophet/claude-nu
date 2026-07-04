@@ -347,6 +347,36 @@ def "check passes an allowed message on a work branch" [] {
     assert equal $out null
 }
 
+# The Stop-hook contract: check may never throw (exit 1 reads as a
+# non-blocking error to Claude Code and enforcement silently vanishes) —
+# internal failures must surface as a block decision instead.
+@test
+def "check converts internal errors into a block, not a crash" [] {
+    let prose = "Long prose without any link signal that must be blocked by the rule"
+
+    let broken = temp-root
+    mkdir ($broken | path join ".claude")
+    "{ broken json" | save ($broken | path join ".claude" "settings.local.json")
+    let from_bad_json = block-decision { last_assistant_message: $prose, cwd: $broken }
+    rm -rf $broken
+
+    let misshapen = temp-root
+    mkdir ($misshapen | path join ".claude")
+    { env: "oops" } | save ($misshapen | path join ".claude" "settings.local.json")
+    let from_bad_shape = block-decision { last_assistant_message: $prose, cwd: $misshapen }
+    rm -rf $misshapen
+
+    let from_bad_knob = with-env { GI_HOOK_MAX_LEN: "abc" } {
+        block-decision { last_assistant_message: $prose }
+    }
+
+    for out in [$from_bad_json $from_bad_shape $from_bad_knob] {
+        let decision = $out | from json
+        assert equal $decision.decision "block"
+        assert ($decision.reason | str contains "failed internally")
+    }
+}
+
 @test
 def "check falls back to generic wording when no doc is recorded" [] {
     let root = temp-root
