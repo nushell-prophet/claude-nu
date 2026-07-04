@@ -186,8 +186,11 @@ def gi-hook-status [
     # Display-only: paths under PWD show relative; operational paths stay
     # absolute. Not `path relative-to` under try because: the error path costs
     # ~10x the guard and error-as-control-flow reads worse than a plain check.
-    | update cells --columns [settings_path template_path style_path] {|p|
-        $p | if ($p | str starts-with $"($env.PWD)/") { str replace $"($env.PWD)/" "" } else { }
+    # The guard needs the trailing slash: starts-with compares strings while
+    # relative-to compares path components — without it a sibling dir like
+    # /a/bc passes the /a/b guard and relative-to puts a CantConvert in the cell.
+    | update cells --columns [settings_path template_path style_path] {
+        if ($in | str starts-with $"($env.PWD)/") { path relative-to $env.PWD } else { }
     }
 }
 
