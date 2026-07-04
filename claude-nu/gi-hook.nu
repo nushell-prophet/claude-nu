@@ -55,7 +55,16 @@ def gi-hook-paths [root: path]: nothing -> record {
         style_src: ($GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-output-style.md")
         style_dst: ($root | path join ".claude" "output-styles" "canvas.md")
     }
-    | update cells {|i| $i | str replace $'(pwd)/' ''} # I use str replace here because `path relative-to` isn't nice with me
+}
+
+# Shorten a path for display: relative to PWD when it sits underneath it.
+# Only `gi-hook-status` uses this — operational paths stay absolute so file
+# operations never depend on where the command was run from.
+# Not `path relative-to` because: it errors when the path is not under the
+# base (no `../`), e.g. when run from a subfolder of the repo.
+def gi-hook-shorten []: path -> string {
+    let p = $in
+    $p | if ($p | str starts-with $"($env.PWD)/") { str replace $"($env.PWD)/" "" } else { }
 }
 
 # True if a Stop entry is one we installed (matches by command signature).
@@ -176,11 +185,11 @@ def gi-hook-status [
     let settings = gi-hook-open-settings $paths.settings
     {
         enabled: ($settings.hooks?.Stop? | default [] | any {|e| $e | gi-hook-is-ours })
-        settings_path: $paths.settings
+        settings_path: ($paths.settings | gi-hook-shorten)
         command: $GI_HOOK_COMMAND
-        template_path: $paths.template_dst
+        template_path: ($paths.template_dst | gi-hook-shorten)
         template_present: ($paths.template_dst | path exists)
-        style_path: $paths.style_dst
+        style_path: ($paths.style_dst | gi-hook-shorten)
         style_present: ($paths.style_dst | path exists)
         output_style_set: ($settings.outputStyle? == $GI_HOOK_STYLE)
     }
