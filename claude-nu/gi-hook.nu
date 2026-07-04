@@ -191,8 +191,8 @@ def gi-hook-enable [
     # re-enable must refresh an entry recorded from a since-moved checkout —
     # a stale path fails at `use` time, outside anything the module can catch.
     let stop = $settings.hooks?.Stop? | default []
-    | where {|e| not ($e | gi-hook-is-ours) }
-    | append {hooks: [{type: "command" command: $GI_HOOK_COMMAND}]}
+        | where {|e| not ($e | gi-hook-is-ours) }
+        | append {hooks: [{type: "command" command: $GI_HOOK_COMMAND}]}
 
     let hooks = $settings.hooks? | default {} | upsert Stop $stop
     let env_block = $settings.env? | default {} | upsert GI_HOOK_DOC $doc
