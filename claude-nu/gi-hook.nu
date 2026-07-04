@@ -262,10 +262,11 @@ def gi-hook-status [
     let paths = gi-hook-paths $root
     let settings = gi-hook-open-settings $paths.settings
     let doc = gi-hook-doc $settings
-    # Resolved so the prefix-compare below works from a symlinked cwd too:
-    # git reports the physical toplevel, while cd through a symlink (cozy's
-    # ~/repos) leaves $env.PWD logical — same directory, different spelling.
-    let pwd = $env.PWD | path expand
+    # Paths stay absolute and present whenever recorded. Shortening them
+    # against PWD made the same field change spelling with where you stand,
+    # and nulling missing seed files collapsed two states into one — a null
+    # doc could mean "not recorded" or "recorded but deleted", which need
+    # different user actions. Data here, display is the caller's business.
     {
         enabled: ($settings.hooks?.Stop? | default [] | any {|e| $e | gi-hook-is-ours })
         settings: $paths.settings
@@ -273,19 +274,6 @@ def gi-hook-status [
         style: $paths.style_dst
         output_style_set: ($settings.outputStyle? == $GI_HOOK_STYLE)
     }
-    # Display-only: paths under PWD show relative; operational paths stay
-    # absolute. Not `path relative-to` under try because: the error path costs
-    # ~10x the guard and error-as-control-flow reads worse than a plain check.
-    # The guard needs the trailing slash: starts-with compares strings while
-    # relative-to compares path components — without it a sibling dir like
-    # /a/bc passes the /a/b guard and relative-to puts a CantConvert in the cell.
-    | update cells --columns [settings doc style] {
-        if $in != null and ($in | str starts-with $"($pwd)/") { path relative-to $pwd } else { }
-    }
-    # Seed fields carry presence by value: the path when the file exists, null
-    # (an empty cell) when it does not. Runs after the shortening on purpose —
-    # a relative path resolves against PWD, exactly what the strip took off.
-    | update cells --columns [doc style] {|p| if $p != null and ($p | path exists) { $p } }
 }
 
 # Stop-hook body. Reads the event JSON on stdin and returns either nothing

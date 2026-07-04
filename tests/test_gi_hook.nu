@@ -254,20 +254,19 @@ def "enable stores an absolute doc arriving through a symlink as root-relative" 
 }
 
 @test
-def "status shortens paths when run from a symlinked cwd" [] {
+def "status returns absolute paths regardless of cwd" [] {
     let root = temp-root
-    let link = $"($root)-link"
     gi-hook enable --root $root | ignore
-    ^ln -s $root $link
+    let expected = settings-of ($root | path expand)
     let orig = $env.PWD
-    cd $link
-    let status = gi-hook status --root $link
+    cd $root
+    let status = gi-hook status --root $root
     cd $orig
-    rm -rf $root $link
+    rm -rf $root
 
-    # git reports physical paths while cd through a symlink keeps PWD logical;
-    # both sides resolved -> the display still shortens to repo-relative.
-    assert equal $status.settings (".claude" | path join "settings.local.json")
+    # Data, not display: paths never shorten against PWD, so a consumer gets
+    # the same value wherever status is called from.
+    assert equal $status.settings $expected
 }
 
 @test
@@ -280,7 +279,7 @@ def "status reflects enabled and disabled state" [] {
 
     assert (not $before.enabled)
     assert $after.enabled
-    # Presence-by-value: seed fields are null before enable, paths after.
+    # doc is null until enable records one in settings.
     assert equal $before.doc null
     assert ($after.doc != null)
 }
