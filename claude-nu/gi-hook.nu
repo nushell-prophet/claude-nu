@@ -24,54 +24,37 @@ const GI_HOOK_STYLE = "Canvas"
 # target — relative paths are not resolved when Claude Code runs the hook.
 const GI_HOOK_MODULE_DIR = (path self | path dirname)
 
+# The shell command Claude Code runs for the Stop event. Single-quote the `-c`
+# body so the outer shell does not expand `$in`; `--stdin` feeds the event JSON
+# to nushell as `$in`. The absolute module path is required — relative paths are
+# not resolved at hook time.
+const GI_HOOK_COMMAND = $"nu --stdin -c 'use \"($GI_HOOK_MODULE_DIR)\"; $in | claude-nu gi-hook check'"
+
 # Root of the current repo (git top-level), falling back to PWD outside a repo.
 def gi-hook-repo-root []: nothing -> path {
     let top = do { ^git rev-parse --show-toplevel } | complete
     if $top.exit_code == 0 { $top.stdout | str trim } else { $env.PWD | path expand }
 }
 
-# Path to the per-repo, per-machine settings file the hook lives in. Why this
-# file: it is already gitignored by Claude Code, so the hook stays local — it
-# never reaches another checkout or the classic mode.
-def gi-hook-settings-path [root: path]: nothing -> path {
-    $root | path join ".claude" "settings.local.json"
-}
-
-# The shell command Claude Code runs for the Stop event. Single-quote the `-c`
-# body so the outer shell does not expand `$in`; `--stdin` feeds the event JSON
-# to nushell as `$in`. The absolute module path is required — relative paths are
-# not resolved at hook time. `path self` anchors it to this file's directory.
-def gi-hook-command []: nothing -> string {
-    $"nu --stdin -c 'use \"($GI_HOOK_MODULE_DIR)\"; $in | claude-nu gi-hook check'"
-}
-
-# The Stop hook entry as stored under hooks.Stop[].
-def gi-hook-entry [command: string]: nothing -> record {
-    { hooks: [ { type: "command", command: $command } ] }
-}
-
-# The gi working-doc template that ships inside the module (so it vendors with
-# it) and the place `enable` drops it in a target repo. Why a repo-local
-# `gi-md-src/`: the gi protocol keeps the live working doc under version
-# control, so it sits next to the code it drives, not in a dotfile.
-def gi-hook-template-src []: nothing -> path {
-    $GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-header.md"
-}
-
-def gi-hook-template-dst [root: path]: nothing -> path {
-    $root | path join "gi-md-src" "canvas-header.md"
-}
-
-# The output style gi-hook distributes: the template that ships inside the module
-# and the project-level path it lands at. Why distribute a local copy: gi-hook is
-# vendored on its own, so it must carry the style itself rather than depend on a
-# Claude plugin being installed — `enable` drops it as a per-repo project style.
-def gi-hook-style-src []: nothing -> path {
-    $GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-output-style.md"
-}
-
-def gi-hook-style-dst [root: path]: nothing -> path {
-    $root | path join ".claude" "output-styles" "canvas.md"
+# Every path gi-hook touches, in one record.
+# - settings: per-repo, per-machine file the hook lives in. Why this file: it is
+#   already gitignored by Claude Code, so the hook stays local — it never
+#   reaches another checkout or the classic mode.
+# - template: the gi working-doc seed. Why a repo-local `gi-md-src/` dst: the gi
+#   protocol keeps the live working doc under version control, so it sits next
+#   to the code it drives, not in a dotfile.
+# - style: the Canvas output style. Why distribute a local copy: gi-hook is
+#   vendored on its own, so it must carry the style itself rather than depend on
+#   a Claude plugin being installed — `enable` drops it as a per-repo project
+#   style. The srcs ship inside the module, so they vendor with it.
+def gi-hook-paths [root: path]: nothing -> record {
+    {
+        settings: ($root | path join ".claude" "settings.local.json")
+        template_src: ($GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-header.md")
+        template_dst: ($root | path join "gi-md-src" "canvas-header.md")
+        style_src: ($GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-output-style.md")
+        style_dst: ($root | path join ".claude" "output-styles" "canvas.md")
+    }
 }
 
 # True if a Stop entry is one we installed (matches by command signature).
@@ -128,34 +111,33 @@ def gi-hook-enable [
     --root: path # Repo root to install into (default: git top-level)
 ]: nothing -> record {
     let root = $root | default (gi-hook-repo-root)
-    let path = gi-hook-settings-path $root
-    let command = gi-hook-command
-    let settings = gi-hook-open-settings $path
+    let paths = gi-hook-paths $root
+    let settings = gi-hook-open-settings $paths.settings
 
     let stop = $settings.hooks?.Stop? | default []
     let already = $stop | any {|e| $e | gi-hook-is-ours }
-    let stop = if $already { $stop } else { $stop | append (gi-hook-entry $command) }
+    let stop = if $already { $stop } else {
+        $stop | append { hooks: [ { type: "command", command: $GI_HOOK_COMMAND } ] }
+    }
 
     let hooks = $settings.hooks? | default {} | upsert Stop $stop
-    mkdir ($path | path dirname)
+    mkdir ($paths.settings | path dirname)
     # Set outputStyle alongside the hook so the proactive style and the reactive
     # hook turn on together. Why both: the style shapes what gets written, the
     # hook is the hard floor — LLMs are non-deterministic, so the floor stays.
-    $settings | upsert hooks $hooks | upsert outputStyle $GI_HOOK_STYLE | save --force $path
+    $settings | upsert hooks $hooks | upsert outputStyle $GI_HOOK_STYLE | save --force $paths.settings
 
-    # Seed the gi working-doc template. Why not clobber: once it exists it is
-    # the user's live doc — refreshing it would destroy their edits.
-    let template = gi-hook-template-dst $root
-    if not ($template | path exists) {
-        mkdir ($template | path dirname)
-        cp (gi-hook-template-src) $template
-    }
-    # Distribute the output style as a per-repo project style. Same no-clobber
-    # rule: the user may have edited their local copy.
-    let style = gi-hook-style-dst $root
-    if not ($style | path exists) {
-        mkdir ($style | path dirname)
-        cp (gi-hook-style-src) $style
+    # Seed the working-doc template and the output style. Why not clobber: once
+    # they exist they are the user's files — refreshing would destroy their edits.
+    for seed in [
+        [src dst];
+        [$paths.template_src $paths.template_dst]
+        [$paths.style_src $paths.style_dst]
+    ] {
+        if not ($seed.dst | path exists) {
+            mkdir ($seed.dst | path dirname)
+            cp $seed.src $seed.dst
+        }
     }
     # The style is read once at session start, so it won't apply until /clear or
     # a new session; the hook takes effect immediately.
@@ -168,7 +150,7 @@ def gi-hook-disable [
     --root: path # Repo root to remove from (default: git top-level)
 ]: nothing -> record {
     let root = $root | default (gi-hook-repo-root)
-    let path = gi-hook-settings-path $root
+    let path = (gi-hook-paths $root).settings
     if not ($path | path exists) { return (gi-hook-status --root $root) }
 
     let settings = gi-hook-open-settings $path
@@ -189,19 +171,16 @@ def gi-hook-status [
     --root: path # Repo root to inspect (default: git top-level)
 ]: nothing -> record {
     let root = $root | default (gi-hook-repo-root)
-    let path = gi-hook-settings-path $root
-    let settings = gi-hook-open-settings $path
-    let stop = $settings.hooks?.Stop? | default []
-    let template = gi-hook-template-dst $root
-    let style = gi-hook-style-dst $root
+    let paths = gi-hook-paths $root
+    let settings = gi-hook-open-settings $paths.settings
     {
-        enabled: ($stop | any {|e| $e | gi-hook-is-ours })
-        settings_path: $path
-        command: (gi-hook-command)
-        template_path: $template
-        template_present: ($template | path exists)
-        style_path: $style
-        style_present: ($style | path exists)
+        enabled: ($settings.hooks?.Stop? | default [] | any {|e| $e | gi-hook-is-ours })
+        settings_path: $paths.settings
+        command: $GI_HOOK_COMMAND
+        template_path: $paths.template_dst
+        template_present: ($paths.template_dst | path exists)
+        style_path: $paths.style_dst
+        style_present: ($paths.style_dst | path exists)
         output_style_set: ($settings.outputStyle? == $GI_HOOK_STYLE)
     }
 }
