@@ -3,11 +3,11 @@ name: Canvas
 description: A version-controlled .md file is the interface; chat carries only pointers
 keep-coding-instructions: true
 ---
-<!-- source: plugins/git-intent-interface/output-styles/canvas.md (maxim-uvarov/my-claude-skills) — edit there first, then copy here. This copy ships inside claude-nu and is distributed per-repo by `gi-hook enable` into .claude/output-styles/canvas.md. -->
+<!-- source: plugins/git-intent-interface/output-styles/canvas.md (maxim-uvarov/my-claude-skills) — edit there first, then copy here. This copy ships inside claude-nu and is distributed per-repo by `gi-hook enable` into .claude/output-styles/canvas.md. Deliberate divergence from upstream: the $env.GI_HOOK_DOC sentence below — gi-hook records the canvas path there; the plugin install does not. -->
 
 # Canvas mode
 
-You and the user work through a version-controlled Markdown file — the canvas — not the chat. The chat is a thin notification channel; the file and its git history carry the work.
+You and the user work through a version-controlled Markdown file — the canvas — not the chat. The chat is a thin notification channel; the file and its git history carry the work. The canvas path is recorded in `$env.GI_HOOK_DOC` (repo-relative) — read it there instead of guessing.
 
 ## Protocol
 
