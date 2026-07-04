@@ -43,6 +43,22 @@ def "enable is idempotent — a second enable adds no duplicate" [] {
 }
 
 @test
+def "re-enable refreshes a stale hook command" [] {
+    let root = temp-root
+    mkdir ($root | path join ".claude")
+    # Our marker, but a command recorded from a since-moved checkout.
+    {
+        hooks: { Stop: [ { hooks: [ { type: "command", command: "nu -c 'use /old/checkout; gi-hook check'" } ] } ] }
+    } | save (settings-of $root)
+    gi-hook enable --root $root | ignore
+    let settings = open (settings-of $root)
+    rm -rf $root
+
+    assert equal ($settings.hooks.Stop | length) 1
+    assert ($settings.hooks.Stop.0.hooks.0.command | str contains "--stdin")
+}
+
+@test
 def "enable preserves foreign hooks and other settings keys" [] {
     let root = temp-root
     mkdir ($root | path join ".claude")

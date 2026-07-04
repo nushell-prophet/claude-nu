@@ -186,11 +186,13 @@ def gi-hook-enable [
     let doc_abs = $doc_abs | path dirname | path expand | path join ($doc_abs | path basename)
     let doc = if ($doc_abs | str starts-with $"($root)/") { $doc_abs | path relative-to $root } else { $doc_abs }
 
+    # Drop any prior entry of ours before appending the current one, instead of
+    # skipping when the marker matches: the command embeds the module path, so
+    # re-enable must refresh an entry recorded from a since-moved checkout —
+    # a stale path fails at `use` time, outside anything the module can catch.
     let stop = $settings.hooks?.Stop? | default []
-    let already = $stop | any {|e| $e | gi-hook-is-ours }
-    let stop = if $already { $stop } else {
-        $stop | append {hooks: [{type: "command" command: $GI_HOOK_COMMAND}]}
-    }
+    | where {|e| not ($e | gi-hook-is-ours) }
+    | append {hooks: [{type: "command" command: $GI_HOOK_COMMAND}]}
 
     let hooks = $settings.hooks? | default {} | upsert Stop $stop
     let env_block = $settings.env? | default {} | upsert GI_HOOK_DOC $doc
