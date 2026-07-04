@@ -1,25 +1,11 @@
 # claude-nu - Nushell utilities for Claude Code
 
-# UUID pattern for session files
-const UUID_JSONL_PATTERN = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
-
-# Subagent JSONL pattern (Claude Code 2.1.138+ layout:
-# `<project>/<session-uuid>/subagents/agent-<id>.jsonl`)
-const AGENT_JSONL_PATTERN = 'agent-[0-9a-f]+\.jsonl$'
-
-# System-generated message prefixes to filter out.
-# Why: `!`-command wrappers (<bash-input>/<bash-stdout>/<bash-stderr>) are NOT
-# here — they're a real user action, rendered as readable markdown by
-# render-bash-wrapper instead of dropped. Only Claude Code's synthesized
-# slash-command and caveat wrappers are filtered.
-const SYSTEM_PREFIXES = [
-    "<command-name>"
-    "<command-message>"
-    "<local-command-caveat>"
-    "<local-command-stdout>"
-    "<local-command-stderr>"
-    "Caveat:"
-]
+# Why `export use`: the names stay in scope for the commands here AND stay
+# reachable through sessions.nu (tests `use sessions.nu *`, toolkit imports
+# get-sessions-dir, mod.nu picks its re-exports) — the split changes no caller.
+export use discovery.nu *
+export use render.nu *
+export use extract.nu *
 
 # All selectable session columns, paired with overview membership (the fixed
 # set `sessions` returns when no columns are requested). Single source of truth:
@@ -59,32 +45,6 @@ const SESSION_COLUMNS = [
     [token_usage false]
 ]
 
-# Root of Claude Code session storage: ~/.claude/projects
-def projects-root []: nothing -> path {
-    $env.HOME | path join ".claude" "projects"
-}
-
-# Sessions directory for the current project: ~/.claude/projects/<encoded-pwd>
-export def get-sessions-dir []: nothing -> path {
-    projects-root | path join ($env.PWD | path expand | str replace --all '/' '-')
-}
-
-# Project directory name a session file belongs to — the first path segment
-# under ~/.claude/projects. Why: `path dirname` is right for top-level files
-# (<root>/<proj>/<uuid>.jsonl) but wrong for subagent transcripts
-# (<root>/<proj>/<uuid>/subagents/agent-*.jsonl), where it yields "subagents" —
-# that mislabels rows and falsely trips multi-project tagging inside one
-# project. Files outside the root fall back to their parent directory name.
-def project-dir-name []: path -> string {
-    let file = $in
-    let rel = try { $file | path relative-to (projects-root) } catch { null }
-    if $rel == null {
-        $file | path dirname | path basename
-    } else {
-        $rel | path split | first
-    }
-}
-
 # List Claude Code projects under ~/.claude/projects, most recent first.
 # `name` is the last two segments of the real project path; `path` is the
 # sessions directory, so rows pipe straight into `sessions`.
@@ -96,6 +56,8 @@ export def projects []: nothing -> table {
     | where type == dir
     | sort-by modified --reverse
     | each {|dir|
+        # Not discover-session-files because: only top-level names and mtimes
+        # are needed here — its subagents glob per project dir buys nothing.
         let files = ls $dir.name | where name =~ $UUID_JSONL_PATTERN
         if ($files | is-empty) { return null }
         # Why: the dir name is lossy (`/` and `-` both encode to `-`), so
@@ -127,67 +89,6 @@ export def projects []: nothing -> table {
     | compact
 }
 
-# Resolve session file path from UUID, path, or default to most recent
-export def resolve-session-file [
-    session?: string # Session UUID or path (null = most recent)
-    --sessions-dir: path # Override sessions directory
-]: nothing -> path {
-    let dir = $sessions_dir | default (get-sessions-dir)
-
-    if $session != null {
-        if ($session | str ends-with '.jsonl') {
-            return $session
-        }
-        let candidate = $dir | path join $"($session).jsonl"
-        if ($candidate | path exists) {
-            return $candidate
-        }
-        # Why: UUIDs are globally unique, but piped rows (or --session) may
-        # point at a session from another project — search all projects
-        # before giving up.
-        let found = glob (projects-root | path join $"*/($session).jsonl")
-        if ($found | is-empty) {
-            error make {msg: $"Session not found in any project: ($session)"}
-        }
-        return ($found | first)
-    }
-
-    if not ($dir | path exists) {
-        error make {msg: "No sessions directory found for current project"}
-    }
-
-    # Why: one discoverer owns the listing and recency order, so "most recent
-    # session" is the first top-level (non-subagent) row it yields.
-    let files = discover-session-files $dir | where parent_session_id == null
-
-    if ($files | is-empty) {
-        error make {msg: "No session files found"}
-    }
-
-    $files | first | get path
-}
-
-# Session UUID from a session file path
-def session-id-from-path []: path -> string {
-    path basename | str replace '.jsonl' ''
-}
-
-# Read a session JSONL file into a table of records, one record per line. The
-# single decode point for a session's raw records: every full-file parser goes
-# through here, so "a session is one JSON object per line" lives in one place
-# (and any future empty/corrupt-line handling has a single home).
-# Why (speed): `from json --objects` decodes the whole NDJSON stream in one call
-# instead of `lines | each { from json }`, which restarts the parser per line —
-# ~1.25x faster across every session parse. --contains pre-screens the raw lines
-# by substring before decoding, so a caller wanting one record type (messages
-# wants user turns — only ~30% of lines) never parses the rest; the caller still
-# re-filters the decoded `type`, so a line merely quoting the marker can't slip in.
-def read-session-records [--contains: string]: path -> table {
-    open --raw $in
-    | if $contains == null { } else { lines | where ($it | str contains $contains) | str join "\n" }
-    | from json --objects
-}
-
 # Completion for session UUIDs
 export def "nu-complete claude sessions" []: nothing -> record {
     let sessions_dir = get-sessions-dir
@@ -196,6 +97,8 @@ export def "nu-complete claude sessions" []: nothing -> record {
         return {options: {sort: false} completions: []}
     }
 
+    # Not discover-session-files because: the description needs `size`, which
+    # its rows don't carry, and a Tab press shouldn't pay the subagents glob.
     let completions = ls $sessions_dir
         | where name =~ $UUID_JSONL_PATTERN
         | each {|file|
@@ -319,266 +222,6 @@ export def messages [
         } else { }
     }
     | flatten
-}
-
-# Reverse the HTML entity escaping Claude Code applies to `!`-command output
-# (the `<`/`>`/`&` inside <bash-stdout>/<bash-stderr> arrive as &lt;/&gt;/&amp;).
-# &amp; is undone last so a literal "&amp;lt;" decodes to "&lt;", not "<".
-def unescape-html []: string -> string {
-    str replace --all '&lt;' '<'
-    | str replace --all '&gt;' '>'
-    | str replace --all '&quot;' '"'
-    | str replace --all '&#39;' "'"
-    | str replace --all '&amp;' '&'
-}
-
-# Render a `!`-command user record's string content as readable markdown.
-# `<bash-input>CMD</bash-input>` -> a `sh` code block; the paired
-# `<bash-stdout>OUT</bash-stdout><bash-stderr>ERR</bash-stderr>` record -> the
-# captured output as a plain code block (stderr flagged). Non-bash strings pass
-# through untouched. Tags are split by literal string (not regex): real output
-# has its own `<`/`>` HTML-escaped, so the wrapper tags are the only literal
-# ones, and a missing closing tag (test fixtures) still degrades cleanly.
-# Why: a `!` command is a real user action, but Claude Code stores it in these
-# wrappers; without rendering, export-session/messages drop the user's command.
-def render-bash-wrapper []: string -> string {
-    let s = $in
-    if ($s | str starts-with "<bash-input>") {
-        let cmd = $s
-            | str replace "<bash-input>" "" | str replace "</bash-input>" ""
-            | unescape-html | str trim
-        $"```sh\n($cmd)\n```"
-    } else if ($s | str starts-with "<bash-stdout>") {
-        let parts = $s | split row "<bash-stderr>"
-        let out = $parts.0
-            | str replace "<bash-stdout>" "" | str replace "</bash-stdout>" ""
-            | unescape-html | str trim
-        let err = $parts.1? | default ""
-            | str replace "</bash-stderr>" ""
-            | unescape-html | str trim
-        [
-            (if ($out | is-not-empty) { $"```\n($out)\n```" })
-            (if ($err | is-not-empty) { $"```\n[stderr]\n($err)\n```" })
-        ] | compact | str join "\n\n"
-    } else { $s }
-}
-
-# Shared dispatch on message content shape: string content passes through
-# render-bash-wrapper (a no-op unless it's a `!`-command wrapper), content block
-# lists go through $render, anything else yields "".
-def render-message-content [render: closure]: record -> string {
-    let content = $in.message?.content?
-    match ($content | describe) {
-        "string" => { $content | render-bash-wrapper }
-        $t if ($t =~ '^(list|table)') => { $content | do $render }
-        _ => { "" }
-    }
-}
-
-# Helper to extract text content from a message
-export def extract-text-content []: record -> string {
-    # Why: text blocks join with no separator (unlike render-content's "\n\n")
-    # — callers like user_msg_length count exact characters.
-    render-message-content { where type? == "text" | get text --optional | str join }
-}
-
-# Like extract-text-content but also surfaces thinking blocks, prefixed with
-# `[thinking]` so they're distinguishable from regular text. Blocks are
-# rendered in source order and joined with blank lines.
-# Why: messages --include-thinking exposes thinking-only assistant turns that
-# the visible-text filter would otherwise drop.
-export def extract-text-with-thinking []: record -> string {
-    render-content --thinking
-}
-
-# False when text is one of the command/tool/caveat wrappers Claude Code
-# synthesizes around a turn — i.e. not a human-typed message (see SYSTEM_PREFIXES).
-def is-user-text []: string -> bool {
-    let text = $in
-    $SYSTEM_PREFIXES | all {|p| not ($text | str starts-with $p) }
-}
-
-# Build a dialogue table from raw session records: the user and assistant turns
-# with their visible text. Drops meta turns, empty-text turns, and the user-side
-# system/command wrappers Claude Code synthesizes. `extract` renders each record's
-# text, so callers pick plain text, +thinking, or tool placeholders. Pass
-# --keep-system to retain meta and system-wrapper turns (messages --include-system).
-# Why: messages and export-session both built this same dialogue+filter pass; one
-# source keeps the system-prefix rule from drifting between them.
-def extract-dialogue [extract: closure --keep-system]: table -> table {
-    where type? in ["user" "assistant"]
-    | if $keep_system { } else { where isMeta? != true }
-    | insert text {|r| do $extract $r }
-    | where {|r| $r.text | str trim | is-not-empty }
-    | if $keep_system { } else {
-        where {|r| $r.type? != "user" or ($r.text | is-user-text) }
-    }
-}
-
-# Authored user-message text from a record set — exactly the user messages
-# `messages` returns: tool-result records (render to ""), meta turns, and the
-# command/caveat wrappers Claude Code synthesizes are all dropped (via
-# extract-dialogue / is-user-text).
-# Why: the user_msg_* columns and turn_count must agree with `messages` on what
-# a user message is. The old "any non-empty user record" rule counted /clear and
-# <local-command-caveat> wrappers as messages, inflating every count and dumping
-# that wrapper text into the default `user_messages` column.
-def user-message-texts []: table -> list<string> {
-    where type? == "user"
-    | extract-dialogue {|r| $r | extract-text-content }
-    | get text
-}
-
-# Content value as a list of blocks; [] when it isn't one (string/null content).
-def content-blocks []: any -> table {
-    if ($in | describe) =~ '^(list|table)' { } else { [] }
-}
-
-# Helper to extract tool calls from assistant messages
-export def extract-tool-calls []: record -> table {
-    $in.message?.content? | content-blocks | where type? == "tool_use"
-}
-
-# Extract tool results from user records (responses to tool calls)
-export def extract-tool-results []: table -> table {
-    each { $in.message?.content? | content-blocks | where type? == "tool_result" }
-    | flatten
-}
-
-# Extract a session summary string from records.
-# Why: 2.1.x sessions rarely carry a `summary` record; the canonical short
-# summary now lives in `ai-title.aiTitle`. Prefer the legacy `summary`
-# record when present, fall back to `ai-title.aiTitle`.
-export def extract-summary []: table -> string {
-    let records = $in
-    let from_summary = $records | where type? == "summary" | get 0?.summary?
-    if ($from_summary | is-not-empty) {
-        return $from_summary
-    }
-    # Why: Claude Code rewrites ai-title as the session evolves; the last
-    # record carries the current title, matching what the app shows.
-    $records | where type? == "ai-title" | reverse | get 0?.aiTitle? | default ""
-}
-
-# First non-null value of a field across records, "" when absent
-def pick-first [field: cell-path]: table -> string {
-    get $field --optional | compact | first | default ""
-}
-
-# Extract session metadata from records, walking each one to find each field.
-# Why: in 2.1.x first record can be permission-mode (sessionId only) or
-# file-history-snapshot (no metadata). A "first non-summary record" lookup
-# returns mostly empty fields; instead pull each field from the first record
-# that actually carries it.
-export def extract-session-metadata []: table -> record {
-    let records = $in
-    {
-        session_id: ($records | pick-first $.sessionId)
-        slug: ($records | pick-first $.slug)
-        version: ($records | pick-first $.version)
-        cwd: ($records | pick-first $.cwd)
-        git_branch: ($records | pick-first $.gitBranch)
-    }
-}
-
-# Extract thinking level from user records
-export def extract-thinking-level []: table -> string {
-    pick-first $.thinkingMetadata.level
-}
-
-# Extract first/last timestamps from user records
-export def extract-timestamps []: table -> record {
-    let ts = get timestamp --optional
-        | compact
-        | each { into datetime }
-    {
-        first: ($ts | first)
-        last: ($ts | last)
-    }
-}
-
-# Extract file operations from tool calls
-export def extract-file-operations []: table -> record {
-    let tool_calls = $in
-    {
-        edited_files: ($tool_calls | where name? in ["Edit" "Write"] | get input.file_path --optional | uniq)
-        read_files: ($tool_calls | where name? == "Read" | get input.file_path --optional | uniq)
-    }
-}
-
-# Extract agent info from tool calls
-# Why: 2.1.x renamed `Task` to `Agent`; both share input shape.
-# TaskCreate/Update/Stop are TODO-list ops with different schema, not agents.
-export def extract-agents []: table -> table {
-    where name? in ["Task" "Agent"]
-    | each {
-        {
-            type: ($in.input?.subagent_type? | default "unknown")
-            description: ($in.input?.description? | default "")
-        }
-    }
-}
-
-# Extract tool statistics from tool calls and results
-# Why: tool catalog grew in 2.1.x; count newly-added names so users can see
-# whether/how often they appear in a session.
-export def extract-tool-stats [
-    tool_results: table
-]: table -> record {
-    let tool_calls = $in
-    let bash_cmds = $tool_calls | where name? == "Bash" | get input.command --optional
-    {
-        bash_commands: $bash_cmds
-        bash_count: ($bash_cmds | length)
-        skill_invocations: ($tool_calls | where name? == "Skill" | get input.skill --optional)
-        tool_errors: ($tool_results | where is_error? == true | length)
-        ask_user_count: ($tool_calls | where name? == "AskUserQuestion" | length)
-        plan_mode_used: ($tool_calls | where name? == "EnterPlanMode" | is-not-empty)
-        tool_counts: {
-            TaskCreate: ($tool_calls | where name? == "TaskCreate" | length)
-            TaskUpdate: ($tool_calls | where name? == "TaskUpdate" | length)
-            TaskStop: ($tool_calls | where name? == "TaskStop" | length)
-            Monitor: ($tool_calls | where name? == "Monitor" | length)
-            ToolSearch: ($tool_calls | where name? == "ToolSearch" | length)
-        }
-    }
-}
-
-# Extract derived metrics from session data
-export def extract-derived-metrics [
-    assistant_records: table
-    tool_calls: table
-]: table -> record {
-    {
-        # Why: a turn is one authored user message — same definition as the
-        # user_msg_* columns and `messages` (tool-result, meta, and command/
-        # caveat wrapper records all excluded), so the metrics can't disagree.
-        turn_count: ($in | user-message-texts | length)
-        assistant_msg_count: ($assistant_records | length)
-        tool_call_count: ($tool_calls | length)
-    }
-}
-
-# Why: math sum errors on empty input in nu 0.107; every column sum
-# (token usage, user_msg_length, response_length) guards through this.
-def sum-or-zero []: list -> int {
-    if ($in | is-empty) { 0 } else { math sum }
-}
-
-# Aggregate token usage across assistant records.
-# Why: costUSD is null for subscription users, so token counts are the only
-# usable cost/effort signal. Usage lives at message.usage per assistant turn;
-# the nested `iterations`/`cache_creation` breakdowns are ignored — the
-# top-level fields already hold the per-message totals.
-export def extract-token-usage []: table -> record {
-    let usages = get message.usage --optional | compact
-    let sum = {|field| $usages | get $field --optional | compact | sum-or-zero }
-    {
-        input_tokens: (do $sum "input_tokens")
-        output_tokens: (do $sum "output_tokens")
-        cache_creation_input_tokens: (do $sum "cache_creation_input_tokens")
-        cache_read_input_tokens: (do $sum "cache_read_input_tokens")
-    }
 }
 
 # Parse one session file, computing only the selected columns.
@@ -734,107 +377,6 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
     } else {
         error make {msg: "Piped input must have 'path' or 'session' column"}
     }
-}
-
-# Discover session files in a directory, newest first. Returns rows
-# {path, parent_session_id, modified}; parent_session_id is the parent session
-# UUID for subagent files (`<uuid>/subagents/agent-*.jsonl`), null for top-level
-# files. Single source of truth for the on-disk session layout — every command
-# that lists or picks session files goes through here, so the name patterns, the
-# subagent walk, and the recency order live in one place. Callers wanting only
-# human-driven sessions filter `where parent_session_id == null`.
-export def discover-session-files [dir: path]: nothing -> table {
-    # Why: top-level files sit directly in $dir, so one `ls` lists them with
-    # their mtimes; an empty dir is just [], whereas `ls` on a no-match glob
-    # errors — keeping the empty case graceful without a special branch.
-    let top_level = ls $dir
-        | where name =~ $UUID_JSONL_PATTERN
-        | each {|f| {path: $f.name parent_session_id: null modified: $f.modified} }
-
-    # Why: subagent transcripts are nested out of reach of a flat `ls`, so a glob
-    # descends to them. The `**` is load-bearing: Workflow agents nest deeper, at
-    # `<uuid>/subagents/workflows/wf_*/agent-*.jsonl`, so a single-level
-    # `*/subagents/*.jsonl` silently misses them. The parent UUID is therefore the
-    # first path segment under $dir (depth-independent), not "two levels up" —
-    # two-up would yield `workflows` for the nested ones.
-    # Why (speed): one `ls <glob>` stats every transcript in a single directory
-    # walk; the old `glob | each { ls }` re-stated each file individually (~10x
-    # slower on a project with many subagents). `ls` errors on a no-match glob, so
-    # try/catch keeps the empty case graceful (matching `glob`'s old behavior).
-    let subagent_files = try { ls (($dir | path join "*/subagents/**/*.jsonl") | into glob) } catch { [] }
-        | where name =~ $AGENT_JSONL_PATTERN
-        | each {|f|
-            {path: $f.name parent_session_id: ($f.name | path relative-to $dir | path split | first) modified: $f.modified}
-        }
-
-    $top_level | append $subagent_files | sort-by modified --reverse
-}
-
-# Session files (current project, or every project with --all-projects) whose
-# raw JSONL contains `pattern`, newest first. Uses ripgrep to skip files that
-# cannot match before the costly JSON parse; without rg it returns every
-# top-level session file and lets the caller's structured filter do the work.
-# Subagent transcripts are excluded — they carry no human-typed messages.
-# Why: rg scans the raw, escaped JSON, so it can't honor line anchors or match a
-# JSON-escaped quote/backslash the way the structured regex on extracted text
-# does. That only ever costs recall for such patterns; it never yields a wrong
-# hit, because `claude-nu -f` re-applies the real regex to the parsed text. For
-# ordinary word/phrase/regex searches rg and the structured filter agree (both
-# use Rust's regex engine), and we open only the few files that can match
-# instead of parsing every session in every project. --no-rg forces the full
-# enumeration so the caller's regex runs against the extracted text with exact
-# semantics — the escape hatch for a pattern rg's raw scan would under-match.
-export def find-session-files [
-    pattern: string # Regex (Rust syntax) matched against raw session JSONL
-    --all-projects # Search every project under ~/.claude/projects, not just the current one
-    --no-rg # Skip the ripgrep pre-filter; return every top-level file for the caller to filter
-]: nothing -> list<path> {
-    let rows = if $no_rg or (which rg | is-empty) {
-        top-level-session-files --all-projects=$all_projects
-    } else {
-        rg-session-files $pattern --all-projects=$all_projects
-    }
-    if ($rows | is-empty) { return [] }
-    $rows | sort-by modified --reverse | get path
-}
-
-# Top-level session files in scope as {path, modified} rows (no content filter).
-# The rg-less fallback for find-session-files, and the single place the
-# project-vs-all-projects enumeration lives.
-def top-level-session-files [--all-projects]: nothing -> table {
-    let dirs = if $all_projects {
-        let root = projects-root
-        if not ($root | path exists) { return [] }
-        ls $root | where type == dir | get name
-    } else {
-        let dir = get-sessions-dir
-        if not ($dir | path exists) { return [] }
-        [$dir]
-    }
-    $dirs
-    | each {|d| discover-session-files $d | where parent_session_id == null | select path modified }
-    | flatten
-}
-
-# Top-level session files whose raw JSONL matches `pattern`, as {path, modified}.
-# Why: --no-ignore --hidden so a stray .gitignore or the dot in ~/.claude can't
-# hide a session; the subagents glob keeps us to human dialogue; the UUID-name
-# guard mirrors discover-session-files' definition of a session file. The pattern
-# goes through --regexp (which allows a leading `-`), not as a bare arg. rg exit
-# 1 means "no match" (empty); only a real failure (exit 2+) errors — fail fast on
-# a broken pattern instead of silently returning nothing.
-def rg-session-files [pattern: string --all-projects]: nothing -> table {
-    let root = if $all_projects { projects-root } else { get-sessions-dir }
-    if not ($root | path exists) { return [] }
-    let res = rg --no-ignore --hidden --files-with-matches --glob '*.jsonl' --glob '!**/subagents/**' --regexp $pattern -- $root | complete
-    let files = match $res.exit_code {
-        0 => ($res.stdout | lines)
-        1 => []
-        _ => (error make {msg: $"rg failed \(exit ($res.exit_code)): ($res.stderr | str trim)"})
-    }
-    $files
-    | where ($it | path basename) =~ $UUID_JSONL_PATTERN
-    | each {|p| {path: $p modified: (ls $p | get 0.modified) } }
 }
 
 # Completer for --columns: comma-separated session column names. Returns full
@@ -1002,68 +544,6 @@ export def sanitize-topic []: string -> string {
     | str replace --all --regex '[^a-z0-9]+' '-'
     | str trim --char '-'
     | str substring 0..<50
-}
-
-# Collapse whitespace (newlines, tabs, runs of spaces) to single spaces
-# and truncate to a max length, appending an ellipsis on truncation.
-def to-one-line [max: int]: string -> string {
-    str replace --all --regex '\s+' ' '
-    | str trim
-    | if ($in | str length) > $max {
-        $"($in | str substring 0..<$max)..."
-    } else { }
-}
-
-# One-line summary of a tool_use input record for placeholder rendering.
-# Picks the most informative scalar field (command, file_path, query, etc.)
-# and falls back to a compact NUON dump.
-def summarize-tool-input [input: any]: nothing -> string {
-    if not (($input | describe) | str starts-with "record") { return "" }
-    let cols = $input | columns
-    let preferred = ["command" "file_path" "path" "pattern" "query" "url" "skill" "subagent_type" "description"]
-    let key = $preferred | where {|k| $k in $cols } | get 0?
-    if $key != null {
-        let v = $input | get $key
-        if ($v | describe) == "string" { $v } else { $v | to nuon }
-    } else {
-        $input | to nuon
-    }
-}
-
-# Render a single content block as one line of markdown.
-# text -> text as-is; with --thinking, thinking -> `[thinking]`-prefixed text;
-# with --tools, tool_use/tool_result -> blockquote placeholder; else "".
-def render-block [--tools --thinking]: record -> string {
-    let block = $in
-    match $block.type? {
-        "text" => ($block.text? | default "")
-        "thinking" if $thinking => $"[thinking] ($block.thinking? | default '')"
-        "tool_use" if $tools => {
-            let summary = summarize-tool-input $block.input? | to-one-line 120
-            $"> [($block.name? | default 'tool'): ($summary)]"
-        }
-        "tool_result" if $tools => {
-            let raw = $block.content?
-            let txt = if ($raw | describe) == "string" { $raw } else {
-                $raw | content-blocks | where type? == "text" | get text --optional | str join " "
-            }
-            let n = $txt | str length
-            let err = if $block.is_error? == true { " error" } else { "" }
-            $"> [result($err): ($n) chars]"
-        }
-        _ => ""
-    }
-}
-
-# Render a record's content blocks as markdown text, one block per paragraph.
-# Flags pass through to render-block: --tools renders tool_use/tool_result as
-# one-line blockquote placeholders, --thinking renders thinking blocks.
-def render-content [--tools --thinking]: record -> string {
-    render-message-content {
-        each { render-block --tools=$tools --thinking=$thinking }
-        | where { $in | is-not-empty }
-        | str join "\n\n"
-    }
 }
 
 # Export session dialogue to structured data with markdown
