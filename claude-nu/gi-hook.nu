@@ -185,14 +185,15 @@ def gi-hook-status [
     let settings = gi-hook-open-settings $paths.settings
     {
         enabled: ($settings.hooks?.Stop? | default [] | any {|e| $e | gi-hook-is-ours })
-        settings_path: ($paths.settings | gi-hook-shorten)
+        settings_path: $paths.settings
         command: $GI_HOOK_COMMAND
-        template_path: ($paths.template_dst | gi-hook-shorten)
+        template_path: $paths.template_dst
         template_present: ($paths.template_dst | path exists)
-        style_path: ($paths.style_dst | gi-hook-shorten)
+        style_path: $paths.style_dst
         style_present: ($paths.style_dst | path exists)
         output_style_set: ($settings.outputStyle? == $GI_HOOK_STYLE)
     }
+    | update cells --columns [settings_path template_path style_path] {|p| $p | gi-hook-shorten }
 }
 
 # Stop-hook body. Reads the event JSON on stdin and returns either nothing
