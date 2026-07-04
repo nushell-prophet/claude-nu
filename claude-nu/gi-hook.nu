@@ -55,6 +55,22 @@ def gi-hook-repo-root [dir?: path]: nothing -> path {
     if $top.exit_code == 0 { $top.stdout | str trim } else { $dir | path expand }
 }
 
+# The directory whose .claude/settings.local.json governs the event's cwd:
+# the nearest ancestor carrying that file — a session may be rooted at a
+# monorepo subproject that enable targeted with --root — falling back to the
+# repo toplevel (nothing recorded yet, or enable ran there). The walk is
+# bounded by the toplevel: crossing it would adopt an unrelated outer settings
+# file (e.g. ~/.claude) as this repo's.
+def gi-hook-settings-root [dir: path]: nothing -> path {
+    let top = gi-hook-repo-root $dir
+    generate {|d|
+        if $d == $top or ($d | path dirname) == $d { {out: $d} } else { {out: $d next: ($d | path dirname)} }
+    } ($dir | path expand)
+    | where {|d| $d | path join ".claude" "settings.local.json" | path exists }
+    | get 0?
+    | default $top
+}
+
 # Current branch at root, or null outside a repo / on detached HEAD — nothing
 # to protect there, so the branch guard passes.
 def gi-hook-branch [root: path]: nothing -> any {
@@ -298,10 +314,9 @@ def gi-hook-check []: string -> any {
 # The actual gi rules, free to throw; gi-hook-check owns the exit-0 contract.
 def gi-hook-check-rules []: record -> any {
     let payload = $in
-    # Toplevel, not the raw event cwd: the session's cwd may have drifted into
-    # a subdirectory, but the settings enable wrote (and the recorded doc in
-    # them) live at the repo root.
-    let root = gi-hook-repo-root ($payload.cwd? | default $env.PWD)
+    # Not the raw event cwd: the session's cwd may have drifted into a
+    # subdirectory of wherever enable wrote the settings (and recorded doc).
+    let root = gi-hook-settings-root ($payload.cwd? | default $env.PWD)
 
     # Branch guard, before the message rule: even a perfect `done` may not end
     # a turn on a protected branch — gi commits are internal working history,

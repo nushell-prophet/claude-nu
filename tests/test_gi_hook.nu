@@ -402,6 +402,21 @@ def "check finds the settings from a subdirectory cwd" [] {
 }
 
 @test
+def "check honors settings enabled at a monorepo subproject" [] {
+    let root = temp-root
+    let subproj = $root | path join "tools" "subproj"
+    git init -qb canvas-work $root
+    mkdir ($subproj | path join "deeper")
+    gi-hook enable gi/plan.md --root $subproj | ignore
+    let prose = "Long prose without any link signal that must be blocked by the rule"
+    let out = block-decision { last_assistant_message: $prose, cwd: ($subproj | path join "deeper") }
+    rm -rf $root
+
+    # The walk up from cwd stops at the subproject's settings, not the toplevel.
+    assert ($out | from json | get reason | str contains "`gi/plan.md`")
+}
+
+@test
 def "check falls back to generic wording when no doc is recorded" [] {
     let root = temp-root
     mkdir $root
