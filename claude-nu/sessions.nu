@@ -265,6 +265,17 @@ export def messages [
     # scope keeps the lean output.
     let multi_project = ($session_files | each { project-dir-name } | uniq | length) > 1
 
+    # Why: --include-thinking surfaces thinking-only assistant turns
+    # (otherwise dropped by the empty-text filter). User text always goes
+    # through extract-text-content, keeping its contract for other callers.
+    let extract_text = {|r|
+        if $r.type? == "assistant" and $include_thinking {
+            $r | extract-text-with-thinking
+        } else {
+            $r | extract-text-content
+        }
+    }
+
     $session_files
     | each {|session_file|
         if not ($session_file | path exists) {
@@ -272,21 +283,6 @@ export def messages [
         }
 
         let session_uuid = $session_file | session-id-from-path
-
-        # Why: --include-thinking surfaces thinking-only assistant turns
-        # (otherwise dropped by the empty-text filter). User text always goes
-        # through extract-text-content, keeping its contract for other callers.
-        let extract_assistant = if $include_thinking {
-            {|r| $r | extract-text-with-thinking }
-        } else {
-            {|r| $r | extract-text-content }
-        }
-        let extract_text = {|r|
-            match $r.type? {
-                "assistant" => (do $extract_assistant $r)
-                _ => ($r | extract-text-content)
-            }
-        }
 
         # Why (speed): the default keeps only user turns, so pre-screen the raw
         # JSONL for the user-type marker before decoding — assistant turns, tool
@@ -301,15 +297,17 @@ export def messages [
             | if $include_responses { } else { where type? == "user" }
             | extract-dialogue $extract_text --keep-system=$include_system
 
+        # Why: sorting the ISO-8601 timestamp strings sorts chronologically,
+        # so one sort here serves both the --raw and rendered branches.
         let filtered = $dialogue
             | if $regex == null { } else { where text =~ $regex }
+            | sort-by timestamp
 
         if $raw {
-            $filtered | reject text | sort-by timestamp
+            $filtered | reject text
         } else {
             $filtered
             | each {|msg| {role: $msg.type message: $msg.text timestamp: ($msg.timestamp? | into datetime)} }
-            | sort-by timestamp
             | if $include_responses { } else { reject role }
         }
         # Why: rows are self-describing — the session column makes messages
@@ -431,22 +429,19 @@ def user-message-texts []: table -> list<string> {
     | get text
 }
 
+# Content value as a list of blocks; [] when it isn't one (string/null content).
+def content-blocks []: any -> table {
+    if ($in | describe) =~ '^(list|table)' { } else { [] }
+}
+
 # Helper to extract tool calls from assistant messages
 export def extract-tool-calls []: record -> table {
-    $in.message?.content?
-    | if ($in | describe) =~ '^(list|table)' {
-        where type? == "tool_use"
-    } else { [] }
+    $in.message?.content? | content-blocks | where type? == "tool_use"
 }
 
 # Extract tool results from user records (responses to tool calls)
 export def extract-tool-results []: table -> table {
-    each {|r|
-        let content = $r.message?.content?
-        if ($content | describe) =~ '^(list|table)' {
-            $content | where type? == "tool_result"
-        } else { [] }
-    }
+    each { $in.message?.content? | content-blocks | where type? == "tool_result" }
     | flatten
 }
 
@@ -735,7 +730,7 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
     if "path" in $cols {
         $input | get path | compact | ansi strip | uniq
     } else if "session" in $cols {
-        $input | get session | ansi strip | uniq | each {|s| resolve-session-file $s }
+        $input | get session | compact | ansi strip | uniq | each {|s| resolve-session-file $s }
     } else {
         error make {msg: "Piped input must have 'path' or 'session' column"}
     }
@@ -1015,7 +1010,7 @@ def to-one-line [max: int]: string -> string {
     str replace --all --regex '\s+' ' '
     | str trim
     | if ($in | str length) > $max {
-        $in | str substring 0..<$max | $in + "..."
+        $"($in | str substring 0..<$max)..."
     } else { }
 }
 
@@ -1049,12 +1044,8 @@ def render-block [--tools --thinking]: record -> string {
         }
         "tool_result" if $tools => {
             let raw = $block.content?
-            let txt = match ($raw | describe) {
-                "string" => $raw
-                $t if ($t =~ '^(list|table)') => {
-                    $raw | where type? == "text" | get text --optional | str join " "
-                }
-                _ => ""
+            let txt = if ($raw | describe) == "string" { $raw } else {
+                $raw | content-blocks | where type? == "text" | get text --optional | str join " "
             }
             let n = $txt | str length
             let err = if $block.is_error? == true { " error" } else { "" }
@@ -1122,15 +1113,8 @@ export def export-session [
             | select type text
             | rename role content
             # Merge consecutive same-role messages
-            | reduce --fold [] {|turn acc|
-                let prev = $acc | last
-                if $prev != null and $prev.role == $turn.role {
-                    $acc | upsert ($acc | length | $in - 1) {
-                        role: $turn.role
-                        content: $"($prev.content)\n\n($turn.content)"
-                    }
-                } else { $acc | append $turn }
-            }
+            | chunk-by {|r| $r.role }
+            | each {|chunk| {role: $chunk.0.role content: ($chunk.content | str join "\n\n")} }
 
         # Format as markdown
         let session_id = $session_file | session-id-from-path
@@ -1195,10 +1179,9 @@ export def save-markdown [
 
     # Detect collisions: filenames shared by multiple sessions
     let collision_names = $rows
-        | group-by filename
-        | transpose key rows
-        | where { $in.rows | length | $in > 1 }
-        | get key
+        | group-by filename --to-table
+        | where ($it.items | length) > 1
+        | get filename
 
     let rows = $rows
         | update filename {|r|
