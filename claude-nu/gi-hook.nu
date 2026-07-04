@@ -25,6 +25,12 @@ const GI_HOOK_STYLE = "Canvas"
 # Absolute path to this module's directory, resolved at parse time. Why a const:
 # `path self` only runs at parse time, and the hook needs an absolute `use`
 # target — relative paths are not resolved when Claude Code runs the hook.
+# Deliberately NOT symlink-resolved: `path self` keeps the path as imported,
+# and under cozy that is `~/repos/claude-nu` — the stable module path across
+# machine states (vendored snapshot, sync-repos clone, dev-link symlink to the
+# workspace). Resolving would pin the hook to one physical checkout and break
+# the moment the settings file is used where that checkout does not exist;
+# following the symlink at run time is exactly the dev-link contract.
 const GI_HOOK_MODULE_DIR = (path self | path dirname)
 
 # The shell command Claude Code runs for the Stop event. Single-quote the `-c`
@@ -40,6 +46,9 @@ const GI_HOOK_COMMAND = $"nu --stdin -c 'use \"($GI_HOOK_MODULE_DIR)\"; $in | cl
 const GI_HOOK_PROTECTED_BRANCHES = ["main" "master"]
 
 # Root of the current repo (git top-level), falling back to PWD outside a repo.
+# Both branches yield a physical (symlink-resolved) path — git canonicalizes
+# --show-toplevel itself. Callers expand a user-given --root to match, so every
+# path comparison downstream stays within one path family.
 def gi-hook-repo-root []: nothing -> path {
     let top = do { ^git rev-parse --show-toplevel } | complete
     if $top.exit_code == 0 { $top.stdout | str trim } else { $env.PWD | path expand }
@@ -144,7 +153,7 @@ def gi-hook-enable [
     --root: path # Repo root to install into (default: git top-level)
     --doc: path # Working-doc path, relative to root (absolute also accepted)
 ]: nothing -> record {
-    let root = $root | default (gi-hook-repo-root)
+    let root = $root | default (gi-hook-repo-root) | path expand
     let paths = gi-hook-paths $root
     let settings = gi-hook-open-settings $paths.settings
 
@@ -154,6 +163,10 @@ def gi-hook-enable [
     # the short form works in the block message and survives a checkout move.
     let doc = $doc | default (gi-hook-doc $settings) | default $"gi/canvas-(date now | format date '%J_%Q').md"
     let doc_abs = $root | path join $doc
+    # Expand the dirname, not the whole path: the doc may not exist yet, and
+    # `path expand` resolves symlinks only for paths that exist. This keeps an
+    # absolute doc arriving through a symlink (cozy's ~/repos) root-relative.
+    let doc_abs = $doc_abs | path dirname | path expand | path join ($doc_abs | path basename)
     let doc = if ($doc_abs | str starts-with $"($root)/") { $doc_abs | path relative-to $root } else { $doc_abs }
 
     let stop = $settings.hooks?.Stop? | default []
@@ -202,7 +215,7 @@ def gi-hook-enable [
 def gi-hook-disable [
     --root: path # Repo root to remove from (default: git top-level)
 ]: nothing -> record {
-    let root = $root | default (gi-hook-repo-root)
+    let root = $root | default (gi-hook-repo-root) | path expand
     let path = (gi-hook-paths $root).settings
     if not ($path | path exists) { return (gi-hook-status --root $root) }
 
@@ -226,10 +239,14 @@ def gi-hook-disable [
 def gi-hook-status [
     --root: path # Repo root to inspect (default: git top-level)
 ]: nothing -> record {
-    let root = $root | default (gi-hook-repo-root)
+    let root = $root | default (gi-hook-repo-root) | path expand
     let paths = gi-hook-paths $root
     let settings = gi-hook-open-settings $paths.settings
     let doc = gi-hook-doc $settings
+    # Resolved so the prefix-compare below works from a symlinked cwd too:
+    # git reports the physical toplevel, while cd through a symlink (cozy's
+    # ~/repos) leaves $env.PWD logical — same directory, different spelling.
+    let pwd = $env.PWD | path expand
     {
         enabled: ($settings.hooks?.Stop? | default [] | any {|e| $e | gi-hook-is-ours })
         settings: $paths.settings
@@ -244,7 +261,7 @@ def gi-hook-status [
     # relative-to compares path components — without it a sibling dir like
     # /a/bc passes the /a/b guard and relative-to puts a CantConvert in the cell.
     | update cells --columns [settings doc style] {
-        if $in != null and ($in | str starts-with $"($env.PWD)/") { path relative-to $env.PWD } else { }
+        if $in != null and ($in | str starts-with $"($pwd)/") { path relative-to $pwd } else { }
     }
     # Seed fields carry presence by value: the path when the file exists, null
     # (an empty cell) when it does not. Runs after the shortening on purpose —

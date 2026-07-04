@@ -225,6 +225,36 @@ def "disable drops our outputStyle but keeps a foreign one" [] {
 }
 
 @test
+def "enable stores an absolute doc arriving through a symlink as root-relative" [] {
+    let root = temp-root
+    mkdir ($root | path join "gi")
+    let link = $"($root)-link"
+    ^ln -s $root $link
+    gi-hook enable ($link | path join "gi" "plan.md") --root $root | ignore
+    let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
+    rm -rf $root $link
+
+    assert equal $recorded "gi/plan.md"
+}
+
+@test
+def "status shortens paths when run from a symlinked cwd" [] {
+    let root = temp-root
+    let link = $"($root)-link"
+    gi-hook enable --root $root | ignore
+    ^ln -s $root $link
+    let orig = $env.PWD
+    cd $link
+    let status = gi-hook status --root $link
+    cd $orig
+    rm -rf $root $link
+
+    # git reports physical paths while cd through a symlink keeps PWD logical;
+    # both sides resolved -> the display still shortens to repo-relative.
+    assert equal $status.settings (".claude" | path join "settings.local.json")
+}
+
+@test
 def "status reflects enabled and disabled state" [] {
     let root = temp-root
     let before = gi-hook status --root $root
