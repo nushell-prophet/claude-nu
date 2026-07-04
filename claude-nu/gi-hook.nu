@@ -51,7 +51,7 @@ def gi-hook-paths [root: path]: nothing -> record {
     {
         settings: ($root | path join ".claude" "settings.local.json")
         template_src: ($GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-header.md")
-        template_dst: ($root | path join "gi-md-src" "canvas-header.md")
+        template_dst: ($root | path join "gi" "canvas-header.md")
         style_src: ($GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-output-style.md")
         style_dst: ($root | path join ".claude" "output-styles" "canvas.md")
     }
