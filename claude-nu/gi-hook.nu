@@ -280,7 +280,8 @@ def gi-hook-status [
 # (allow the turn to end) or the block-decision JSON string. `nu -c` renders
 # the return value to stdout, which is the Stop hook's control channel; the
 # command always exits 0, per the contract. Returning (not printing) keeps it
-# unit-testable.
+# unit-testable. The single `to json` lives here, next to the contract it
+# serves — the rules deal in records only.
 def gi-hook-check []: string -> any {
     let payload = try { $in | default "" | from json } catch { {} }
     # Valid JSON need not be an object ("hi", 123, null, [1]) — normalize to a
@@ -296,9 +297,10 @@ def gi-hook-check []: string -> any {
     # vanishes. Convert it to a block whose reason carries the error: loud,
     # in front of the agent, and the loop guard above still lets the turn end
     # on the retry. Not a fail-fast violation — this IS the failure surface.
-    try { $payload | gi-hook-check-rules } catch {|err|
-        {decision: "block" reason: $"gi-hook check failed internally — fix this before continuing: ($err.msg)"} | to json --raw
+    let decision = try { $payload | gi-hook-check-rules } catch {|err|
+        {decision: "block" reason: $"gi-hook check failed internally — fix this before continuing: ($err.msg)"}
     }
+    if $decision != null { $decision | to json --raw }
 }
 
 # The actual gi rules, free to throw; gi-hook-check owns the exit-0 contract.
@@ -314,7 +316,7 @@ def gi-hook-check-rules []: record -> any {
     let branch = gi-hook-branch $root
     if $branch in $GI_HOOK_PROTECTED_BRANCHES {
         let reason = $"You are on `($branch)` — gi commits are internal working history and must not land here. Switch to a work branch \(`git switch -c <topic>`, moving any commits already made); it gets squash-merged into `($branch)` after finalization."
-        return ({decision: "block" reason: $reason} | to json --raw)
+        return {decision: "block" reason: $reason}
     }
 
     let message = $payload.last_assistant_message? | default ""
@@ -331,7 +333,7 @@ def gi-hook-check-rules []: record -> any {
         $p => $"`($p)`"
     }
     let reason = $"Chat may carry only `done`/`noted` or a short pointer \(one line with a path/link). Move the full answer into ($doc) and commit it; leave only a pointer in chat."
-    {decision: "block" reason: $reason} | to json --raw
+    {decision: "block" reason: $reason}
 }
 
 # The allow-rule: what may stand alone in chat. True (allowed) when, after trim:
