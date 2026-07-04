@@ -175,12 +175,9 @@ def gi-hook-status [
     let settings = gi-hook-open-settings $paths.settings
     {
         enabled: ($settings.hooks?.Stop? | default [] | any {|e| $e | gi-hook-is-ours })
-        settings_path: $paths.settings
-        command: $GI_HOOK_COMMAND
-        template_path: $paths.template_dst
-        template_present: ($paths.template_dst | path exists)
-        style_path: $paths.style_dst
-        style_present: ($paths.style_dst | path exists)
+        settings: $paths.settings
+        template: $paths.template_dst
+        style: $paths.style_dst
         output_style_set: ($settings.outputStyle? == $GI_HOOK_STYLE)
     }
     # Display-only: paths under PWD show relative; operational paths stay
@@ -189,9 +186,13 @@ def gi-hook-status [
     # The guard needs the trailing slash: starts-with compares strings while
     # relative-to compares path components — without it a sibling dir like
     # /a/bc passes the /a/b guard and relative-to puts a CantConvert in the cell.
-    | update cells --columns [settings_path template_path style_path] {
+    | update cells --columns [settings template style] {
         if ($in | str starts-with $"($env.PWD)/") { path relative-to $env.PWD } else { }
     }
+    # Seed fields carry presence by value: the path when the file exists, null
+    # (an empty cell) when it does not. Runs after the shortening on purpose —
+    # a relative path resolves against PWD, exactly what the strip took off.
+    | update cells --columns [template style] {|p| if ($p | path exists) { $p } }
 }
 
 # Stop-hook body. Reads the event JSON on stdin and returns either nothing

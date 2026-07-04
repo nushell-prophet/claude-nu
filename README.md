@@ -138,7 +138,7 @@ Install a per-repo Claude Code **Stop hook** that keeps the chat terse — for t
 ```nushell no-run
 claude-nu gi-hook enable     # install into this repo's .claude/settings.local.json
 claude-nu gi-hook disable    # remove it (leaves any other hooks intact)
-claude-nu gi-hook status     # { enabled, settings_path, command }
+claude-nu gi-hook status     # { enabled, settings, template, style, output_style_set }
 claude-nu gi-hook check      # hook body — reads the Stop event JSON on stdin
 ```
 

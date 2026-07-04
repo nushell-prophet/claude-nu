@@ -111,7 +111,7 @@ def "enable seeds the gi working-doc template" [] {
     let body = if $exists { open --raw $deployed } else { "" }
     rm -rf $root
 
-    assert $status.template_present
+    assert ($status.template != null)
     assert $exists
     assert ($body | is-not-empty)
 }
@@ -139,7 +139,7 @@ def "enable distributes the output style and sets outputStyle" [] {
     let settings = open (settings-of $root)
     rm -rf $root
 
-    assert $status.style_present
+    assert ($status.style != null)
     assert $status.output_style_set
     assert $exists
     assert ($body | str contains "name: Canvas")
@@ -183,7 +183,9 @@ def "status reflects enabled and disabled state" [] {
 
     assert (not $before.enabled)
     assert $after.enabled
-    assert ($after.command | str contains "gi-hook check")
+    # Presence-by-value: seed fields are null before enable, paths after.
+    assert equal $before.template null
+    assert ($after.template != null)
 }
 
 # =============================================================================
