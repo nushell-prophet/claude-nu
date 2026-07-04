@@ -6,7 +6,9 @@
 # answers. This installs a structural barrier instead of self-control: a
 # Claude Code Stop hook that blocks the turn when the final chat message is
 # more than `done`/`noted` or a short pointer, and tells the agent to move the
-# answer into the repo's recorded working doc. Opt-in and per-repo, so the
+# answer into the repo's recorded working doc. It also blocks turns that end on
+# main/master: gi commits are internal working history — they reach a public
+# branch only squash-merged, after finalization. Opt-in and per-repo, so the
 # classic mode is untouched.
 
 # Substring that identifies our Stop entry inside settings.local.json. Why: the
@@ -31,10 +33,24 @@ const GI_HOOK_MODULE_DIR = (path self | path dirname)
 # not resolved at hook time.
 const GI_HOOK_COMMAND = $"nu --stdin -c 'use \"($GI_HOOK_MODULE_DIR)\"; $in | claude-nu gi-hook check'"
 
+# Branches gi commits must never end a turn on. Why: gi history is internal
+# working material — on a branch external users read, it would put them off.
+# It reaches these branches only squash-merged, after finalization (see the
+# git-intent-squash-archive skill).
+const GI_HOOK_PROTECTED_BRANCHES = ["main" "master"]
+
 # Root of the current repo (git top-level), falling back to PWD outside a repo.
 def gi-hook-repo-root []: nothing -> path {
     let top = do { ^git rev-parse --show-toplevel } | complete
     if $top.exit_code == 0 { $top.stdout | str trim } else { $env.PWD | path expand }
+}
+
+# Current branch at root, or null outside a repo / on detached HEAD — nothing
+# to protect there, so the branch guard passes.
+def gi-hook-branch [root: path]: nothing -> any {
+    let out = do { ^git -C $root branch --show-current } | complete
+    let branch = $out.stdout | str trim
+    if $out.exit_code == 0 and ($branch | is-not-empty) { $branch }
 }
 
 # Every path gi-hook touches, in one record.
@@ -173,6 +189,12 @@ def gi-hook-enable [
     # The style is read once at session start, so it won't apply until /clear or
     # a new session; the hook takes effect immediately.
     print "gi-hook enabled. Run /clear or start a new session for the Canvas output style to load."
+    # Same guard the hook enforces, surfaced at opt-in time — switching now
+    # beats being blocked mid-session with commits already on the branch.
+    let branch = gi-hook-branch $root
+    if $branch in $GI_HOOK_PROTECTED_BRANCHES {
+        print $"note: this repo is on ($branch) — gi commits belong on a work branch; the Stop hook will block turns until you switch."
+    }
     gi-hook-status --root $root
 }
 
@@ -240,6 +262,17 @@ def gi-hook-check []: string -> any {
     # Already continuing from a prior block — let it end to avoid a loop.
     if ($payload.stop_hook_active? | default false) { return }
 
+    let root = $payload.cwd? | default $env.PWD
+
+    # Branch guard, before the message rule: even a perfect `done` may not end
+    # a turn on a protected branch — gi commits are internal working history,
+    # and the sooner the agent hears it, the fewer commits there are to move.
+    let branch = gi-hook-branch $root
+    if $branch in $GI_HOOK_PROTECTED_BRANCHES {
+        let reason = $"You are on `($branch)` — gi commits are internal working history and must not land here. Switch to a work branch \(`git switch -c <topic>`, moving any commits already made); it gets squash-merged into `($branch)` after finalization."
+        return ({decision: "block" reason: $reason} | to json --raw)
+    }
+
     let message = $payload.last_assistant_message? | default ""
     if (gi-hook-allowed $message) { return }
 
@@ -248,7 +281,6 @@ def gi-hook-check []: string -> any {
     # makes the correction actionable without a discovery step. Read fresh from
     # settings at the event's cwd — not from $env, which Claude Code snapshots
     # at session start and would go stale on a mid-session re-enable.
-    let root = $payload.cwd? | default $env.PWD
     let doc = gi-hook-doc (gi-hook-open-settings (gi-hook-paths $root).settings)
     let doc = match ($doc | default "") {
         "" => "the working document"

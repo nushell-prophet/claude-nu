@@ -244,7 +244,9 @@ def "status reflects enabled and disabled state" [] {
 # =============================================================================
 
 def block-decision [payload: record]: nothing -> any {
-    $payload | to json | gi-hook check
+    # Default cwd to a non-repo dir so the branch guard sees the payload's
+    # state, not whatever branch the test runner's own repo happens to be on.
+    {cwd: $nu.temp-dir} | merge $payload | to json | gi-hook check
 }
 
 @test
@@ -291,6 +293,28 @@ def "check names the recorded doc in the block reason" [] {
     rm -rf $root
 
     assert ($named | str contains "`gi/plan.md`")
+}
+
+@test
+def "check blocks a protected branch even when the message is allowed" [] {
+    let root = temp-root
+    git init -qb master $root
+    let out = block-decision { last_assistant_message: "done", cwd: $root }
+    rm -rf $root
+
+    let decision = $out | from json
+    assert equal $decision.decision "block"
+    assert ($decision.reason | str contains "`master`")
+}
+
+@test
+def "check passes an allowed message on a work branch" [] {
+    let root = temp-root
+    git init -qb canvas-work $root
+    let out = block-decision { last_assistant_message: "done", cwd: $root }
+    rm -rf $root
+
+    assert equal $out null
 }
 
 @test
