@@ -16,8 +16,8 @@
 
 export use commands.nu [
     projects messages sessions export-session save-markdown
-    "gi-hook"
 ]
+export use gi-hook.nu main
 use commands.nu [ find-session-files ]
 
 # Umbrella entry point: search user messages for a regex and return every match

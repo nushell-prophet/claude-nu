@@ -2,8 +2,8 @@ use std assert
 use std/testing *
 
 # Import internals (helpers) and the public subcommands. The `gi-hook *`
-# subcommands are exported from commands.nu; pull them in unprefixed here.
-use ../claude-nu/commands.nu *
+# subcommands are exported from gi-hook.nu; pull them in unprefixed here.
+use ../claude-nu/gi-hook.nu *
 
 def temp-root []: nothing -> path {
     $nu.temp-dir | path join $"gi-hook-(random uuid)"
