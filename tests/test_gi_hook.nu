@@ -315,6 +315,17 @@ def "check treats an empty message as allowed" [] {
 }
 
 @test
+def "check treats a non-object payload as empty, inside the contract" [] {
+    # cd away from the test runner's repo: a {} payload falls back to PWD.
+    let orig = $env.PWD
+    cd $nu.temp-dir
+    for raw in ['"hi"' '123' 'null' '[1, 2]'] {
+        assert equal ($raw | gi-hook check) null
+    }
+    cd $orig
+}
+
+@test
 def "check names the recorded doc in the block reason" [] {
     let root = temp-root
     gi-hook enable gi/plan.md --root $root | ignore

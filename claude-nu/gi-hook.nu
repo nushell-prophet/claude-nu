@@ -277,6 +277,10 @@ def gi-hook-status [
 # unit-testable.
 def gi-hook-check []: string -> any {
     let payload = try { $in | default "" | from json } catch { {} }
+    # Valid JSON need not be an object ("hi", 123, null, [1]) — normalize to a
+    # record: anything else would throw in the guard below or entering the
+    # rules, above/outside the contract boundary.
+    let payload = if ($payload | describe | str starts-with "record") { $payload } else { {} }
     # Already continuing from a prior block — let it end to avoid a loop.
     if ($payload.stop_hook_active? | default false) { return }
 
