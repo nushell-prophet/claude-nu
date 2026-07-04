@@ -1,10 +1,10 @@
 use std assert
 use std/testing *
 
-# Import all functions from commands.nu (including internals not re-exported via mod.nu)
-use ../claude-nu/commands.nu *
+# Import all functions from sessions.nu (including internals not re-exported via mod.nu)
+use ../claude-nu/sessions.nu *
 # Import the module entry point too, so its `main` is callable as `claude-nu` (the
-# `-f` search command lives there, not in commands.nu — see mod.nu).
+# `-f` search command lives there, not in sessions.nu — see mod.nu).
 use ../claude-nu
 
 # Vendored real-session fixtures covering Claude Code 2.1.x record shapes

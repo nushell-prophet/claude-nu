@@ -866,7 +866,9 @@ export def "nu-complete claude session-columns" [context: string]: nothing -> li
 # names are listed in SESSION_COLUMNS (and tab-complete on --columns).
 # By default only top-level (human-driven) sessions are listed; pass --subagents
 # to also include subagent transcripts (those rows carry a non-null parent_session_id).
-export def sessions [
+# Named `main` because a module can't export a command named the same as the
+# module — importing this file yields the `sessions` command.
+export def main [
     ...paths: path # Session files or directories to parse (default: current project sessions)
     --session: string@"nu-complete claude sessions" # Single session UUID or path
     --last # Only the most recent session of the current project

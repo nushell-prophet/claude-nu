@@ -14,11 +14,11 @@
 #   claude-nu -f 'regex'                # quick message search, current project
 #   claude-nu sessions | where parent_session_id == null | claude-nu messages 'regex'
 
-export use commands.nu [
-    projects messages sessions export-session save-markdown
+export use sessions.nu [
+    projects messages main export-session save-markdown
 ]
 export use gi-hook.nu main
-use commands.nu [ find-session-files ]
+use sessions.nu [ find-session-files ]
 
 # Umbrella entry point: search user messages for a regex and return every match
 # with its `session` column (a pipeline-safe selector — pipe it into

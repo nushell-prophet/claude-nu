@@ -1,7 +1,7 @@
 # Nushell custom completions for Claude Code CLI
 # Requires Nushell 0.108+
 
-use ../claude-nu/commands.nu [ "nu-complete claude sessions" ]
+use ../claude-nu/sessions.nu [ "nu-complete claude sessions" ]
 
 # ===== Static Completions =====
 

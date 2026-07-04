@@ -138,7 +138,7 @@ export def 'main vendor-sessions' [
     --count (-n): int = 3 # Number of most recent sessions when no UUIDs given
     --commit # Also create a git commit after copying
 ] {
-    use claude-nu/commands.nu get-sessions-dir
+    use claude-nu/sessions.nu get-sessions-dir
 
     let sessions_dir = get-sessions-dir
     if not ($sessions_dir | path exists) {
@@ -203,7 +203,7 @@ export def 'main vendor-sessions' [
 }
 
 # Check .nu file for static errors, showing line content for each diagnostic
-@example "Check a file" { nu toolkit.nu check commands.nu }
+@example "Check a file" { nu toolkit.nu check claude-nu/sessions.nu }
 export def 'main check' [file: path] {
     let content = open --raw $file
     let source_lines = $content | lines

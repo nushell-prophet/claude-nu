@@ -18,7 +18,7 @@ Nushell's completions should be used when they add a real value.
 claude-nu/
 ├── claude-nu/           # Main module
 │   ├── mod.nu           # Module entry point, exports public commands
-│   ├── commands.nu      # Session/message command implementations
+│   ├── sessions.nu      # Session/message command implementations
 │   └── gi-hook.nu       # gi-hook Stop hook (enable/disable/status/check)
 ├── completions/         # External command completions
 │   ├── claude.nu        # claude CLI (50+ flags, session picker, MCP/plugin subcommands)
