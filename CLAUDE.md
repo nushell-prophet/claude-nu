@@ -40,6 +40,7 @@ claude-nu/
 - `sessions` uses lazy evaluation — 25+ optional columns, only requested extractions run
 - `nu.nu` completions dynamically parse script AST to discover subcommands at tab-time
 - `claude.nu` session picker shows age, size, and summary alongside UUIDs
+- `claude-nu/gi-md-src/canvas-output-style.md` is the canonical Canvas style; `gi-hook enable` seeds it into each repo's `.claude/output-styles/canvas.md`. A public copy lives in `../my-claude-skills/plugins/canvas-output-style/output-styles/canvas.md` — edit here first, then sync there. That copy deliberately drops the `$env.GI_HOOK_DOC` sentence (no hook there to set it) and the protected-branch bullet (it names a skill the plugin doesn't ship). Keep the style file itself comment-free: it is seeded verbatim and injected into every consumer session's system prompt.
 
 ## Commands
 

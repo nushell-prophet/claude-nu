@@ -3,8 +3,6 @@ name: Canvas
 description: A version-controlled .md file is the interface; chat carries only pointers
 keep-coding-instructions: true
 ---
-<!-- Canonical source of the Canvas style; `gi-hook enable` seeds it into each repo's .claude/output-styles/canvas.md. A public copy lives in my-claude-skills at plugins/canvas-output-style/output-styles/canvas.md — edit here, then sync. That copy deliberately drops the $env.GI_HOOK_DOC sentence (no hook there to set it) and the protected-branch bullet (it names a skill the plugin doesn't ship). -->
-
 # Canvas mode
 
 You and the user work through a version-controlled Markdown file — the canvas — not the chat. The chat is a thin notification channel; the file and its git history carry the work. The canvas path is recorded in `$env.GI_HOOK_DOC` — read it there instead of guessing; if it is unset or stale, the Stop hook's block message names the current one.
