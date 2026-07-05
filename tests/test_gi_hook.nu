@@ -255,6 +255,44 @@ def "enable does not clobber an edited style" [] {
 }
 
 @test
+def "enable --force refreshes an edited style and skill" [] {
+    let root = temp-root
+    gi-hook enable --root $root | ignore
+    let style = $root | path join ".claude" "output-styles" "canvas.md"
+    let skill = $root | path join ".claude" "skills" "git-intent" "SKILL.md"
+    "edited style" | save --force $style
+    "edited skill" | save --force $skill
+    gi-hook enable --root $root --force | ignore
+    let style_body = open --raw $style
+    let skill_body = open --raw $skill
+    rm -rf $root
+
+    assert ($style_body | str contains "name: Canvas")
+    assert ($skill_body | str contains "name: git-intent")
+}
+
+@test
+def "enable --force never overwrites the working doc" [] {
+    let root = temp-root
+    gi-hook enable gi/doc.md --root $root | ignore
+    let doc = $root | path join "gi" "doc.md"
+    "my work" | save --force $doc
+    gi-hook enable --root $root --force | ignore
+    let body = open --raw $doc
+    rm -rf $root
+
+    assert equal $body "my work"
+}
+
+# Not named "--force ..." because: nutest interpolates test names into a
+# block, where a leading -- parses as a flag and kills the whole suite.
+@test
+def "a force flag with a non-enable action errors" [] {
+    let out = try { gi-hook status --force; null } catch {|e| $e.msg }
+    assert ($out != null)
+}
+
+@test
 def "disable drops our outputStyle but keeps a foreign one" [] {
     let root = temp-root
     gi-hook enable --root $root | ignore

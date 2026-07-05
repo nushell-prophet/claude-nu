@@ -162,6 +162,7 @@ export def main [
     action?: string@"nu-complete gi-hook-actions" # enable | disable | status | check (default: status)
     doc?: path # enable only: working-doc path (default: keep the recorded one, else gi/canvas-<timestamp>.md)
     --root: path # Repo root (default: git top-level); ignored by check
+    --force # enable only: overwrite the seeded style and skills with the module's versions
 ]: any -> any {
     let event = $in # check reads the Stop event here; the others ignore it
     if $doc != null and $action != "enable" {
@@ -170,9 +171,15 @@ export def main [
             label: {text: "drop this, or use: gi-hook enable <doc>" span: (metadata $doc).span}
         }
     }
+    if $force and $action != "enable" {
+        error make {
+            msg: "--force only makes sense with enable"
+            label: {text: "drop this, or use: gi-hook enable --force" span: (metadata $force).span}
+        }
+    }
     match $action {
         null | "status" => (gi-hook-status --root $root)
-        "enable" => (gi-hook-enable --root $root --doc $doc)
+        "enable" => (gi-hook-enable --root $root --doc $doc --force=$force)
         "disable" => (gi-hook-disable --root $root)
         "check" => ($event | gi-hook-check)
         _ => {
@@ -189,6 +196,7 @@ export def main [
 def gi-hook-enable [
     --root: path # Repo root to install into (default: git top-level)
     --doc: path # Working-doc path, relative to root (absolute also accepted)
+    --force # Overwrite the seeded style and skills with the module's versions
 ]: nothing -> record {
     let root = $root | default (gi-hook-repo-root) | path expand
     let paths = gi-hook-paths $root
@@ -228,13 +236,15 @@ def gi-hook-enable [
 
     # Seed the working-doc template, the output style, and the gi skills. Why
     # not clobber: once they exist they are the user's files — refreshing would
-    # destroy their edits.
+    # destroy their edits. --force overwrites the style and skills — they are
+    # distributed text a module update should be able to refresh — but never
+    # the working doc, which holds the user's work.
     for seed in ([
-        [src dst];
-        [$paths.template_src $doc_abs]
-        [$paths.style_src $paths.style_dst]
-    ] | append (gi-hook-skill-seeds $paths)) {
-        if not ($seed.dst | path exists) {
+        [src dst overwrite];
+        [$paths.template_src $doc_abs false]
+        [$paths.style_src $paths.style_dst $force]
+    ] | append (gi-hook-skill-seeds $paths | insert overwrite $force)) {
+        if $seed.overwrite or not ($seed.dst | path exists) {
             mkdir ($seed.dst | path dirname)
             cp $seed.src $seed.dst
         }
