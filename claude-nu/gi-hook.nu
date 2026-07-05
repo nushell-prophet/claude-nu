@@ -258,10 +258,12 @@ def gi-hook-enable [
     # destroy their edits. --force overwrites the style and skills — they are
     # distributed text a module update should be able to refresh — but never
     # the working doc, which holds the user's work.
-    for seed in ([
-        [src dst overwrite];
-        [$paths.template_src $doc_abs false]
-    ] | append (gi-hook-refresh-seeds $paths | insert overwrite $force)) {
+    for seed in (
+        [
+            [src dst overwrite];
+            [$paths.template_src $doc_abs false]
+        ] | append (gi-hook-refresh-seeds $paths | insert overwrite $force)
+    ) {
         if $seed.overwrite or not ($seed.dst | path exists) {
             mkdir ($seed.dst | path dirname)
             cp $seed.src $seed.dst
@@ -388,7 +390,11 @@ def gi-hook-check-rules []: record -> any {
         "" => "the working document"
         $p => $"`($p)`"
     }
-    let reason = $"Chat may carry only `done`/`noted` or a short pointer \(one line with a path/link). Move the full answer into ($doc) and commit it; leave only a pointer in chat."
+    # The escape hatch is safe by construction: the blocked message is already
+    # on the user's screen, and the stop_hook_active guard ends the turn on the
+    # follow-up whatever it says — a stale hook can redirect one reply, never
+    # trap the agent.
+    let reason = $"Chat may carry only `done`/`noted` or a short pointer \(one line with a path/link). Move the full answer into ($doc) and commit it; leave only a pointer in chat. If this block looks like a misfire — stale hook, wrong doc, no gi work in this session — don't move anything: reply with one short line telling the user to read your previous message above in the chat and to check this hook \(`gi-hook status` / `disable`)."
     {decision: "block" reason: $reason}
 }
 
