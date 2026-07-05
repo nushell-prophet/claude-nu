@@ -1,9 +1,8 @@
 ---
 name: git-intent
-version: 0.4.0
-description: Process commits as instructions — execute `!!` inline markers and `gi: <text>` commit-subject instructions, propagate user-committed choices through the codebase. Use when the user says "git-intent", "process", "apply intent", or pastes a `git log` containing `!!` markers or `gi:` subjects.
+description: Process commits as instructions — execute `!!` inline markers and `gi: <text>` commit-subject instructions, propagate user-committed choices through the codebase. Use when the user says "git-intent", "process commits", "apply intent", or pastes a `git log` containing `!!` markers or `gi:` subjects.
 argument-hint: <N>
-allowed-tools: Bash, Read, Edit, Write, Grep, Glob
+allowed-tools: Bash(git *), Read, Edit, Write, Grep, Glob
 ---
 
 Git is the instruction interface between human and agent. The human delivers intent through commit messages and inline `!!` markers in any file type. The agent reads the diff, executes the instructions, and commits the results. Every change is reviewable in git history.
@@ -22,7 +21,7 @@ Three channels carry user intent into a commit:
 - **Commit message** — explanation/context for the committed edit, optionally prefixed `gi:` (git intent). If the message reads as an imperative ("rename foo to bar", "expand this section"), treat it as actionable.
 - **Direct edit** — the user's edit itself, with no marker and no commit-message text, is also an instruction. The edit *is* the decision; the agent's job is to honor and propagate it.
 
-If `$ARGUMENTS` is empty or not a positive integer, default to `1`.
+N = `$ARGUMENTS` — when that is empty or not a positive integer, use `1`.
 
 ## Commit patterns
 

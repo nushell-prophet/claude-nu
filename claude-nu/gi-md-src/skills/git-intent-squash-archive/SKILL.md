@@ -1,8 +1,7 @@
 ---
 name: git-intent-squash-archive
-version: 0.4.0
 description: Squash all commits on the current branch into one, preserving the original history in a git tag. Use when the user says "squash branch" or "git-intent-squash-archive".
-allowed-tools: Bash
+allowed-tools: Bash(git *)
 ---
 
 Verify the working tree is clean (`git status --porcelain` returns empty). If not, stop and ask the user to commit or stash first.
