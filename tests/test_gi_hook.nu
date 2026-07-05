@@ -1,4 +1,4 @@
-use std assert
+use std/assert
 use std/testing *
 
 # Import internals (helpers) and the public subcommands. The `gi-hook *`

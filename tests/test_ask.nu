@@ -1,4 +1,4 @@
-use std assert
+use std/assert
 use std/testing *
 
 # `ask.nu` exports `main`, surfaced as the `ask` command on import.

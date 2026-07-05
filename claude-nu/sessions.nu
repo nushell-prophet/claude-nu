@@ -540,7 +540,7 @@ export def main [
 
 # Sanitize topic string for use in filename
 export def sanitize-topic []: string -> string {
-    str downcase
+    str lowercase
     | str replace --all --regex '[^a-z0-9]+' '-'
     | str trim --char '-'
     | str substring 0..<50

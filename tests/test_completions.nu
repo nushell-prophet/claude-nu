@@ -1,4 +1,4 @@
-use std assert
+use std/assert
 use std/testing *
 
 use ../completions/nu.nu *
