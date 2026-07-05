@@ -66,7 +66,7 @@ claude-nu sessions --last --columns token_usage,turn_count # Comma-separated col
 claude-nu export-session               # Export to markdown with YAML frontmatter
 claude-nu gi-hook enable               # Install a per-repo Stop hook that keeps chat terse (gi protocol)
 claude-nu gi-hook enable notes/plan.md # Same, with a chosen working-doc path (default: gi/canvas-<timestamp>.md)
-claude-nu gi-hook status               # { enabled, settings, doc, style, output_style_set }
+claude-nu gi-hook status               # { enabled, settings, doc, style, skills, output_style_set }
 ```
 
 ## Development

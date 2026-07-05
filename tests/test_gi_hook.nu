@@ -217,6 +217,31 @@ def "enable distributes the output style and sets outputStyle" [] {
 }
 
 @test
+def "enable seeds the gi skills into .claude/skills" [] {
+    let root = temp-root
+    let status = gi-hook enable --root $root
+    let all_exist = $status.skills | all {|p| $p | path exists }
+    let names = $status.skills | each {|p| $p | path dirname | path basename } | sort
+    rm -rf $root
+
+    assert $all_exist
+    assert equal $names ["git-intent" "git-intent-squash-archive"]
+}
+
+@test
+def "enable does not clobber an edited skill" [] {
+    let root = temp-root
+    let skill = $root | path join ".claude" "skills" "git-intent" "SKILL.md"
+    mkdir ($skill | path dirname)
+    "my edited skill" | save $skill
+    gi-hook enable --root $root | ignore
+    let body = open --raw $skill
+    rm -rf $root
+
+    assert equal $body "my edited skill"
+}
+
+@test
 def "enable does not clobber an edited style" [] {
     let root = temp-root
     let style = $root | path join ".claude" "output-styles" "canvas.md"

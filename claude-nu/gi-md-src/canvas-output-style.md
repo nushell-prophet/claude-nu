@@ -3,7 +3,7 @@ name: Canvas
 description: A version-controlled .md file is the interface; chat carries only pointers
 keep-coding-instructions: true
 ---
-<!-- source: plugins/git-intent-interface/output-styles/canvas.md (maxim-uvarov/my-claude-skills) — edit there first, then copy here. This copy ships inside claude-nu and is distributed per-repo by `gi-hook enable` into .claude/output-styles/canvas.md. Deliberate divergence from upstream: the $env.GI_HOOK_DOC sentence below — gi-hook records the canvas path there; the plugin install does not. -->
+<!-- Canonical source of the Canvas style. Distributed per-repo by `gi-hook enable` into .claude/output-styles/canvas.md. A style-only public copy lives in my-claude-skills at plugins/canvas-output-style/output-styles/canvas.md — edit here first, then sync there. Deliberate divergences of that copy: no $env.GI_HOOK_DOC sentence (the hook records the path there; a plugin install has no hook) and no protected-branch bullet (it names the git-intent-squash-archive skill, which the style-only plugin does not ship). -->
 
 # Canvas mode
 

@@ -89,12 +89,32 @@ def gi-hook-branch [root: path]: nothing -> any {
 #   vendored on its own, so it must carry the style itself rather than depend on
 #   a Claude plugin being installed — `enable` drops it as a per-repo project
 #   style. The srcs ship inside the module, so they vendor with it.
+# - skills: the gi skills, seeded the same way. Why: project-level
+#   .claude/skills needs no plugin install — file presence at session start IS
+#   activation — and the style names git-intent-squash-archive, so seeding
+#   makes that reference real in any gi-enabled repo.
 def gi-hook-paths [root: path]: nothing -> record {
     {
         settings: ($root | path join ".claude" "settings.local.json")
         template_src: ($GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-header.md")
         style_src: ($GI_HOOK_MODULE_DIR | path join "gi-md-src" "canvas-output-style.md")
         style_dst: ($root | path join ".claude" "output-styles" "canvas.md")
+        skills_src: ($GI_HOOK_MODULE_DIR | path join "gi-md-src" "skills")
+        skills_dst: ($root | path join ".claude" "skills")
+    }
+}
+
+# The bundled skills as [src dst] seed rows for enable's copy-if-absent loop.
+# Enumerated from disk, not hardcoded: adding a skill under gi-md-src/skills
+# is the whole change.
+def gi-hook-skill-seeds [paths: record]: nothing -> table {
+    ls $paths.skills_src
+    | get name
+    | each {|dir|
+        {
+            src: ($dir | path join "SKILL.md")
+            dst: ($paths.skills_dst | path join ($dir | path basename) "SKILL.md")
+        }
     }
 }
 
@@ -206,13 +226,14 @@ def gi-hook-enable [
     | upsert outputStyle $GI_HOOK_STYLE
     | save --force $paths.settings
 
-    # Seed the working-doc template and the output style. Why not clobber: once
-    # they exist they are the user's files — refreshing would destroy their edits.
-    for seed in [
+    # Seed the working-doc template, the output style, and the gi skills. Why
+    # not clobber: once they exist they are the user's files — refreshing would
+    # destroy their edits.
+    for seed in ([
         [src dst];
         [$paths.template_src $doc_abs]
         [$paths.style_src $paths.style_dst]
-    ] {
+    ] | append (gi-hook-skill-seeds $paths)) {
         if not ($seed.dst | path exists) {
             mkdir ($seed.dst | path dirname)
             cp $seed.src $seed.dst
@@ -271,6 +292,7 @@ def gi-hook-status [
         settings: $paths.settings
         doc: (if $doc != null { $root | path join $doc })
         style: $paths.style_dst
+        skills: (gi-hook-skill-seeds $paths | get dst)
         output_style_set: ($settings.outputStyle? == $GI_HOOK_STYLE)
     }
 }
