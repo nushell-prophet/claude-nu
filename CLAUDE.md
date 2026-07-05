@@ -67,7 +67,7 @@ claude-nu export-session               # Export to markdown with YAML frontmatte
 claude-nu gi-hook enable               # Install a per-repo Stop hook that keeps chat terse (gi protocol)
 claude-nu gi-hook enable notes/plan.md # Same, with a chosen working-doc path (default: gi/canvas-<timestamp>.md)
 claude-nu gi-hook enable --force       # Re-seed the style and skills from the module (working doc untouched)
-claude-nu gi-hook status               # { enabled, settings, doc, style, skills, output_style_set }
+claude-nu gi-hook status               # { enabled, settings, doc, style, skills, stale, output_style_set }
 ```
 
 ## Development

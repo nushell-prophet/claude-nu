@@ -272,6 +272,22 @@ def "enable --force refreshes an edited style and skill" [] {
 }
 
 @test
+def "status reports seeds differing from the module as stale" [] {
+    let root = temp-root
+    gi-hook enable --root $root | ignore
+    let fresh = gi-hook status --root $root | get stale
+    "user edit" | save --force ($root | path join ".claude" "skills" "git-intent" "SKILL.md")
+    let edited = gi-hook status --root $root | get stale
+    gi-hook enable --root $root --force | ignore
+    let refreshed = gi-hook status --root $root | get stale
+    rm -rf $root
+
+    assert equal $fresh []
+    assert equal ($edited | each {|p| $p | path dirname | path basename }) ["git-intent"]
+    assert equal $refreshed []
+}
+
+@test
 def "enable --force never overwrites the working doc" [] {
     let root = temp-root
     gi-hook enable gi/doc.md --root $root | ignore

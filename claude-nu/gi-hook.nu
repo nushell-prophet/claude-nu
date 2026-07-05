@@ -118,6 +118,25 @@ def gi-hook-skill-seeds [paths: record]: nothing -> table {
     }
 }
 
+# The seeds `enable --force` may refresh: the style and the skills —
+# distributed text the module owns. The working doc is deliberately absent:
+# it holds the user's work and is never overwritten.
+def gi-hook-refresh-seeds [paths: record]: nothing -> table {
+    [[src dst]; [$paths.style_src $paths.style_dst]]
+    | append (gi-hook-skill-seeds $paths)
+}
+
+# Seeded files whose content differs from the module source. Why content
+# compare, not a version field: copy-if-absent pins a consumer repo to
+# whatever was current at first enable, and nothing else ever signals drift.
+# "Differs" covers a user edit too — the two are indistinguishable, and
+# --force resolves both in the module's favor; that is what --force means.
+def gi-hook-stale [paths: record]: nothing -> list {
+    gi-hook-refresh-seeds $paths
+    | where {|s| ($s.dst | path exists) and (open --raw $s.dst) != (open --raw $s.src) }
+    | get dst
+}
+
 # The working doc recorded in settings (env.GI_HOOK_DOC), or null. The doc name
 # is timestamped or user-chosen, so it can't be recomputed — it must be
 # persisted; the sole reader is this command (status and check both come through
@@ -242,8 +261,7 @@ def gi-hook-enable [
     for seed in ([
         [src dst overwrite];
         [$paths.template_src $doc_abs false]
-        [$paths.style_src $paths.style_dst $force]
-    ] | append (gi-hook-skill-seeds $paths | insert overwrite $force)) {
+    ] | append (gi-hook-refresh-seeds $paths | insert overwrite $force)) {
         if $seed.overwrite or not ($seed.dst | path exists) {
             mkdir ($seed.dst | path dirname)
             cp $seed.src $seed.dst
@@ -258,7 +276,13 @@ def gi-hook-enable [
     if $branch in $GI_HOOK_PROTECTED_BRANCHES {
         print $"note: this repo is on ($branch) — gi commits belong on a work branch; the Stop hook will block turns until you switch."
     }
-    gi-hook-status --root $root
+    let status = gi-hook-status --root $root
+    # Surface drift at the moment the user is already touching gi-hook — status
+    # carries the same list, but nobody polls it.
+    if not $force and ($status.stale | is-not-empty) {
+        print $"note: ($status.stale | length) seeded file\(s\) differ from the module — `gi-hook enable --force` refreshes them."
+    }
+    $status
 }
 
 # Remove our Stop hook, leaving any other hooks intact. No-op if absent.
@@ -303,6 +327,7 @@ def gi-hook-status [
         doc: (if $doc != null { $root | path join $doc })
         style: $paths.style_dst
         skills: (gi-hook-skill-seeds $paths | get dst)
+        stale: (gi-hook-stale $paths)
         output_style_set: ($settings.outputStyle? == $GI_HOOK_STYLE)
     }
 }
