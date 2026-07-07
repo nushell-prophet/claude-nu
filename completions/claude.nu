@@ -1,5 +1,5 @@
 # Nushell custom completions for Claude Code CLI
-# Requires Nushell 0.108+
+# Requires Nushell 0.114+ (commandline complete)
 
 use ../claude-nu/sessions.nu [ "nu-complete claude sessions" ]
 
@@ -42,11 +42,6 @@ const models = [
     {value: "claude-sonnet-4-6" description: "Claude Sonnet 4.6 (specific version)"}
 ]
 
-const install_targets = [
-    {value: "stable" description: "Stable release"}
-    {value: "latest" description: "Latest release"}
-]
-
 const mcp_scopes = [
     {value: "local" description: "Local configuration (default)"}
     {value: "user" description: "User-wide configuration"}
@@ -81,49 +76,162 @@ const tools = [
     {value: "NotebookEdit" description: "Edit Jupyter notebooks"}
 ]
 
+const setting_sources = [
+    {value: "user" description: "Global user settings (~/.claude/settings.json)"}
+    {value: "project" description: "Shared project settings (.claude/settings.json)"}
+    {value: "local" description: "Local project settings (.claude/settings.local.json)"}
+]
+
+# ===== Completer Helpers =====
+
+# Keep the menu in the list's semantic order (e.g. effort low -> max)
+# instead of Nushell's default alphabetical re-sort.
+def ordered []: table -> record {
+    {options: {sort: false} completions: $in}
+}
+
+# Comma-separated multi-value completion: segments already typed stay as a
+# prefix, remaining values are offered for the segment after the last comma.
+def comma-list [context: string]: table -> table {
+    let token = $context | split row ' ' | last
+    let chosen = $token | split row ',' | drop 1
+    let prefix = $chosen | str join ','
+    $in
+    | where value not-in $chosen
+    | if ($prefix | is-empty) { } else { update value {|it| $"($prefix),($it.value)" } }
+}
+
+def "nu-complete claude output-formats" [] { $output_formats | ordered }
+def "nu-complete claude input-formats" [] { $input_formats | ordered }
+def "nu-complete claude effort" [] { $effort_levels | ordered }
+def "nu-complete claude models" [] { $models | ordered }
+
+def "nu-complete claude tools" [context: string] { $tools | comma-list $context }
+def "nu-complete claude setting-sources" [context: string] { $setting_sources | comma-list $context }
+
+# Free-text argument: suppress Nushell's file-path fallback
+def "nu-complete claude freetext" []: nothing -> list<string> { [] }
+
+# Directory suggestions from Nushell's own completion engine
+def "nu-complete claude dirs" [context: string]: nothing -> list<string> {
+    $context | split row ' ' | last | commandline complete --type directory
+}
+
+# ===== Dynamic Completions =====
+
+# MCP server names across scopes: user (~/.claude.json), project (.mcp.json),
+# and local (per-project entry inside ~/.claude.json)
+def "nu-complete claude mcp servers" []: nothing -> list<string> {
+    let user_cfg = try { open ~/.claude.json } catch { {} }
+    # Why: transpose + where instead of `get $env.PWD` because get parses
+    # string keys as cell paths and would split a path containing dots
+    let local = $user_cfg
+        | get -o projects
+        | default {}
+        | transpose path cfg
+        | where path == $env.PWD
+        | get -o 0.cfg.mcpServers
+        | default {}
+    let project = try { open .mcp.json | get -o mcpServers | default {} } catch { {} }
+    [($user_cfg | get -o mcpServers | default {}) $project $local]
+    | each { columns }
+    | flatten
+    | uniq
+}
+
+# Installed plugins (name@marketplace), described by their install scopes
+def "nu-complete claude installed-plugins" []: nothing -> table {
+    try {
+        open ~/.claude/plugins/installed_plugins.json
+        | get plugins
+        | transpose name installs
+        | each {|p| {value: $p.name description: ($p.installs.scope | uniq | str join ", ")} }
+    } catch { [] }
+}
+
+# Plugins offered by known marketplaces (for `plugin install`)
+def "nu-complete claude marketplace-plugins" []: nothing -> table {
+    try {
+        open ~/.claude/plugins/known_marketplaces.json
+        | transpose name cfg
+        | each {|m|
+            try {
+                open ($m.cfg.installLocation | path join .claude-plugin marketplace.json)
+                | get plugins
+                | each {|p| {
+                    value: $"($p.name)@($m.name)"
+                    description: ($p | get -o description | default '' | str replace -r '(?s)(.{80}).+' '$1…')
+                } }
+            } catch { [] }
+        }
+        | flatten
+    } catch { [] }
+}
+
+def "nu-complete claude marketplaces" []: nothing -> table {
+    try {
+        open ~/.claude/plugins/known_marketplaces.json
+        | transpose name cfg
+        | each {|m| {value: $m.name description: ($m.cfg | get -o source.repo | default '')} }
+    } catch { [] }
+}
+
+# Agent names from project and user agent definitions
+def "nu-complete claude agents" []: nothing -> list<string> {
+    glob .claude/agents/*.md
+    | append (glob ("~/.claude/agents/*.md" | path expand))
+    | each { path parse | get stem }
+    | uniq
+}
+
+# Project paths Claude Code has been run in (keys of ~/.claude.json projects)
+def "nu-complete claude projects" []: nothing -> list<string> {
+    try { open ~/.claude.json | get projects | columns } catch { [] }
+}
+
 # ===== Main Command =====
 
 export extern main [
-    prompt?: string # Your prompt
-    --debug (-d): string # Enable debug mode with optional category filtering
-    --debug-file: string # Write debug logs to a specific file path (implicitly enables debug mode)
+    prompt?: string@"nu-complete claude freetext" # Your prompt
+    --debug (-d): string@"nu-complete claude freetext" # Enable debug mode with optional category filtering
+    --debug-file: path # Write debug logs to a specific file path (implicitly enables debug mode)
     --verbose # Override verbose mode setting from config
     --print (-p) # Print response and exit (useful for pipes)
-    --output-format: string@$output_formats # Output format (only with --print)
-    --json-schema: string # JSON Schema for structured output validation
+    --output-format: string@"nu-complete claude output-formats" # Output format (only with --print)
+    --json-schema: string@"nu-complete claude freetext" # JSON Schema for structured output validation
     --include-partial-messages # Include partial message chunks (with --print and stream-json)
     --include-hook-events # Include all hook lifecycle events (only with --output-format=stream-json)
-    --input-format: string@$input_formats # Input format (only with --print)
+    --input-format: string@"nu-complete claude input-formats" # Input format (only with --print)
     --mcp-debug # [DEPRECATED] Enable MCP debug mode
     --dangerously-skip-permissions # Bypass all permission checks
     --allow-dangerously-skip-permissions # Enable bypassing permissions as an option
     --max-budget-usd: number # Maximum dollar amount for API calls (with --print)
     --replay-user-messages # Re-emit user messages from stdin to stdout
-    --allowed-tools: string@$tools # Comma/space-separated list of allowed tools
-    --tools: string@$tools # Specify available tools from built-in set
-    --disallowed-tools: string@$tools # Comma/space-separated list of denied tools
-    --mcp-config: string # Load MCP servers from JSON files or strings
-    --system-prompt: string # System prompt for the session
-    --append-system-prompt: string # Append to default system prompt
+    --allowed-tools: string@"nu-complete claude tools" # Comma/space-separated list of allowed tools
+    --tools: string@"nu-complete claude tools" # Specify available tools from built-in set
+    --disallowed-tools: string@"nu-complete claude tools" # Comma/space-separated list of denied tools
+    --mcp-config: path # Load MCP servers from JSON files or strings
+    --system-prompt: string@"nu-complete claude freetext" # System prompt for the session
+    --append-system-prompt: string@"nu-complete claude freetext" # Append to default system prompt
     --permission-mode: string@$permission_modes # Permission mode for the session
     --continue (-c) # Continue the most recent conversation
     --resume (-r): string@"nu-complete claude sessions" # Resume conversation by session ID or open picker
     --fork-session # Create new session ID when resuming
     --from-pr: string # Resume a session linked to a PR by PR number/URL (optional value)
     --no-session-persistence # Disable session persistence (with --print)
-    --model: string@$models # Model for the current session
-    --agent: string # Agent for the current session
-    --agents: string # JSON object defining custom agents
-    --betas: string # Beta headers for API requests
-    --fallback-model: string@$models # Fallback model when default is overloaded
-    --settings: string # Path to settings JSON file or JSON string
-    --add-dir: string # Additional directories to allow tool access to
+    --model: string@"nu-complete claude models" # Model for the current session
+    --agent: string@"nu-complete claude agents" # Agent for the current session
+    --agents: string@"nu-complete claude freetext" # JSON object defining custom agents
+    --betas: string@"nu-complete claude freetext" # Beta headers for API requests
+    --fallback-model: string@"nu-complete claude models" # Fallback model when default is overloaded
+    --settings: path # Path to settings JSON file or JSON string
+    --add-dir: string@"nu-complete claude dirs" # Additional directories to allow tool access to
     --ide # Auto-connect to IDE on startup
     --strict-mcp-config # Only use MCP servers from --mcp-config
     --session-id: string@"nu-complete claude sessions" # Use specific session ID (must be valid UUID)
-    --setting-sources: string # Comma-separated setting sources (user, project, local)
-    --plugin-dir: string # Load plugins from directories
-    --plugin-url: string # Fetch a plugin .zip from a URL for this session only (repeatable)
+    --setting-sources: string@"nu-complete claude setting-sources" # Comma-separated setting sources (user, project, local)
+    --plugin-dir: string@"nu-complete claude dirs" # Load plugins from directories
+    --plugin-url: string@"nu-complete claude freetext" # Fetch a plugin .zip from a URL for this session only (repeatable)
     --disable-slash-commands # Disable all slash commands
     --chrome # Enable Claude in Chrome integration
     --no-chrome # Disable Claude in Chrome integration
@@ -131,13 +239,13 @@ export extern main [
     --safe-mode # Start with all customizations disabled (CLAUDE.md, skills, plugins, hooks, MCP, custom commands/agents, ...); sets CLAUDE_CODE_SAFE_MODE=1
     --brief # Enable SendUserMessage tool for agent-to-user communication
     --exclude-dynamic-system-prompt-sections # Move per-machine sections out of the system prompt for cache reuse
-    --effort: string@$effort_levels # Effort level for the current session (low, medium, high, xhigh, max)
-    --file: string # File resources to download at startup (file_id:relative_path)
-    --name (-n): string # Set a display name for this session
-    --remote-control: string # Start an interactive session with Remote Control enabled (optionally named)
-    --remote-control-session-name-prefix: string # Prefix for auto-generated Remote Control session names
+    --effort: string@"nu-complete claude effort" # Effort level for the current session (low, medium, high, xhigh, max)
+    --file: string@"nu-complete claude freetext" # File resources to download at startup (file_id:relative_path)
+    --name (-n): string@"nu-complete claude freetext" # Set a display name for this session
+    --remote-control: string@"nu-complete claude freetext" # Start an interactive session with Remote Control enabled (optionally named)
+    --remote-control-session-name-prefix: string@"nu-complete claude freetext" # Prefix for auto-generated Remote Control session names
     --tmux # Create a tmux session for the worktree (requires --worktree)
-    --worktree (-w): string # Create a new git worktree for this session (optionally specify a name)
+    --worktree (-w): string@"nu-complete claude freetext" # Create a new git worktree for this session (optionally specify a name)
     --version (-v) # Output the version number
     --help (-h) # Display help for command
 ]
@@ -155,21 +263,21 @@ export extern "claude mcp serve" [
 ]
 
 export extern "claude mcp add" [
-    name: string # Server name
+    name: string@"nu-complete claude freetext" # Server name
     commandOrUrl: string # Command or URL for the server
     ...args: string # Additional arguments
     --scope (-s): string@$mcp_scopes # Configuration scope (local, user, project)
     --transport (-t): string@$mcp_transports # Transport type (stdio, sse, http)
-    --env (-e): string # Set environment variables (KEY=value)
-    --header (-H): string # Set WebSocket headers
+    --env (-e): string@"nu-complete claude freetext" # Set environment variables (KEY=value)
+    --header (-H): string@"nu-complete claude freetext" # Set WebSocket headers
     --callback-port: int # Fixed port for OAuth callback (for servers requiring pre-registered redirect URIs)
-    --client-id: string # OAuth client ID for HTTP/SSE servers
+    --client-id: string@"nu-complete claude freetext" # OAuth client ID for HTTP/SSE servers
     --client-secret # Prompt for OAuth client secret (or set MCP_CLIENT_SECRET env var)
     --help (-h) # Display help for command
 ]
 
 export extern "claude mcp remove" [
-    name: string # Server name to remove
+    name: string@"nu-complete claude mcp servers" # Server name to remove
     --scope (-s): string@$mcp_scopes # Configuration scope
     --help (-h) # Display help for command
 ]
@@ -179,13 +287,13 @@ export extern "claude mcp list" [
 ]
 
 export extern "claude mcp get" [
-    name: string # Server name
+    name: string@"nu-complete claude mcp servers" # Server name
     --help (-h) # Display help for command
 ]
 
 export extern "claude mcp add-json" [
-    name: string # Server name
-    json: string # JSON configuration string
+    name: string@"nu-complete claude freetext" # Server name
+    json: string@"nu-complete claude freetext" # JSON configuration string
     --scope (-s): string@$mcp_scopes # Configuration scope
     --client-secret # Prompt for OAuth client secret (or set MCP_CLIENT_SECRET env var)
     --help (-h) # Display help for command
@@ -207,7 +315,7 @@ export extern "claude plugin" [
 ]
 
 export extern "claude plugin validate" [
-    path: string # Path to plugin or manifest
+    path: path # Path to plugin or manifest
     --help (-h) # Display help for command
 ]
 
@@ -218,7 +326,7 @@ export extern "claude plugin marketplace" [
 export extern "claude plugin marketplace add" [
     source: string # URL, path, or GitHub repo
     --scope: string@$mcp_scopes # Where to declare the marketplace (user default, project, local)
-    --sparse: string # Limit checkout to specific directories via git sparse-checkout (repeatable)
+    --sparse: string@"nu-complete claude freetext" # Limit checkout to specific directories via git sparse-checkout (repeatable)
     --help (-h) # Display help for command
 ]
 
@@ -228,23 +336,23 @@ export extern "claude plugin marketplace list" [
 ]
 
 export extern "claude plugin marketplace remove" [
-    name: string # Marketplace name to remove
+    name: string@"nu-complete claude marketplaces" # Marketplace name to remove
     --help (-h) # Display help for command
 ]
 
 export extern "claude plugin marketplace update" [
-    name?: string # Marketplace name (all if not specified)
+    name?: string@"nu-complete claude marketplaces" # Marketplace name (all if not specified)
     --help (-h) # Display help for command
 ]
 
 export extern "claude plugin install" [
-    plugin: string # Plugin name (use plugin@marketplace for specific)
+    plugin: string@"nu-complete claude marketplace-plugins" # Plugin name (use plugin@marketplace for specific)
     --scope (-s): string@$mcp_scopes # Configuration scope
     --help (-h) # Display help for command
 ]
 
 export extern "claude plugin uninstall" [
-    plugin: string # Plugin name to uninstall
+    plugin: string@"nu-complete claude installed-plugins" # Plugin name to uninstall
     --scope (-s): string@$mcp_scopes # Configuration scope
     --keep-data # Preserve the plugin's persistent data directory (~/.claude/plugins/data/{id}/)
     --prune # Also remove auto-installed dependencies that are no longer needed
@@ -253,20 +361,20 @@ export extern "claude plugin uninstall" [
 ]
 
 export extern "claude plugin enable" [
-    plugin: string # Plugin name to enable
+    plugin: string@"nu-complete claude installed-plugins" # Plugin name to enable
     --scope (-s): string@$mcp_scopes # Configuration scope
     --help (-h) # Display help for command
 ]
 
 export extern "claude plugin disable" [
-    plugin?: string # Plugin name to disable (omit with --all)
+    plugin?: string@"nu-complete claude installed-plugins" # Plugin name to disable (omit with --all)
     --all (-a) # Disable all enabled plugins
     --scope (-s): string@$mcp_scopes # Configuration scope
     --help (-h) # Display help for command
 ]
 
 export extern "claude plugin update" [
-    plugin: string # Plugin name to update
+    plugin: string@"nu-complete claude installed-plugins" # Plugin name to update
     --scope (-s): string@$plugin_update_scopes # Installation scope: user, project, local, managed
     --help (-h) # Display help for command
 ]
@@ -285,12 +393,12 @@ export extern "claude plugin prune" [
 ]
 
 export extern "claude plugin tag" [
-    path?: string # Path to plugin directory
+    path?: string@"nu-complete claude dirs" # Path to plugin directory
     --dry-run # Print what would be tagged without creating it
     --force (-f) # Skip the dirty-working-tree and tag-already-exists checks
-    --message (-m): string # Tag annotation message (use %s for the version)
+    --message (-m): string@"nu-complete claude freetext" # Tag annotation message (use %s for the version)
     --push # Push the tag to --remote after creating it
-    --remote: string # Remote to push to with --push (default: "origin")
+    --remote: string@"nu-complete claude freetext" # Remote to push to with --push (default: "origin")
     --help (-h) # Display help for command
 ]
 
@@ -303,7 +411,7 @@ export extern "claude auth" [
 export extern "claude auth login" [
     --claudeai # Use Claude subscription (default)
     --console # Use Anthropic Console (API usage billing) instead of Claude subscription
-    --email: string # Pre-populate email address on the login page
+    --email: string@"nu-complete claude freetext" # Pre-populate email address on the login page
     --sso # Force SSO login flow
     --help (-h) # Display help for command
 ]
@@ -329,7 +437,7 @@ export extern "claude auto-mode config" [
 ]
 
 export extern "claude auto-mode critique" [
-    --model: string@$models # Override which model is used
+    --model: string@"nu-complete claude models" # Override which model is used
     --help (-h) # Display help for command
 ]
 
@@ -344,7 +452,7 @@ export extern "claude project" [
 ]
 
 export extern "claude project purge" [
-    path?: string # Project path (omit with --all)
+    path?: string@"nu-complete claude projects" # Project path (omit with --all)
     --all # Purge state for every project (mutually exclusive with [path])
     --dry-run # List what would be deleted without deleting anything
     --interactive (-i) # Prompt for each item before deleting
@@ -364,17 +472,17 @@ export extern "claude ultrareview" [
 # ===== Agents (background sessions) =====
 
 export extern "claude agents" [
-    --add-dir: string # Additional directory to allow tool access to in dispatched sessions (repeatable)
-    --agent: string # Default agent for dispatched sessions (overrides the 'agent' setting)
+    --add-dir: string@"nu-complete claude dirs" # Additional directory to allow tool access to in dispatched sessions (repeatable)
+    --agent: string@"nu-complete claude agents" # Default agent for dispatched sessions (overrides the 'agent' setting)
     --allow-dangerously-skip-permissions # Make bypass-permissions mode available to dispatched sessions without defaulting to it
     --cwd: path # Show only background sessions started under this path
     --dangerously-skip-permissions # Alias for --permission-mode bypassPermissions
-    --effort: string@$effort_levels # Default effort level for dispatched sessions
+    --effort: string@"nu-complete claude effort" # Default effort level for dispatched sessions
     --json # Print live sessions as a JSON array and exit (for scripting; no TTY required)
-    --mcp-config: string # MCP server configuration to apply to dispatched sessions (repeatable)
-    --model: string@$models # Default model for dispatched sessions
+    --mcp-config: path # MCP server configuration to apply to dispatched sessions (repeatable)
+    --model: string@"nu-complete claude models" # Default model for dispatched sessions
     --permission-mode: string@$permission_modes # Default permission mode for dispatched sessions
-    --setting-sources: string # Comma-separated setting sources (user, project, local)
+    --setting-sources: string@"nu-complete claude setting-sources" # Comma-separated setting sources (user, project, local)
     --settings: string # Settings file or JSON string to apply to the agent view and dispatched sessions
     --strict-mcp-config # Only use MCP servers from --mcp-config in dispatched sessions
     --help (-h) # Display help for command
@@ -395,7 +503,7 @@ export extern "claude update" [
 ]
 
 export extern "claude install" [
-    target?: string@$install_targets # Version to install (stable, latest, or specific)
+    target?: string@[stable latest] # Version to install (stable, latest, or specific)
     --force # Force installation even if already installed
     --help (-h) # Display help for command
 ]
