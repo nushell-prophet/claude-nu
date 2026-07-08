@@ -225,7 +225,7 @@ def "enable seeds the gi skills into .claude/skills" [] {
     rm -rf $root
 
     assert $all_exist
-    assert equal $names ["git-intent" "git-intent-squash-archive"]
+    assert equal $names ["git-intent" "git-intent-distill" "git-intent-squash-archive"]
 }
 
 @test
