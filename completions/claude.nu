@@ -203,7 +203,7 @@ def "nu-complete claude projects" []: nothing -> list<string> {
 # ===== Main Command =====
 
 export extern main [
-    prompt?: string@"nu-complete claude prompt" # Your prompt (also the value slot for --resume et al.)
+    prompt?: any@"nu-complete claude prompt" # Your prompt (also the value slot for --resume et al.; `any` so bool/int values like `--prompt-suggestions false` or `--worktree 5` pass through instead of failing a string type-check)
     --debug (-d) # Enable debug mode with optional category filtering (category passes through as a positional)
     --debug-file: path # Write debug logs to a specific file path (implicitly enables debug mode)
     --verbose # Override verbose mode setting from config
@@ -218,6 +218,7 @@ export extern main [
     --allow-dangerously-skip-permissions # Enable bypassing permissions as an option
     --max-budget-usd: number # Maximum dollar amount for API calls (with --print)
     --replay-user-messages # Re-emit user messages from stdin to stdout
+    --prompt-suggestions # In print/SDK mode, emit a predicted next prompt after each turn (optional value; bare presets "true", an explicit true/false/on/off/... passes through as a positional)
     --allowed-tools: string@"nu-complete claude tools" # Comma/space-separated list of allowed tools
     --tools: string@"nu-complete claude tools" # Specify available tools from built-in set
     --disallowed-tools: string@"nu-complete claude tools" # Comma/space-separated list of denied tools
