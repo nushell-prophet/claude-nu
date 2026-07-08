@@ -112,6 +112,17 @@ def "nu-complete claude setting-sources" [context: string] { $setting_sources | 
 # Free-text argument: suppress Nushell's file-path fallback
 def "nu-complete claude freetext" []: nothing -> list<string> { [] }
 
+# The prompt positional doubles as the value slot for optional-value flags.
+# Why: Nushell can't express an optional-value flag (a typed flag always demands
+# a value), so --resume is a bare switch and any session id given lands here as a
+# positional. Offer the session picker only when --resume/-r is on the line;
+# otherwise suppress file completion like plain freetext.
+def "nu-complete claude prompt" [context: string]: nothing -> any {
+    if ($context | split row ' ' | any {|w| $w in ['--resume' '-r']}) {
+        nu-complete claude sessions
+    } else { [] }
+}
+
 # Directory suggestions from Nushell's own completion engine
 def "nu-complete claude dirs" [context: string]: nothing -> list<string> {
     $context | split row ' ' | last | commandline complete --type directory
@@ -192,8 +203,8 @@ def "nu-complete claude projects" []: nothing -> list<string> {
 # ===== Main Command =====
 
 export extern main [
-    prompt?: string@"nu-complete claude freetext" # Your prompt
-    --debug (-d): string@"nu-complete claude freetext" # Enable debug mode with optional category filtering
+    prompt?: string@"nu-complete claude prompt" # Your prompt (also the value slot for --resume et al.)
+    --debug (-d) # Enable debug mode with optional category filtering (category passes through as a positional)
     --debug-file: path # Write debug logs to a specific file path (implicitly enables debug mode)
     --verbose # Override verbose mode setting from config
     --print (-p) # Print response and exit (useful for pipes)
@@ -215,9 +226,9 @@ export extern main [
     --append-system-prompt: string@"nu-complete claude freetext" # Append to default system prompt
     --permission-mode: string@$permission_modes # Permission mode for the session
     --continue (-c) # Continue the most recent conversation
-    --resume (-r): string@"nu-complete claude sessions" # Resume conversation by session ID or open picker
+    --resume (-r) # Resume conversation by session ID or open picker (optional value; id passes through as a positional, completed via "nu-complete claude prompt")
     --fork-session # Create new session ID when resuming
-    --from-pr: string # Resume a session linked to a PR by PR number/URL (optional value)
+    --from-pr # Resume a session linked to a PR by PR number/URL (optional value; passes through as a positional)
     --no-session-persistence # Disable session persistence (with --print)
     --model: string@"nu-complete claude models" # Model for the current session
     --agent: string@"nu-complete claude agents" # Agent for the current session
@@ -242,10 +253,10 @@ export extern main [
     --effort: string@"nu-complete claude effort" # Effort level for the current session (low, medium, high, xhigh, max)
     --file: string@"nu-complete claude freetext" # File resources to download at startup (file_id:relative_path)
     --name (-n): string@"nu-complete claude freetext" # Set a display name for this session
-    --remote-control: string@"nu-complete claude freetext" # Start an interactive session with Remote Control enabled (optionally named)
+    --remote-control # Start an interactive session with Remote Control enabled (optionally named; name passes through as a positional)
     --remote-control-session-name-prefix: string@"nu-complete claude freetext" # Prefix for auto-generated Remote Control session names
     --tmux # Create a tmux session for the worktree (requires --worktree)
-    --worktree (-w): string@"nu-complete claude freetext" # Create a new git worktree for this session (optionally specify a name)
+    --worktree (-w) # Create a new git worktree for this session (optionally specify a name; name passes through as a positional)
     --version (-v) # Output the version number
     --help (-h) # Display help for command
 ]
