@@ -33,47 +33,71 @@ def find-nutest [] {
 export def main [] { }
 
 # Run all tests
+#
+# Output mode is auto-detected: when stdout is a terminal you get the human view
+# (failures + a summary line); when it is piped or redirected you get machine-readable
+# JSON. Force either with --json / --pretty.
 @example "Run tests interactively" { nu toolkit.nu test }
 @example "Run tests for CI" { nu toolkit.nu test --fail }
 @example "Output JSON for tooling" { nu toolkit.nu test --json }
 export def 'main test' [
-    --json # output results as JSON for external consumption
+    --json # force machine-readable JSON output even on a terminal
+    --pretty # force the human view even when output is piped
+    --all # human view: also list passing tests (default shows only failures)
     --fail # exit with non-zero code if any tests fail (for CI)
 ] {
-    if not $json { print $"(ansi attr_dimmed)Unit tests(ansi reset)" }
-    let results = main test-unit --json=$json
+    let results = collect-unit-results
 
-    # Parse JSON if needed
-    let results_data = if $json { $results | from json } else { $results }
-
-    # Print summary
-    let passed = $results_data | where status == 'passed' | length
-    let failed = $results_data | where status == 'failed' | length
-    let total = $results_data | length
-
-    if not $json {
-        print ""
-        print $"(ansi green_bold)($passed) passed(ansi reset), (ansi red_bold)($failed) failed(ansi reset) \(($total) total\)"
+    if (machine-mode --json=$json --pretty=$pretty) {
+        print ($results | to json --raw)
+    } else {
+        print-human $results --all=$all
     }
 
-    if $fail and $failed > 0 {
-        if $json { print ($results_data | to json --raw) }
+    if $fail and ($results | where status == 'failed' | is-not-empty) {
         exit 1
     }
-
-    if $json { $results_data | to json --raw }
 }
 
 # Run unit tests using nutest
+#
+# Machine (JSON / piped) rows use the flat schema:
+#   {type: 'unit', name, status: 'passed'|'failed', file: null, message}
+# Note: status is 'passed'|'failed', NOT nutest's 'PASS'|'FAIL' 'result' column.
+# message holds the assertion text on failure, null otherwise.
 @example "Run unit tests" { nu toolkit.nu test-unit }
 export def 'main test-unit' [
-    --json # output results as JSON for external consumption
+    --json # force machine-readable JSON output even on a terminal
+    --pretty # force the human view even when output is piped
+    --all # human view: also list passing tests (default shows only failures)
 ] {
+    let flat = collect-unit-results
+    if (machine-mode --json=$json --pretty=$pretty) {
+        $flat | to json --raw
+    } else {
+        print-human $flat --all=$all
+    }
+}
+
+# Decide whether to emit machine-readable data instead of the human view.
+# Why: agents capture stdout through a pipe, humans read it in a terminal.
+# Not $nu.is-interactive because: it reports REPL-ness, not human-ness — it is false for
+# any `nu toolkit.nu ...` script run (human or agent) and true for an agent driving the
+# nushell MCP, so it detects the opposite of what we need. is-terminal --stdout is the tty test.
+def machine-mode [--json --pretty]: nothing -> bool {
+    if $pretty { return false } # Not-piped override wins over everything
+    if $json { return true }
+    not (is-terminal --stdout)
+}
+
+# Collect unit test results as flat rows. nutest runs in a child nu so its module
+# state can't leak into ours; errors go to stderr so they never corrupt the JSON on stdout.
+def collect-unit-results []: nothing -> table {
     let nutest_path = find-nutest
     if $nutest_path == null {
-        print $"(ansi red)✗(ansi reset) nutest not found in NU_LIB_DIRS or at ../nutest"
-        print $"  Install: (ansi attr_dimmed)git clone https://github.com/vyadh/nutest ../nutest(ansi reset)"
-        if $json { return '[]' } else { return [] }
+        print -e $"(ansi red)✗(ansi reset) nutest not found in NU_LIB_DIRS or at ../nutest"
+        print -e $"  Install: (ansi attr_dimmed)git clone https://github.com/vyadh/nutest ../nutest(ansi reset)"
+        return []
     }
 
     let tests_path = 'tests' | path expand
@@ -82,26 +106,40 @@ export def 'main test-unit' [
     } | complete
 
     if $result.exit_code != 0 {
-        print $"(ansi red)✗(ansi reset) nutest failed"
-        if ($result.stderr | str trim | is-not-empty) { print $result.stderr }
-        if $json { return '[]' } else { return [] }
+        print -e $"(ansi red)✗(ansi reset) nutest failed"
+        if ($result.stderr | str trim | is-not-empty) { print -e $result.stderr }
+        return []
     }
 
-    let flat = $result.stdout
-        | from json
-        | each {|row|
-            let status = if $row.result == 'PASS' { 'passed' } else { 'failed' }
-            {type: 'unit' name: $row.test status: $status file: null}
-        }
-
-    if not $json {
-        $flat | each {|r| print-test-result $r }
+    $result.stdout
+    | from json
+    | each {|row|
+        let status = if $row.result == 'PASS' { 'passed' } else { 'failed' }
+        let message = if $status == 'failed' {
+            let msgs = $row.output? | default [] | each {|o| $o.msg? } | compact
+            if ($msgs | is-empty) { null } else { $msgs | str join '; ' }
+        } else { null }
+        {type: 'unit' name: $row.test status: $status file: null message: $message}
     }
-
-    if $json { $flat | to json --raw } else { $flat }
 }
 
-# Print a single test result with status indicator
+# Print the human view: non-passing tests (or all with --all), then a summary line.
+# Returns nothing so no wide table auto-renders and truncates the verdict column.
+def print-human [flat: table --all] {
+    let to_show = if $all { $flat } else { $flat | where status != 'passed' }
+    $to_show | each {|r| print-test-result $r }
+    print-summary $flat
+}
+
+# Print the N passed, M failed headline
+def print-summary [flat: table] {
+    let passed = $flat | where status == 'passed' | length
+    let failed = $flat | where status == 'failed' | length
+    let total = $flat | length
+    print $"(ansi green_bold)($passed) passed(ansi reset), (ansi red_bold)($failed) failed(ansi reset) \(($total) total\)"
+}
+
+# Print a single test result with status indicator (and the assertion on failure)
 def print-test-result [result: record] {
     let icon = match $result.status {
         'passed' => $"(ansi green)✓(ansi reset)"
@@ -110,6 +148,9 @@ def print-test-result [result: record] {
     }
     let suffix = if $result.file != null { $" (ansi attr_dimmed)\(($result.file)\)(ansi reset)" } else { "" }
     print $"  ($icon) ($result.name)($suffix)"
+    if $result.status == 'failed' and ($result.message? | is-not-empty) {
+        print $"      (ansi red)($result.message)(ansi reset)"
+    }
 }
 
 # Download Claude Code documentation pages from the sitemap

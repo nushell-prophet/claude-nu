@@ -75,9 +75,12 @@ claude-nu gi-hook status               # { enabled, settings, doc, style, skills
 
 Uses [nutest](https://github.com/vyadh/nutest) framework (expected at `../nutest`).
 
+Output mode is auto-detected via `is-terminal --stdout` (not `$nu.is-interactive`, which is false for any `nu toolkit.nu ...` script run and so can't tell agent from human): a terminal gets the human view — only the failing tests plus a `N passed, M failed` summary — while a pipe or redirect (agents, CI) gets machine-readable JSON with the flat schema `{type, name, status, file, message}` (`message` holds the assertion text on failure). Force with `--json` / `--pretty`; `--all` also lists passing tests.
+
 ```nushell
 nu toolkit.nu test                     # Run all tests (60+ cases)
 nu toolkit.nu test --fail              # Exit non-zero on failures (for CI)
+nu toolkit.nu test --json              # Force JSON on a terminal; --pretty forces human view when piped
 nu toolkit.nu check                    # Static syntax checking with diagnostics
 
 # Documentation management
