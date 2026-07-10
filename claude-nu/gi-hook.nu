@@ -409,7 +409,7 @@ export def gi-hook-allowed [message: string]: nothing -> bool {
     if ($text | is-empty) { return true }
     if (($text | str lowercase | str replace -r '[.!…]+$' '') in ["done" "noted"]) { return true }
 
-    let max = $env.GI_HOOK_MAX_LEN? | default 240 | into int
+    let max = $env.GI_HOOK_MAX_LEN? | default 480 | into int
     let single_line = not ($text | str contains "\n")
     let within = ($text | str length) <= $max
     # The filename signal needs a 2+ char lowercase/digit extension: `\w+`
