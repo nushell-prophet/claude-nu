@@ -103,7 +103,6 @@ export def "nu-complete claude sessions" []: nothing -> record {
         | where name =~ $UUID_JSONL_PATTERN
         | each {|file|
             let uuid = $file.name | session-id-from-path
-            let size = $file.size | into string
             let raw_lines = try { open --raw $file.name | lines } catch { [] }
             # Why: the title lives in summary/ai-title records anywhere in the
             # file. String-match first so a Tab press never JSON-parses whole
@@ -122,7 +121,7 @@ export def "nu-complete claude sessions" []: nothing -> record {
                 | if ($in != null) { into datetime } else { $file.modified }
 
             let age = $timestamp | date humanize
-            {value: $uuid description: $"($age), ($size): ($summary)" timestamp: $timestamp}
+            {value: $uuid description: $"($age), ($file.size): ($summary)" timestamp: $timestamp}
         }
         | sort-by timestamp --reverse
         | select value description
@@ -313,39 +312,41 @@ def parse-session-columns [selected: list<string>]: path -> record {
         $assistant_records | extract-token-usage
     } else { {} }
 
-    [
-        {name: summary value: $summary}
-        {name: first_timestamp value: $timestamps.first}
-        {name: last_timestamp value: $timestamps.last}
-        {name: user_msg_count value: ($user_messages | length)}
-        {name: user_msg_length value: $user_msg_length}
-        {name: response_length value: $response_length}
-        {name: agent_count value: ($agent_list | length)}
-        {name: agents value: $agent_list}
-        {name: mentioned_files value: $mentioned_files}
-        {name: read_files value: $file_ops.read_files?}
-        {name: edited_files value: $file_ops.edited_files?}
-        {name: user_messages value: $user_messages}
-        {name: session_id value: $meta.session_id?}
-        {name: slug value: $meta.slug?}
-        {name: version value: $meta.version?}
-        {name: cwd value: $meta.cwd?}
-        {name: git_branch value: $meta.git_branch?}
-        {name: thinking_level value: $thinking}
-        {name: bash_commands value: $tool_stats.bash_commands?}
-        {name: bash_count value: $tool_stats.bash_count?}
-        {name: skill_invocations value: $tool_stats.skill_invocations?}
-        {name: tool_errors value: $tool_stats.tool_errors?}
-        {name: ask_user_count value: $tool_stats.ask_user_count?}
-        {name: plan_mode_used value: $tool_stats.plan_mode_used?}
-        {name: tool_counts value: $tool_stats.tool_counts?}
-        {name: turn_count value: $metrics.turn_count?}
-        {name: assistant_msg_count value: $metrics.assistant_msg_count?}
-        {name: tool_call_count value: $metrics.tool_call_count?}
-        {name: token_usage value: $usage}
-    ]
-    | where name in $selected
-    | reduce --fold {} {|it acc| $acc | insert $it.name $it.value }
+    # Why `select` (not where+reduce): it keeps $selected's order and fails fast
+    # if SESSION_COLUMNS names a column this record doesn't compute — drift
+    # between the two lists used to be silently dropped.
+    {
+        summary: $summary
+        first_timestamp: $timestamps.first
+        last_timestamp: $timestamps.last
+        user_msg_count: ($user_messages | length)
+        user_msg_length: $user_msg_length
+        response_length: $response_length
+        agent_count: ($agent_list | length)
+        agents: $agent_list
+        mentioned_files: $mentioned_files
+        read_files: $file_ops.read_files?
+        edited_files: $file_ops.edited_files?
+        user_messages: $user_messages
+        session_id: $meta.session_id?
+        slug: $meta.slug?
+        version: $meta.version?
+        cwd: $meta.cwd?
+        git_branch: $meta.git_branch?
+        thinking_level: $thinking
+        bash_commands: $tool_stats.bash_commands?
+        bash_count: $tool_stats.bash_count?
+        skill_invocations: $tool_stats.skill_invocations?
+        tool_errors: $tool_stats.tool_errors?
+        ask_user_count: $tool_stats.ask_user_count?
+        plan_mode_used: $tool_stats.plan_mode_used?
+        tool_counts: $tool_stats.tool_counts?
+        turn_count: $metrics.turn_count?
+        assistant_msg_count: $metrics.assistant_msg_count?
+        tool_call_count: $metrics.tool_call_count?
+        token_usage: $usage
+    }
+    | select ...$selected
     | insert path $file_path
 }
 
@@ -397,6 +398,24 @@ export def "nu-complete claude session-columns" [context: string]: nothing -> li
     | each {|c| if ($prefix | is-empty) { $c } else { $"($prefix),($c)" } }
 }
 
+# Expand paths (piped or positional) to session-file rows. A directory
+# discovers its sessions; a file is taken as-is, whatever its name — UUID/agent
+# pattern filtering lives in discover-session-files (directory scans only), and
+# a caller naming a file explicitly skips the layout-based parent discovery.
+def expand-session-paths []: list<path> -> table {
+    each {|p|
+        if not ($p | path exists) {
+            error make {msg: $"Path not found: ($p)"}
+        }
+        if ($p | path type) == "dir" {
+            discover-session-files $p
+        } else {
+            [{path: $p parent_session_id: null}]
+        }
+    }
+    | flatten
+}
+
 # Parse Claude Code sessions for structured information.
 # `--columns` selects what to compute (lazy — only requested extractions run);
 # omit it for the default overview set, `--all-columns` for everything. Column
@@ -420,73 +439,45 @@ export def main [
     let piped_path = if ($input | describe) == "string" { $input } else { null }
     let piped_files = if $piped_path == null { resolve-piped-sessions $input } else { null }
 
-    if $all_projects and ($paths | is-not-empty) {
-        error make {msg: "--all-projects and explicit paths are mutually exclusive"}
-    }
-    if $session != null {
-        if ($paths | is-not-empty) { error make {msg: "--session and explicit paths are mutually exclusive"} }
-        if $all_projects { error make {msg: "--session and --all-projects are mutually exclusive"} }
-        if $last { error make {msg: "--session and --last are mutually exclusive"} }
-    }
-    if $last and ($all_projects or ($paths | is-not-empty)) {
-        error make {msg: "--last cannot be combined with --all-projects or explicit paths"}
-    }
-    if ($piped_files != null or $piped_path != null) and ($session != null or $last or $all_projects or ($paths | is-not-empty)) {
-        error make {msg: "Piped input conflicts with --session/--last/--all-projects/paths"}
+    # Why data-driven: every scope selector excludes every other, so one check
+    # over the active set covers all pairs — the old pairwise ifs had to
+    # hand-enumerate each combination and could miss one.
+    let active_scopes = [
+        [scope active];
+        ["piped input" ($piped_files != null or $piped_path != null)]
+        ["--session" ($session != null)]
+        ["--last" $last]
+        ["--all-projects" $all_projects]
+        ["explicit paths" ($paths | is-not-empty)]
+    ]
+    | where active
+    | get scope
+    if ($active_scopes | length) > 1 {
+        error make {msg: $"($active_scopes | str join ' and ') are mutually exclusive — pick one session scope"}
     }
     # Why: --last/--session resolve to a single top-level file, so there are no
     # subagents to include — flag it as a no-op rather than silently ignore.
     if $subagents and ($last or $session != null) {
-        print -e "claude-nu sessions: --subagents has no effect with --last/--session — those select a single top-level session"
+        print --stderr "claude-nu sessions: --subagents has no effect with --last/--session — those select a single top-level session"
     }
 
-    let session_rows = if $piped_files != null {
-        # Why: a piped path may be a project dir (`projects | sessions`) —
-        # expand it like a positional dir; files are parsed as-is.
-        $piped_files
-        | each {|p|
-            if ($p | path type) == "dir" {
-                discover-session-files $p
-            } else {
-                [{path: $p parent_session_id: null}]
-            }
-        }
-        | flatten
-    } else if $session != null or $last {
+    let session_rows = if $session != null or $last {
         # Why: parse-session defaulted to the most recent session; after the
         # merge (bare scope = whole project) --last keeps that workflow.
-        [{path: (resolve-session-file $session) parent_session_id: null}]
+        [(resolve-session-file $session)] | expand-session-paths
+    } else if $all_projects {
+        let projects_dir = projects-root
+        if not ($projects_dir | path exists) {
+            error make {msg: "No projects directory found"}
+        }
+        ls $projects_dir | where type == dir | get name | expand-session-paths
     } else {
-        let target_paths = if $all_projects {
-            let projects_dir = projects-root
-            if not ($projects_dir | path exists) {
-                error make {msg: "No projects directory found"}
-            }
-            ls $projects_dir | where type == dir | get name
-        } else {
-            $paths
-            | if ($in | is-empty) {
-                [($piped_path | default (get-sessions-dir))]
-            } else { }
-        }
-
-        # Why: UUID/agent pattern filtering lives in discover-session-files
-        # (directory scans only) — a file named explicitly or piped is parsed
-        # as-is, whatever its name.
-        $target_paths
-        | each {|p|
-            if not ($p | path exists) {
-                error make {msg: $"Path not found: ($p)"}
-            }
-            if ($p | path type) == "dir" {
-                discover-session-files $p
-            } else {
-                # Why: explicit file paths skip the layout-based parent
-                # discovery — caller already pointed us at the file.
-                [{path: $p parent_session_id: null}]
-            }
-        }
-        | flatten
+        # Why: piped rows and positional paths mean the same thing (`projects |
+        # sessions` pipes project dirs), so they share one expansion.
+        $piped_files
+        | default $paths
+        | if ($in | is-empty) { [($piped_path | default (get-sessions-dir))] } else { }
+        | expand-session-paths
     }
 
     # Why: subagent transcripts hold agent-driven turns, not human messages, so
@@ -503,11 +494,13 @@ export def main [
 
     # Why: --columns is a comma-separated string (see the completer) — split,
     # trim, and drop empties so "slug, cwd" and a trailing comma are forgiving.
+    # uniq because `select` (unlike the old where+reduce) rejects a repeated name.
     let requested = $columns
         | default ""
         | split row ','
-        | each { str trim }
+        | str trim
         | where $it != ""
+        | uniq
 
     if $all_columns and ($requested | is-not-empty) {
         error make {msg: "--columns and --all-columns are mutually exclusive"}
@@ -531,9 +524,6 @@ export def main [
     }
 
     $session_rows | each {|row|
-        if not ($row.path | path exists) {
-            error make {msg: $"Session file not found: ($row.path)"}
-        }
         $row.path | parse-session-columns $selected | insert parent_session_id $row.parent_session_id
     }
 }
@@ -578,14 +568,14 @@ export def export-session [
             | default (if $summary != "" { $summary } else { "session" })
             | sanitize-topic
 
-        # Get date from first user record or now
+        # Date from the first user record, or now
         let first_timestamp = $records
             | where type? == "user"
             | get timestamp --optional
             | compact
-            | if ($in | is-empty) { [(date now | format date "%Y-%m-%dT%H:%M:%S")] } else { }
+            | if ($in | is-empty) { [(date now)] } else { }
             | first
-        let date_str = $first_timestamp | into datetime | format date "%Y%m%d"
+            | into datetime
 
         # Extract dialogue: user messages and assistant responses
         let dialogue = $records
@@ -598,16 +588,14 @@ export def export-session [
 
         # Format as markdown
         let session_id = $session_file | session-id-from-path
-        let date_formatted = $first_timestamp | into datetime | format date '%Y-%m-%d'
 
         let frontmatter = {
-            date: $date_formatted
+            date: ($first_timestamp | format date '%Y-%m-%d')
             session: $session_id
         }
-        | if $summary != "" {insert summary $summary} else {}
+        | if $summary != "" { insert summary $summary } else { }
         | to yaml
         | $"---\n($in)---\n"
-
 
         let title = $"# ($resolved_topic | str replace --all '-' ' ' | str title-case)"
 
@@ -622,7 +610,7 @@ export def export-session [
 
         {
             session: $session_id
-            date: $date_str
+            date: ($first_timestamp | format date "%Y%m%d")
             topic: $resolved_topic
             markdown: $markdown
         }
@@ -675,7 +663,7 @@ export def save-markdown [
     let results = $rows
         | each {|r|
             let filepath = $out_dir | path join $r.filename
-            $r.markdown | save -f $filepath
+            $r.markdown | save --force $filepath
             {session: $r.session filepath: $filepath}
         }
 
