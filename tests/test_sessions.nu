@@ -371,6 +371,37 @@ def "sessions handles empty file" [] {
 }
 
 @test
+def "sessions timestamps span all records, not just user turns" [] {
+    # Why: a session can have zero user turns (e.g. open Claude, run /usage,
+    # quit) yet hold timestamped system records. User-only extraction gave it
+    # last_timestamp null, and sort-by places null after every datetime — so
+    # `sessions | sort-by last_timestamp | last` always picked such a junk
+    # session instead of the real latest one. The span must also reach past
+    # the last user turn to the assistant's final response.
+    let no_user = $nu.temp-dir | path join $"test-nouser-(random uuid).jsonl"
+    let dialogue = $nu.temp-dir | path join $"test-span-(random uuid).jsonl"
+
+    [
+        '{"type":"mode","mode":"normal"}'
+        '{"type":"system","subtype":"local_command","content":"<command-name>/usage</command-name>","timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"system","subtype":"local_command","content":"<local-command-stdout>ok</local-command-stdout>","timestamp":"2024-01-15T10:00:30Z"}'
+    ] | str join "\n" | save --force $no_user
+
+    [
+        '{"type":"user","message":{"content":"Question"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"Answer"}]},"timestamp":"2024-01-15T10:00:05Z"}'
+    ] | str join "\n" | save --force $dialogue
+
+    let results = sessions $no_user $dialogue --columns first_timestamp,last_timestamp
+
+    rm $no_user $dialogue
+
+    assert equal $results.0.first_timestamp ("2024-01-15T10:00:00Z" | into datetime)
+    assert equal $results.0.last_timestamp ("2024-01-15T10:00:30Z" | into datetime)
+    assert equal $results.1.last_timestamp ("2024-01-15T10:00:05Z" | into datetime)
+}
+
+@test
 def "sessions default columns are the overview set" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 

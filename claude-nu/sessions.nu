@@ -274,7 +274,7 @@ def parse-session-columns [selected: list<string>]: path -> record {
     let summary = if ("summary" in $selected) { $records | extract-summary } else { "" }
 
     let timestamps = if (do $need [first_timestamp last_timestamp]) {
-        $user_records | extract-timestamps
+        $records | extract-timestamps
     } else { {first: null last: null} }
 
     let file_ops = if (do $need [read_files edited_files]) {

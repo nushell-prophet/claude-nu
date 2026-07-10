@@ -121,7 +121,14 @@ export def extract-thinking-level []: table -> string {
     pick-first $.thinkingMetadata.level
 }
 
-# Extract first/last timestamps from user records
+# First/last timestamp across all records that carry one — the session's
+# activity span.
+# Why: not user records only — a session can have zero user turns (e.g. the
+# user opened Claude, ran /usage, quit) yet still hold timestamped system
+# records. User-only extraction gave those sessions a null last_timestamp,
+# and sort-by places null after every datetime, so the natural
+# `sessions | sort-by last_timestamp | last` idiom always picked a junk
+# session instead of the real latest one.
 export def extract-timestamps []: table -> record {
     let ts = get timestamp --optional
         | compact
