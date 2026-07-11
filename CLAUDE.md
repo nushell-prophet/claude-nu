@@ -22,7 +22,7 @@ claude-nu/
 │   ├── discovery.nu     # On-disk session layout: enumerate, resolve, read session files
 │   ├── extract.nu       # Session records -> text, dialogue, metrics
 │   ├── render.nu        # Record content -> markdown text
-│   └── gi-hook.nu       # gi-hook Stop hook (enable/disable/status/check)
+│   └── gi.nu            # gi protocol setup (enable/disable/status/check; enable --hook installs the Stop hook)
 ├── completions/         # External command completions
 │   ├── claude.nu        # claude CLI (50+ flags, session picker, MCP/plugin subcommands)
 │   ├── nu.nu            # nu CLI (dynamic: parses scripts for subcommands at tab-time)
@@ -40,7 +40,7 @@ claude-nu/
 - `sessions` uses lazy evaluation — 25+ optional columns, only requested extractions run
 - `nu.nu` completions dynamically parse script AST to discover subcommands at tab-time
 - `claude.nu` session picker shows age, size, and summary alongside UUIDs
-- `claude-nu/gi-md-src/canvas-output-style.md` is the canonical Canvas style; `gi-hook enable` seeds it into each repo's `.claude/output-styles/canvas.md`. A public copy lives in `../my-claude-skills/plugins/canvas-output-style/output-styles/canvas.md` — edit here first, then sync there. That copy deliberately drops the `$env.GI_HOOK_DOC` sentence (no hook there to set it) and the protected-branch bullet (it names a skill the plugin doesn't ship). Keep the style file itself comment-free: it is seeded verbatim and injected into every consumer session's system prompt.
+- `claude-nu/gi-md-src/canvas-output-style.md` is the canonical Canvas style; `gi enable` seeds it into each repo's `.claude/output-styles/canvas.md`. A public copy lives in `../my-claude-skills/plugins/canvas-output-style/output-styles/canvas.md` — edit here first, then sync there. That copy deliberately drops the `$env.GI_HOOK_DOC` sentence (no hook there to set it) and the protected-branch bullet (it names a skill the plugin doesn't ship). Keep the style file itself comment-free: it is seeded verbatim and injected into every consumer session's system prompt.
 
 ## Commands
 
@@ -65,10 +65,11 @@ claude-nu sessions --subagents         # Also include subagent transcripts (pare
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, thinking level...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
 claude-nu export-session               # Export to markdown with YAML frontmatter
-claude-nu gi-hook enable               # Install a per-repo Stop hook that keeps chat terse (gi protocol)
-claude-nu gi-hook enable notes/plan.md # Same, with a chosen working-doc path (default: gi/canvas-<timestamp>.md)
-claude-nu gi-hook enable --force       # Re-seed the style and skills from the module (working doc untouched)
-claude-nu gi-hook status               # { enabled, settings, doc, style, skills, stale, output_style_set }
+claude-nu gi enable                    # Seed the Canvas style, gi skills, and working doc; turn the style on (no hook)
+claude-nu gi enable --hook             # Same, plus the Stop hook that keeps chat terse (strict gi protocol)
+claude-nu gi enable notes/plan.md      # Same, with a chosen working-doc path (default: gi/canvas-<timestamp>.md)
+claude-nu gi enable --force            # Re-seed the style and skills from the module (working doc untouched)
+claude-nu gi status                    # { hook, settings, doc, style, skills, stale, output_style_set }
 ```
 
 ## Development

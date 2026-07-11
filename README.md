@@ -131,21 +131,22 @@ claude-nu export-session | claude-nu save-markdown --output-dir ./tmp # Custom o
 
 Filters out system-generated messages, keeping only user prompts and assistant responses.
 
-### `claude-nu gi-hook`
+### `claude-nu gi`
 
-Install a per-repo Claude Code **Stop hook** that keeps the chat terse — for the gi protocol, where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing. When enabled, the agent's final chat message must be `done`/`noted` or a short pointer (one line with a path/link); anything longer blocks the turn with an instruction to move the answer into the working doc and commit it — the block message names the exact file. The hook also blocks any turn ending on `main`/`master`: gi commits are internal working history; they reach a public branch only squash-merged, after finalization. Opt-in and per-repo, so the classic mode is untouched.
+Set up the gi protocol in a repo — where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing. `enable` seeds the Canvas output style, the gi skills, and a working doc, and turns the style on in `.claude/settings.local.json`. With `--hook`, it also installs a Claude Code **Stop hook** as the hard floor: the agent's final chat message must be `done`/`noted` or a short pointer (one line with a path/link); anything longer blocks the turn with an instruction to move the answer into the working doc and commit it — the block message names the exact file. The hook also blocks any turn ending on `main`/`master`: gi commits are internal working history; they reach a public branch only squash-merged, after finalization. The hook is opt-in because the floor only fits strict gi sessions — plain-chat sessions keep the style without being blocked. Everything is per-repo, so the classic mode is untouched.
 
 ```nushell no-run
-claude-nu gi-hook enable            # install into this repo's .claude/settings.local.json
-claude-nu gi-hook enable notes/x.md # same, choosing the working-doc path (default: gi/canvas-<timestamp>.md)
-claude-nu gi-hook disable           # remove it (leaves any other hooks intact)
-claude-nu gi-hook status            # { enabled, settings, doc, style, output_style_set }
-claude-nu gi-hook check             # hook body — reads the Stop event JSON on stdin
+claude-nu gi enable            # seed style/skills/doc, turn the style on — no hook
+claude-nu gi enable --hook     # same, plus the Stop hook (strict gi mode)
+claude-nu gi enable notes/x.md # choose the working-doc path (default: gi/canvas-<timestamp>.md)
+claude-nu gi disable           # remove the hook and outputStyle (leaves other hooks and seeded files intact)
+claude-nu gi status            # { hook, settings, doc, style, output_style_set }
+claude-nu gi check             # hook body — reads the Stop event JSON on stdin
 ```
 
-The hook lives in `.claude/settings.local.json` (already gitignored by Claude Code), so it never reaches another checkout. `enable` is idempotent and preserves foreign hooks: re-running keeps the recorded working doc, passing a path switches it. `disable` removes only our entries. The "short pointer" length budget defaults to 480 and is tunable via the `GI_HOOK_MAX_LEN` environment variable.
+Everything lives in `.claude/settings.local.json` (already gitignored by Claude Code), so it never reaches another checkout. `enable` is idempotent and preserves foreign hooks: re-running keeps the recorded working doc (and an installed hook — plain re-enable refreshes it without changing its on/off state), passing a path switches the doc. `disable` removes only our entries. The "short pointer" length budget defaults to 480 and is tunable via the `GI_HOOK_MAX_LEN` environment variable. (The command was renamed from `gi-hook` when the hook became opt-in; the old spelling stays as a deprecated alias so settings files written before the rename keep working.)
 
-The chosen working-doc path is recorded as `env.GI_HOOK_DOC` in the same settings file; Claude Code exports it into the session, so the agent can locate the canvas via `$env.GI_HOOK_DOC` without being blocked first. `enable` seeds the doc from a template and installs the **Canvas** output style (the proactive half — the hook is the reactive floor) as `.claude/output-styles/canvas.md`, setting `outputStyle` so both turn on together. Seeded files are never overwritten, so your edits are safe; the style loads at session start, so run `/clear` or start a new session after enabling.
+The chosen working-doc path is recorded as `env.GI_HOOK_DOC` in the same settings file; Claude Code exports it into the session, so the agent can locate the canvas via `$env.GI_HOOK_DOC` without being blocked first. `enable` seeds the doc from a template and installs the **Canvas** output style (the proactive half — the optional hook is the reactive floor) as `.claude/output-styles/canvas.md`, setting `outputStyle` so the style turns on with the setup. Seeded files are never overwritten, so your edits are safe; the style loads at session start, so run `/clear` or start a new session after enabling.
 
 ## CLI Completions
 

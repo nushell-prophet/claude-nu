@@ -1,12 +1,14 @@
 use std/assert
 use std/testing *
 
-# Import internals (helpers) and the public subcommands. The `gi-hook *`
-# subcommands are exported from gi-hook.nu; pull them in unprefixed here.
-use ../claude-nu/gi-hook.nu *
+# Import internals (helpers) and the public command. `use gi.nu *` yields the
+# `gi` command (main) plus the exported helpers, unprefixed.
+use ../claude-nu/gi.nu *
+# The module itself, for the deprecated `claude-nu gi-hook` alias.
+use ../claude-nu
 
 def temp-root []: nothing -> path {
-    $nu.temp-dir | path join $"gi-hook-(random uuid)"
+    $nu.temp-dir | path join $"gi-(random uuid)"
 }
 
 def settings-of [root: path]: nothing -> path {
@@ -18,24 +20,36 @@ def settings-of [root: path]: nothing -> path {
 # =============================================================================
 
 @test
-def "enable writes the Stop hook into an empty settings file" [] {
+def "plain enable does not install the Stop hook" [] {
     let root = temp-root
-    let status = gi-hook enable --root $root
+    let status = gi enable --root $root
     let settings = open (settings-of $root)
     rm -rf $root
 
-    assert $status.enabled
+    assert (not $status.hook)
+    assert $status.output_style_set
+    assert equal $settings.hooks.Stop []
+}
+
+@test
+def "enable with hook flag writes the Stop hook into an empty settings file" [] {
+    let root = temp-root
+    let status = gi enable --hook --root $root
+    let settings = open (settings-of $root)
+    rm -rf $root
+
+    assert $status.hook
     assert equal ($settings.hooks.Stop | length) 1
     let entry = $settings.hooks.Stop.0.hooks.0
     assert equal $entry.type "command"
-    assert ($entry.command | str contains "gi-hook check")
+    assert ($entry.command | str contains "gi check")
 }
 
 @test
 def "enable is idempotent — a second enable adds no duplicate" [] {
     let root = temp-root
-    gi-hook enable --root $root | ignore
-    gi-hook enable --root $root | ignore
+    gi enable --hook --root $root | ignore
+    gi enable --hook --root $root | ignore
     let settings = open (settings-of $root)
     rm -rf $root
 
@@ -43,19 +57,34 @@ def "enable is idempotent — a second enable adds no duplicate" [] {
 }
 
 @test
-def "re-enable refreshes a stale hook command" [] {
+def "re-enable without hook flag keeps an installed hook" [] {
+    let root = temp-root
+    gi enable --hook --root $root | ignore
+    # Plain re-enable (e.g. to switch the doc) must not silently drop the floor.
+    gi enable other.md --root $root | ignore
+    let settings = open (settings-of $root)
+    rm -rf $root
+
+    assert equal ($settings.hooks.Stop | length) 1
+}
+
+@test
+def "re-enable refreshes a stale hook command, pre-rename spelling included" [] {
     let root = temp-root
     mkdir ($root | path join ".claude")
-    # Our marker, but a command recorded from a since-moved checkout.
+    # Our marker in its pre-rename spelling, with a command recorded from a
+    # since-moved checkout. Plain enable must recognize it as ours and refresh
+    # it in place — not drop it, not add a second entry.
     {
         hooks: { Stop: [ { hooks: [ { type: "command", command: "nu -c 'use /old/checkout; gi-hook check'" } ] } ] }
     } | save (settings-of $root)
-    gi-hook enable --root $root | ignore
+    gi enable --root $root | ignore
     let settings = open (settings-of $root)
     rm -rf $root
 
     assert equal ($settings.hooks.Stop | length) 1
     assert ($settings.hooks.Stop.0.hooks.0.command | str contains "--stdin")
+    assert ($settings.hooks.Stop.0.hooks.0.command | str contains "claude-nu gi check")
 }
 
 @test
@@ -67,7 +96,7 @@ def "enable preserves foreign hooks and other settings keys" [] {
         hooks: { Stop: [ { hooks: [ { type: "command", command: "echo other" } ] } ] }
     } | save (settings-of $root)
 
-    gi-hook enable --root $root | ignore
+    gi enable --hook --root $root | ignore
     let settings = open (settings-of $root)
     rm -rf $root
 
@@ -84,27 +113,27 @@ def "disable removes only our entry and leaves foreign hooks" [] {
     {
         hooks: { Stop: [ { hooks: [ { type: "command", command: "echo other" } ] } ] }
     } | save (settings-of $root)
-    gi-hook enable --root $root | ignore
+    gi enable --hook --root $root | ignore
 
-    let status = gi-hook disable --root $root
+    let status = gi disable --root $root
     let settings = open (settings-of $root)
     rm -rf $root
 
-    assert (not $status.enabled)
+    assert (not $status.hook)
     assert equal ($settings.hooks.Stop | length) 1
     assert equal $settings.hooks.Stop.0.hooks.0.command "echo other"
 }
 
 @test
-def "disable removes every value gi-hook set" [] {
+def "disable removes every value gi set" [] {
     let root = temp-root
-    gi-hook enable --root $root | ignore
-    gi-hook disable --root $root | ignore
+    gi enable --hook --root $root | ignore
+    gi disable --root $root | ignore
     let settings = open (settings-of $root)
     rm -rf $root
 
     # Emptied containers stay behind (harmless in a gitignored local file);
-    # what matters is that no gi-hook entry, doc, or style survives.
+    # what matters is that no gi entry, doc, or style survives.
     assert equal $settings.hooks.Stop []
     assert equal $settings.env {}
     assert equal $settings.outputStyle? null
@@ -113,18 +142,18 @@ def "disable removes every value gi-hook set" [] {
 @test
 def "disable is a no-op when nothing is installed" [] {
     let root = temp-root
-    let status = gi-hook disable --root $root
+    let status = gi disable --root $root
     let existed = settings-of $root | path exists
     rm -rf $root
 
-    assert (not $status.enabled)
+    assert (not $status.hook)
     assert (not $existed)
 }
 
 @test
 def "enable seeds a timestamped working doc under gi and records it" [] {
     let root = temp-root
-    let status = gi-hook enable --root $root
+    let status = gi enable --root $root
     let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
     let deployed = $root | path join $recorded
     let exists = $deployed | path exists
@@ -140,7 +169,7 @@ def "enable seeds a timestamped working doc under gi and records it" [] {
 @test
 def "enable accepts a custom working-doc path" [] {
     let root = temp-root
-    gi-hook enable notes/plan.md --root $root | ignore
+    gi enable notes/plan.md --root $root | ignore
     let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
     let exists = $root | path join "notes" "plan.md" | path exists
     rm -rf $root
@@ -152,11 +181,11 @@ def "enable accepts a custom working-doc path" [] {
 @test
 def "re-enable keeps the recorded doc unless a new one is given" [] {
     let root = temp-root
-    gi-hook enable --root $root | ignore
+    gi enable --root $root | ignore
     let first = open (settings-of $root) | get env.GI_HOOK_DOC
-    gi-hook enable --root $root | ignore
+    gi enable --root $root | ignore
     let second = open (settings-of $root) | get env.GI_HOOK_DOC
-    gi-hook enable other.md --root $root | ignore
+    gi enable other.md --root $root | ignore
     let third = open (settings-of $root) | get env.GI_HOOK_DOC
     rm -rf $root
 
@@ -170,7 +199,7 @@ def "enable does not clobber an existing working doc" [] {
     mkdir ($root | path join "gi")
     let deployed = $root | path join "gi" "doc.md"
     "my edited working doc" | save $deployed
-    gi-hook enable gi/doc.md --root $root | ignore
+    gi enable gi/doc.md --root $root | ignore
     let body = open --raw $deployed
     rm -rf $root
 
@@ -180,7 +209,7 @@ def "enable does not clobber an existing working doc" [] {
 @test
 def "a doc path with a non-enable action errors" [] {
     let root = temp-root
-    let out = try { gi-hook status some.md --root $root; null } catch {|e| $e.msg }
+    let out = try { gi status some.md --root $root; null } catch {|e| $e.msg }
     rm -rf $root
 
     assert ($out != null)
@@ -191,8 +220,8 @@ def "disable removes the recorded doc and preserves foreign env vars" [] {
     let root = temp-root
     mkdir ($root | path join ".claude")
     { env: { OTHER: "kept" } } | save (settings-of $root)
-    gi-hook enable --root $root | ignore
-    gi-hook disable --root $root | ignore
+    gi enable --root $root | ignore
+    gi disable --root $root | ignore
     let settings = open (settings-of $root)
     rm -rf $root
 
@@ -202,7 +231,7 @@ def "disable removes the recorded doc and preserves foreign env vars" [] {
 @test
 def "enable distributes the output style and sets outputStyle" [] {
     let root = temp-root
-    let status = gi-hook enable --root $root
+    let status = gi enable --root $root
     let style = $root | path join ".claude" "output-styles" "canvas.md"
     let exists = $style | path exists
     let body = if $exists { open --raw $style } else { "" }
@@ -219,7 +248,7 @@ def "enable distributes the output style and sets outputStyle" [] {
 @test
 def "enable seeds the gi skills into .claude/skills" [] {
     let root = temp-root
-    let status = gi-hook enable --root $root
+    let status = gi enable --root $root
     let all_exist = $status.skills | all {|p| $p | path exists }
     let names = $status.skills | each {|p| $p | path dirname | path basename } | sort
     rm -rf $root
@@ -234,7 +263,7 @@ def "enable does not clobber an edited skill" [] {
     let skill = $root | path join ".claude" "skills" "git-intent" "SKILL.md"
     mkdir ($skill | path dirname)
     "my edited skill" | save $skill
-    gi-hook enable --root $root | ignore
+    gi enable --root $root | ignore
     let body = open --raw $skill
     rm -rf $root
 
@@ -247,7 +276,7 @@ def "enable does not clobber an edited style" [] {
     let style = $root | path join ".claude" "output-styles" "canvas.md"
     mkdir ($style | path dirname)
     "my edited style" | save $style
-    gi-hook enable --root $root | ignore
+    gi enable --root $root | ignore
     let body = open --raw $style
     rm -rf $root
 
@@ -257,12 +286,12 @@ def "enable does not clobber an edited style" [] {
 @test
 def "enable --force refreshes an edited style and skill" [] {
     let root = temp-root
-    gi-hook enable --root $root | ignore
+    gi enable --root $root | ignore
     let style = $root | path join ".claude" "output-styles" "canvas.md"
     let skill = $root | path join ".claude" "skills" "git-intent" "SKILL.md"
     "edited style" | save --force $style
     "edited skill" | save --force $skill
-    gi-hook enable --root $root --force | ignore
+    gi enable --root $root --force | ignore
     let style_body = open --raw $style
     let skill_body = open --raw $skill
     rm -rf $root
@@ -274,12 +303,12 @@ def "enable --force refreshes an edited style and skill" [] {
 @test
 def "status reports seeds differing from the module as stale" [] {
     let root = temp-root
-    gi-hook enable --root $root | ignore
-    let fresh = gi-hook status --root $root | get stale
+    gi enable --root $root | ignore
+    let fresh = gi status --root $root | get stale
     "user edit" | save --force ($root | path join ".claude" "skills" "git-intent" "SKILL.md")
-    let edited = gi-hook status --root $root | get stale
-    gi-hook enable --root $root --force | ignore
-    let refreshed = gi-hook status --root $root | get stale
+    let edited = gi status --root $root | get stale
+    gi enable --root $root --force | ignore
+    let refreshed = gi status --root $root | get stale
     rm -rf $root
 
     assert equal $fresh []
@@ -290,10 +319,10 @@ def "status reports seeds differing from the module as stale" [] {
 @test
 def "enable --force never overwrites the working doc" [] {
     let root = temp-root
-    gi-hook enable gi/doc.md --root $root | ignore
+    gi enable gi/doc.md --root $root | ignore
     let doc = $root | path join "gi" "doc.md"
     "my work" | save --force $doc
-    gi-hook enable --root $root --force | ignore
+    gi enable --root $root --force | ignore
     let body = open --raw $doc
     rm -rf $root
 
@@ -304,18 +333,24 @@ def "enable --force never overwrites the working doc" [] {
 # block, where a leading -- parses as a flag and kills the whole suite.
 @test
 def "a force flag with a non-enable action errors" [] {
-    let out = try { gi-hook status --force; null } catch {|e| $e.msg }
+    let out = try { gi status --force; null } catch {|e| $e.msg }
+    assert ($out != null)
+}
+
+@test
+def "a hook flag with a non-enable action errors" [] {
+    let out = try { gi status --hook; null } catch {|e| $e.msg }
     assert ($out != null)
 }
 
 @test
 def "disable drops our outputStyle but keeps a foreign one" [] {
     let root = temp-root
-    gi-hook enable --root $root | ignore
+    gi enable --root $root | ignore
     # User switched to their own style while canvas mode was on; disable must
     # leave it, removing only the value we set.
     open (settings-of $root) | upsert outputStyle "Explanatory" | save --force (settings-of $root)
-    gi-hook disable --root $root | ignore
+    gi disable --root $root | ignore
     let settings = open (settings-of $root)
     rm -rf $root
 
@@ -328,7 +363,7 @@ def "enable stores an absolute doc arriving through a symlink as root-relative" 
     mkdir ($root | path join "gi")
     let link = $"($root)-link"
     ^ln -s $root $link
-    gi-hook enable ($link | path join "gi" "plan.md") --root $root | ignore
+    gi enable ($link | path join "gi" "plan.md") --root $root | ignore
     let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
     rm -rf $root $link
 
@@ -338,11 +373,11 @@ def "enable stores an absolute doc arriving through a symlink as root-relative" 
 @test
 def "status returns absolute paths regardless of cwd" [] {
     let root = temp-root
-    gi-hook enable --root $root | ignore
+    gi enable --root $root | ignore
     let expected = settings-of ($root | path expand)
     let orig = $env.PWD
     cd $root
-    let status = gi-hook status --root $root
+    let status = gi status --root $root
     cd $orig
     rm -rf $root
 
@@ -352,15 +387,15 @@ def "status returns absolute paths regardless of cwd" [] {
 }
 
 @test
-def "status reflects enabled and disabled state" [] {
+def "status reflects hook state across enable and disable" [] {
     let root = temp-root
-    let before = gi-hook status --root $root
-    gi-hook enable --root $root | ignore
-    let after = gi-hook status --root $root
+    let before = gi status --root $root
+    gi enable --hook --root $root | ignore
+    let after = gi status --root $root
     rm -rf $root
 
-    assert (not $before.enabled)
-    assert $after.enabled
+    assert (not $before.hook)
+    assert $after.hook
     # doc is null until enable records one in settings.
     assert equal $before.doc null
     assert ($after.doc != null)
@@ -373,7 +408,7 @@ def "status reflects enabled and disabled state" [] {
 def block-decision [payload: record]: nothing -> any {
     # Default cwd to a non-repo dir so the branch guard sees the payload's
     # state, not whatever branch the test runner's own repo happens to be on.
-    {cwd: $nu.temp-dir} | merge $payload | to json | gi-hook check
+    {cwd: $nu.temp-dir} | merge $payload | to json | gi check
 }
 
 @test
@@ -417,7 +452,7 @@ def "check treats a non-object payload as empty, inside the contract" [] {
     let orig = $env.PWD
     cd $nu.temp-dir
     for raw in ['"hi"' '123' 'null' '[1, 2]'] {
-        assert equal ($raw | gi-hook check) null
+        assert equal ($raw | gi check) null
     }
     cd $orig
 }
@@ -425,7 +460,7 @@ def "check treats a non-object payload as empty, inside the contract" [] {
 @test
 def "check names the recorded doc in the block reason" [] {
     let root = temp-root
-    gi-hook enable gi/plan.md --root $root | ignore
+    gi enable gi/plan.md --root $root | ignore
     let prose = "Long prose without any link signal that must be blocked by the rule"
     let named = block-decision { last_assistant_message: $prose, cwd: $root } | from json | get reason
     rm -rf $root
@@ -490,7 +525,7 @@ def "check finds the settings from a subdirectory cwd" [] {
     let root = temp-root
     git init -qb canvas-work $root
     mkdir ($root | path join "sub")
-    gi-hook enable gi/plan.md --root $root | ignore
+    gi enable gi/plan.md --root $root | ignore
     let prose = "Long prose without any link signal that must be blocked by the rule"
     let out = block-decision { last_assistant_message: $prose, cwd: ($root | path join "sub") }
     rm -rf $root
@@ -504,7 +539,7 @@ def "check honors settings enabled at a monorepo subproject" [] {
     let subproj = $root | path join "tools" "subproj"
     git init -qb canvas-work $root
     mkdir ($subproj | path join "deeper")
-    gi-hook enable gi/plan.md --root $subproj | ignore
+    gi enable gi/plan.md --root $subproj | ignore
     let prose = "Long prose without any link signal that must be blocked by the rule"
     let out = block-decision { last_assistant_message: $prose, cwd: ($subproj | path join "deeper") }
     rm -rf $root
@@ -524,36 +559,45 @@ def "check falls back to generic wording when no doc is recorded" [] {
     assert ($generic | str contains "the working document")
 }
 
+@test
+def "deprecated gi-hook alias still answers check" [] {
+    # Settings files written before the rename call `claude-nu gi-hook check`
+    # on every Stop event; the alias must keep enforcement alive there.
+    let prose = "Long prose without any link signal that must be blocked by the rule"
+    let out = {cwd: $nu.temp-dir, last_assistant_message: $prose} | to json | claude-nu gi-hook check
+    assert equal ($out | from json | get decision) "block"
+}
+
 # =============================================================================
-# gi-hook-allowed — the allow-rule, tested directly
+# gi-allowed — the allow-rule, tested directly
 # =============================================================================
 
 @test
 def "allow-rule passes empty, done, noted, and short pointers" [] {
-    assert (gi-hook-allowed "")
-    assert (gi-hook-allowed "done")
-    assert (gi-hook-allowed "DONE!")
-    assert (gi-hook-allowed "noted")
-    assert (gi-hook-allowed "moved to `docs/plan.md`")
-    assert (gi-hook-allowed "see commands.nu:1180")
-    assert (gi-hook-allowed "next → tests/test_gi_hook.nu")
+    assert (gi-allowed "")
+    assert (gi-allowed "done")
+    assert (gi-allowed "DONE!")
+    assert (gi-allowed "noted")
+    assert (gi-allowed "moved to `docs/plan.md`")
+    assert (gi-allowed "see commands.nu:1180")
+    assert (gi-allowed "next → tests/test_gi.nu")
 }
 
 @test
 def "allow-rule blocks prose and unanchored lines" [] {
-    assert (not (gi-hook-allowed "Here is a plain sentence with no link that should not be allowed in chat"))
-    assert (not (gi-hook-allowed "line one\nline two"))
+    assert (not (gi-allowed "Here is a plain sentence with no link that should not be allowed in chat"))
+    assert (not (gi-allowed "line one\nline two"))
     # Abbreviations and glued sentences are not filename signals.
-    assert (not (gi-hook-allowed "short prose with e.g an aside"))
-    assert (not (gi-hook-allowed "First thought ends.Next one starts"))
+    assert (not (gi-allowed "short prose with e.g an aside"))
+    assert (not (gi-allowed "First thought ends.Next one starts"))
 }
 
 @test
 def "allow-rule budget is tunable via GI_HOOK_MAX_LEN" [] {
     with-env { GI_HOOK_MAX_LEN: "10" } {
-        assert (not (gi-hook-allowed "short `f.nu`")) # 12 chars > 10 → blocked
+        assert (not (gi-allowed "short `f.nu`")) # 12 chars > 10 → blocked
     }
     with-env { GI_HOOK_MAX_LEN: "500" } {
-        assert (gi-hook-allowed "short `f.nu`")
+        assert (gi-allowed "short `f.nu`")
     }
 }

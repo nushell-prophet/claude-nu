@@ -7,7 +7,7 @@
 #   messages        # Extract user messages from a session
 #   export-session  # Render a session's dialogue to markdown
 #   save-markdown   # Write exported markdown to files
-#   gi-hook         # Install/remove a per-repo Stop hook that keeps chat terse
+#   gi              # Set up the gi protocol (Canvas style, skills, doc); --hook adds the Stop hook
 #
 # Usage:
 #   use claude-nu
@@ -17,8 +17,22 @@
 export use sessions.nu [
     projects messages main export-session save-markdown
 ]
-export use gi-hook.nu main
+export use gi.nu main
 use sessions.nu [ find-session-files ]
+
+# Deprecated pre-rename spelling of `gi`. Kept because settings files written
+# before the rename invoke `claude-nu gi-hook check` on every Stop event; if
+# the name disappeared, that hook would exit non-zero — which Claude Code
+# treats as a non-blocking error, so enforcement would vanish silently.
+export def gi-hook [
+    action?: string
+    doc?: path
+    --root: path
+    --force
+    --hook
+]: any -> any {
+    $in | gi $action $doc --root $root --force=$force --hook=$hook
+}
 
 # Umbrella entry point: search user messages for a regex and return every match
 # with its `session` column (a pipeline-safe selector — pipe it into
@@ -50,7 +64,7 @@ export def main [
     if $find == null {
         error make {
             msg: "claude-nu needs a subcommand or a search term"
-            help: "search messages:  claude-nu -f 'regex'  (--all-projects to widen)\nsubcommands:  projects, sessions, messages, export-session, save-markdown, gi-hook"
+            help: "search messages:  claude-nu -f 'regex'  (--all-projects to widen)\nsubcommands:  projects, sessions, messages, export-session, save-markdown, gi"
         }
     }
     let files = find-session-files $find --all-projects=$all_projects --no-rg=$no_rg
