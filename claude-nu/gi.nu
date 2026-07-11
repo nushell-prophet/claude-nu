@@ -371,8 +371,9 @@ def gi-status [
 # the return value to stdout, which is the Stop hook's control channel; the
 # command always exits 0, per the contract. Returning (not printing) keeps it
 # unit-testable. The single `to json` lives here, next to the contract it
-# serves — the rules deal in records only.
-def gi-check []: string -> any {
+# serves — the rules deal in records only. Also accepts nothing: run by hand
+# with no stdin, the normalization below treats it as an empty event.
+def gi-check []: [string -> any, nothing -> any] {
     let payload = try { $in | default "" | from json } catch { {} }
     # Valid JSON need not be an object ("hi", 123, null, [1]) — normalize to a
     # record: anything else would throw in the guard below or entering the

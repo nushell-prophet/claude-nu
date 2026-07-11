@@ -458,6 +458,19 @@ def "check treats a non-object payload as empty, inside the contract" [] {
 }
 
 @test
+def "check with no stdin treats the event as empty" [] {
+    # Run by hand (`claude-nu gi check`) there is no piped event; the input is
+    # nothing, not a string, and must not be refused at the signature.
+    # cd away from the test runner's repo: an empty payload falls back to PWD.
+    let orig = $env.PWD
+    cd $nu.temp-dir
+    let out = gi check
+    cd $orig
+
+    assert equal $out null
+}
+
+@test
 def "check names the recorded doc in the block reason" [] {
     let root = temp-root
     gi enable gi/plan.md --root $root | ignore
