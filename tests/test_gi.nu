@@ -405,10 +405,22 @@ def "status reflects hook state across enable and disable" [] {
 # check — the Stop hook decision (contract)
 # =============================================================================
 
+# A fresh root with the hook installed. check stands down wherever the live
+# settings carry no Stop entry of ours, so every rule test needs one.
+def hooked-root []: nothing -> path {
+    let root = temp-root
+    gi enable --hook --root $root | ignore
+    $root
+}
+
 def block-decision [payload: record]: nothing -> any {
-    # Default cwd to a non-repo dir so the branch guard sees the payload's
+    # Default cwd to a hooked non-repo dir: check only enforces where the hook
+    # is installed, and outside a repo the branch guard sees the payload's
     # state, not whatever branch the test runner's own repo happens to be on.
-    {cwd: $nu.temp-dir} | merge $payload | to json | gi check
+    let root = hooked-root
+    let out = {cwd: $root} | merge $payload | to json | gi check
+    rm -rf $root
+    $out
 }
 
 @test
@@ -473,7 +485,7 @@ def "check with no stdin treats the event as empty" [] {
 @test
 def "check names the recorded doc in the block reason" [] {
     let root = temp-root
-    gi enable gi/plan.md --root $root | ignore
+    gi enable gi/plan.md --hook --root $root | ignore
     let prose = "Long prose without any link signal that must be blocked by the rule"
     let named = block-decision { last_assistant_message: $prose, cwd: $root } | from json | get reason
     rm -rf $root
@@ -485,6 +497,7 @@ def "check names the recorded doc in the block reason" [] {
 def "check blocks a protected branch even when the message is allowed" [] {
     let root = temp-root
     git init -qb master $root
+    gi enable --hook --root $root | ignore
     let out = block-decision { last_assistant_message: "done", cwd: $root }
     rm -rf $root
 
@@ -497,6 +510,7 @@ def "check blocks a protected branch even when the message is allowed" [] {
 def "check passes an allowed message on a work branch" [] {
     let root = temp-root
     git init -qb canvas-work $root
+    gi enable --hook --root $root | ignore
     let out = block-decision { last_assistant_message: "done", cwd: $root }
     rm -rf $root
 
@@ -513,12 +527,16 @@ def "check converts internal errors into a block, not a crash" [] {
     let broken = temp-root
     mkdir ($broken | path join ".claude")
     "{ broken json" | save ($broken | path join ".claude" "settings.local.json")
+    # A hand-broken file can't be checked for our entry — that read itself
+    # must surface as a block, not a crash and not a silent stand-down.
     let from_bad_json = block-decision { last_assistant_message: $prose, cwd: $broken }
     rm -rf $broken
 
     let misshapen = temp-root
-    mkdir ($misshapen | path join ".claude")
-    { env: "oops" } | save ($misshapen | path join ".claude" "settings.local.json")
+    gi enable --hook --root $misshapen | ignore
+    open ($misshapen | path join ".claude" "settings.local.json")
+    | upsert env "oops"
+    | save --force ($misshapen | path join ".claude" "settings.local.json")
     let from_bad_shape = block-decision { last_assistant_message: $prose, cwd: $misshapen }
     rm -rf $misshapen
 
@@ -538,7 +556,7 @@ def "check finds the settings from a subdirectory cwd" [] {
     let root = temp-root
     git init -qb canvas-work $root
     mkdir ($root | path join "sub")
-    gi enable gi/plan.md --root $root | ignore
+    gi enable gi/plan.md --hook --root $root | ignore
     let prose = "Long prose without any link signal that must be blocked by the rule"
     let out = block-decision { last_assistant_message: $prose, cwd: ($root | path join "sub") }
     rm -rf $root
@@ -552,7 +570,7 @@ def "check honors settings enabled at a monorepo subproject" [] {
     let subproj = $root | path join "tools" "subproj"
     git init -qb canvas-work $root
     mkdir ($subproj | path join "deeper")
-    gi enable gi/plan.md --root $subproj | ignore
+    gi enable gi/plan.md --hook --root $subproj | ignore
     let prose = "Long prose without any link signal that must be blocked by the rule"
     let out = block-decision { last_assistant_message: $prose, cwd: ($subproj | path join "deeper") }
     rm -rf $root
@@ -564,7 +582,9 @@ def "check honors settings enabled at a monorepo subproject" [] {
 @test
 def "check falls back to generic wording when no doc is recorded" [] {
     let root = temp-root
-    mkdir $root
+    gi enable --hook --root $root | ignore
+    # A hand-edited file: the hook entry survives, the recorded doc is gone.
+    open (settings-of $root) | reject env.GI_HOOK_DOC | save --force (settings-of $root)
     let prose = "Long prose without any link signal that must be blocked by the rule"
     let generic = block-decision { last_assistant_message: $prose, cwd: $root } | from json | get reason
     rm -rf $root
@@ -573,11 +593,46 @@ def "check falls back to generic wording when no doc is recorded" [] {
 }
 
 @test
+def "check stands down where no live settings carry the hook" [] {
+    # The user's disable-then-check scenario: Claude Code snapshots hook
+    # config at session start, so a mid-session disable leaves the snapshotted
+    # hook firing — check must obey the live file and stop enforcing.
+    let root = temp-root
+    gi enable --hook --root $root | ignore
+    gi disable --root $root | ignore
+    let prose = "Long prose without any link signal that must be blocked by the rule"
+    let out = {cwd: $root, last_assistant_message: $prose} | to json | gi check
+    rm -rf $root
+
+    assert equal $out null
+}
+
+@test
+def "check skips a gi-less subproject settings and finds the hooked ancestor" [] {
+    let root = temp-root
+    let sub = $root | path join "sub"
+    git init -qb canvas-work $root
+    mkdir ($sub | path join ".claude")
+    # A subdirectory with local settings of its own (permissions etc.) must
+    # not shadow the gi-enabled toplevel.
+    { permissions: { allow: ["Bash(ls:*)"] } } | save (settings-of $sub)
+    gi enable gi/plan.md --hook --root $root | ignore
+    let prose = "Long prose without any link signal that must be blocked by the rule"
+    let out = block-decision { last_assistant_message: $prose, cwd: $sub }
+    rm -rf $root
+
+    assert ($out | from json | get reason | str contains "`gi/plan.md`")
+}
+
+@test
 def "deprecated gi-hook alias still answers check" [] {
     # Settings files written before the rename call `claude-nu gi-hook check`
     # on every Stop event; the alias must keep enforcement alive there.
+    let root = hooked-root
     let prose = "Long prose without any link signal that must be blocked by the rule"
-    let out = {cwd: $nu.temp-dir, last_assistant_message: $prose} | to json | claude-nu gi-hook check
+    let out = {cwd: $root, last_assistant_message: $prose} | to json | claude-nu gi-hook check
+    rm -rf $root
+
     assert equal ($out | from json | get decision) "block"
 }
 

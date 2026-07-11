@@ -66,22 +66,6 @@ def gi-repo-root [dir?: path]: nothing -> path {
     if $top.exit_code == 0 { $top.stdout | str trim } else { $dir | path expand }
 }
 
-# The directory whose .claude/settings.local.json governs the event's cwd:
-# the nearest ancestor carrying that file — a session may be rooted at a
-# monorepo subproject that enable targeted with --root — falling back to the
-# repo toplevel (nothing recorded yet, or enable ran there). The walk is
-# bounded by the toplevel: crossing it would adopt an unrelated outer settings
-# file (e.g. ~/.claude) as this repo's.
-def gi-settings-root [dir: path]: nothing -> path {
-    let top = gi-repo-root $dir
-    generate {|d|
-        if $d == $top or ($d | path dirname) == $d { {out: $d} } else { {out: $d next: ($d | path dirname)} }
-    } ($dir | path expand)
-    | where {|d| $d | path join ".claude" "settings.local.json" | path exists }
-    | get 0?
-    | default $top
-}
-
 # Current branch at root, or null outside a repo / on detached HEAD — nothing
 # to protect there, so the branch guard passes.
 def gi-branch [root: path]: nothing -> any {
@@ -173,6 +157,31 @@ def gi-is-ours []: record -> bool {
 
 def gi-open-settings [path: path]: nothing -> record {
     if ($path | path exists) { open $path } else { {} }
+}
+
+# The directory whose .claude/settings.local.json governs the event's cwd:
+# the nearest ancestor whose settings file carries our Stop entry — a session
+# may be rooted at a monorepo subproject that enable targeted with --root, and
+# an ancestor short of it may hold unrelated local settings (permissions etc.)
+# that must not shadow the gi-enabled one. Null when no file in scope carries
+# the entry. Why match on the entry, not mere file presence: it makes disable
+# effective immediately — Claude Code snapshots hook config at session start,
+# so after a mid-session `gi disable` the snapshotted hook keeps firing; the
+# live settings file is the truth, and with no entry anywhere check stands
+# down. The walk is bounded by the toplevel: crossing it would adopt an
+# unrelated outer settings file (e.g. ~/.claude) as this repo's.
+def gi-settings-root [dir: path]: nothing -> any {
+    let top = gi-repo-root $dir
+    generate {|d|
+        if $d == $top or ($d | path dirname) == $d { {out: $d} } else { {out: $d next: ($d | path dirname)} }
+    } ($dir | path expand)
+    | where {|d|
+        gi-open-settings ($d | path join ".claude" "settings.local.json")
+        | $in.hooks?.Stop?
+        | default []
+        | any {|e| $e | gi-is-ours }
+    }
+    | get 0?
 }
 
 # The four gi actions, surfaced as tab completions on the positional below.
@@ -400,6 +409,10 @@ def gi-check-rules []: record -> any {
     # Not the raw event cwd: the session's cwd may have drifted into a
     # subdirectory of wherever enable wrote the settings (and recorded doc).
     let root = gi-settings-root ($payload.cwd? | default $env.PWD)
+    # No live hook anywhere in scope: gi is disabled (possibly mid-session,
+    # after the hook-config snapshot) or check was run by hand outside a
+    # gi-enabled repo. Nothing to enforce.
+    if $root == null { return }
 
     # Branch guard, before the message rule: even a perfect `done` may not end
     # a turn on a protected branch — gi commits are internal working history,
