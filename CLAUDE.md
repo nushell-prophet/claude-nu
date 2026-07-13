@@ -22,7 +22,8 @@ claude-nu/
 │   ├── discovery.nu     # On-disk session layout: enumerate, resolve, read session files
 │   ├── extract.nu       # Session records -> text, dialogue, metrics
 │   ├── render.nu        # Record content -> markdown text
-│   └── gi.nu            # gi protocol setup (enable/disable/status/check; enable --hook installs the Stop hook)
+│   ├── gi.nu            # gi protocol setup (enable/disable/status/check; enable --hook installs the Stop hook)
+│   └── attribution.nu   # Claude-authorship of git history: commits (--by-month) and code-authorship (blame)
 ├── completions/         # External command completions
 │   ├── claude.nu        # claude CLI (50+ flags, session picker, MCP/plugin subcommands)
 │   ├── nu.nu            # nu CLI (dynamic: parses scripts for subcommands at tab-time)
@@ -65,6 +66,10 @@ claude-nu sessions --subagents         # Also include subagent transcripts (pare
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, thinking level...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
 claude-nu export-session               # Export to markdown with YAML frontmatter
+claude-nu commits                      # Per-commit table (sha, date, email, is_claude) for the repo at cwd
+claude-nu commits --by-month           # Claude's share of commits per month: { month, total, claude, pct }
+claude-nu commits | where is_claude | length # any other cut is a pipeline on the base table
+claude-nu code-authorship              # Claude's share of surviving lines (git blame): { total_lines, claude_lines, pct }
 claude-nu gi enable                    # Seed the Canvas style, gi skills, and working doc; turn the style on (no hook)
 claude-nu gi enable --hook             # Same, plus the Stop hook that keeps chat terse (strict gi protocol)
 claude-nu gi enable notes/plan.md      # Same, with a chosen working-doc path (default: gi/canvas-<timestamp>.md)

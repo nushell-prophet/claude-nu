@@ -7,6 +7,8 @@
 #   messages        # Extract user messages from a session
 #   export-session  # Render a session's dialogue to markdown
 #   save-markdown   # Write exported markdown to files
+#   commits         # Per-commit Claude-authorship table; --by-month for the monthly share
+#   code-authorship # Claude's share of the lines living in the tree now (git blame)
 #   gi              # Set up the gi protocol (Canvas style, skills, doc); --hook adds the Stop hook
 #
 # Usage:
@@ -18,6 +20,7 @@ export use sessions.nu [
     projects messages main export-session save-markdown
 ]
 export use gi.nu main
+export use attribution.nu [ commits code-authorship ]
 use sessions.nu [ find-session-files ]
 
 # Deprecated pre-rename spelling of `gi`. Kept because settings files written
