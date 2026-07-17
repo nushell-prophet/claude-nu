@@ -23,20 +23,6 @@ export use gi.nu main
 export use attribution.nu [ commits code-authorship ]
 use sessions.nu [ find-session-files ]
 
-# Deprecated pre-rename spelling of `gi`. Kept because settings files written
-# before the rename invoke `claude-nu gi-hook check` on every Stop event; if
-# the name disappeared, that hook would exit non-zero — which Claude Code
-# treats as a non-blocking error, so enforcement would vanish silently.
-export def gi-hook [
-    action?: string
-    doc?: path
-    --root: path
-    --force
-    --hook
-]: any -> any {
-    $in | gi $action $doc --root $root --force=$force --hook=$hook
-}
-
 # Umbrella entry point: search user messages for a regex and return every match
 # with its `session` column (a pipeline-safe selector — pipe it into
 # export-session/messages/sessions). Searches the current project by default;

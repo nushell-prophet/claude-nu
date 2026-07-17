@@ -4,8 +4,6 @@ use std/testing *
 # Import internals (helpers) and the public command. `use gi.nu *` yields the
 # `gi` command (main) plus the exported helpers, unprefixed.
 use ../claude-nu/gi.nu *
-# The module itself, for the deprecated `claude-nu gi-hook` alias.
-use ../claude-nu
 
 def temp-root []: nothing -> path {
     $nu.temp-dir | path join $"gi-(random uuid)"
@@ -622,18 +620,6 @@ def "check skips a gi-less subproject settings and finds the hooked ancestor" []
     rm -rf $root
 
     assert ($out | from json | get reason | str contains "`gi/plan.md`")
-}
-
-@test
-def "deprecated gi-hook alias still answers check" [] {
-    # Settings files written before the rename call `claude-nu gi-hook check`
-    # on every Stop event; the alias must keep enforcement alive there.
-    let root = hooked-root
-    let prose = "Long prose without any link signal that must be blocked by the rule"
-    let out = {cwd: $root, last_assistant_message: $prose} | to json | claude-nu gi-hook check
-    rm -rf $root
-
-    assert equal ($out | from json | get decision) "block"
 }
 
 # =============================================================================

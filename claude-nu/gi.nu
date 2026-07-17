@@ -17,8 +17,10 @@
 #
 # Renamed from `gi-hook`: once enable stopped installing the hook by default,
 # the old name promised a hook it no longer delivered. Legacy spellings remain
-# where deployed copies depend on them — see GI_MARKERS, the GI_HOOK_* env
-# keys, and the `gi-hook` alias in mod.nu.
+# where deployed copies depend on them — see GI_MARKERS and the GI_HOOK_* env
+# keys. Settings files still carrying the old `gi-hook check` command must
+# re-run `gi enable` (which rewrites the entry); the command alias itself is
+# gone.
 
 # Substrings that identify our Stop entry inside settings.local.json. Why: the
 # command line is the only stable signature to match on for idempotent enable
