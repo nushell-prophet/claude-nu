@@ -87,7 +87,8 @@ Output mode is auto-detected via `is-terminal --stdout` (not `$nu.is-interactive
 nu toolkit.nu test                     # Run all tests (60+ cases)
 nu toolkit.nu test --fail              # Exit non-zero on failures (for CI)
 nu toolkit.nu test --json              # Force JSON on a terminal; --pretty forces human view when piped
-nu toolkit.nu check                    # Static syntax checking with diagnostics
+nu toolkit.nu check                    # Static syntax check of every tracked .nu file
+nu toolkit.nu check claude-nu/gi.nu    # ...or of one file; rows carry file, line, severity, message, source
 
 # Documentation management
 nu toolkit.nu fetch-claude-docs        # Download Claude Code docs (sitemap-based, parallel)

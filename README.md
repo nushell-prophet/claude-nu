@@ -222,7 +222,7 @@ nu toolkit.nu test --fail   # Non-zero exit on failures
 ### Toolkit
 
 ```nushell no-run
-nu toolkit.nu check <file>             # Static syntax check with diagnostics
+nu toolkit.nu check [file]             # Static syntax check with diagnostics (whole repo if no file)
 nu toolkit.nu fetch-claude-docs        # Download Claude Code docs
 nu toolkit.nu fetch-nushell-docs       # Sparse clone of Nushell docs
 nu toolkit.nu vendor-sessions          # Obfuscate real sessions into test fixtures

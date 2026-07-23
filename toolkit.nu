@@ -243,9 +243,8 @@ export def 'main vendor-sessions' [
     }
 }
 
-# Check .nu file for static errors, showing line content for each diagnostic
-@example "Check a file" { nu toolkit.nu check claude-nu/sessions.nu }
-export def 'main check' [file: path] {
+# Diagnostics for one file, each row carrying the resolved line and its source.
+def check-file [file: path]: nothing -> table {
     let content = open --raw $file
     let source_lines = $content | lines
 
@@ -257,6 +256,7 @@ export def 'main check' [file: path] {
         let before = $content | str substring 0..<$d.span.start
         let line_num = $before | split row "\n" | length
         {
+            file: $file
             line: $line_num
             severity: $d.severity
             message: $d.message
@@ -265,6 +265,19 @@ export def 'main check' [file: path] {
         }
     }
     | uniq
+}
+
+# Check .nu files for static errors, showing line content for each diagnostic.
+# Why the no-arg form: "check the whole repo before committing" is the common
+# workflow, and it mirrors `test`, which already covers everything. Scope is the
+# tracked .nu files, so the sibling doc clones vendored next to us stay out.
+@example "Check one file" { nu toolkit.nu check claude-nu/sessions.nu }
+@example "Check every tracked .nu file" { nu toolkit.nu check }
+export def 'main check' [
+    file?: path # File to check; omit to check every tracked .nu file
+]: nothing -> table {
+    let files = if $file == null { ^git ls-files '*.nu' | lines } else { [$file] }
+    $files | each { check-file $in } | flatten
 }
 
 # Update dotnu capture files (requires dotnu module in scope)
