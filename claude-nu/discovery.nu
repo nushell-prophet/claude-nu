@@ -55,13 +55,13 @@ export def resolve-session-file [
         # before giving up.
         let found = glob (projects-root | path join $"*/($session).jsonl")
         if ($found | is-empty) {
-            error make {msg: $"Session not found in any project: ($session)"}
+            error make $"Session not found in any project: ($session)"
         }
         return ($found | first)
     }
 
     if not ($dir | path exists) {
-        error make {msg: "No sessions directory found for current project"}
+        error make "No sessions directory found for current project"
     }
 
     # Why: one discoverer owns the listing and recency order, so "most recent
@@ -69,7 +69,7 @@ export def resolve-session-file [
     let files = discover-session-files $dir | where parent_session_id == null
 
     if ($files | is-empty) {
-        error make {msg: "No session files found"}
+        error make "No session files found"
     }
 
     $files | first | get path
@@ -193,7 +193,7 @@ export def rg-session-files [pattern: string --all-projects]: nothing -> table {
     let files = match $res.exit_code {
         0 => ($res.stdout | lines)
         1 => []
-        _ => (error make {msg: $"rg failed \(exit ($res.exit_code)): ($res.stderr | str trim)"})
+        _ => (error make $"rg failed \(exit ($res.exit_code)): ($res.stderr | str trim)")
     }
     $files
     | where ($it | path basename) =~ $UUID_JSONL_PATTERN

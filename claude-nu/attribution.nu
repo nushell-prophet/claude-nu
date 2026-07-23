@@ -76,7 +76,7 @@ export def code-authorship []: nothing -> record {
         | flatten
     let total = $shas | length
     # Why guard: an empty/committed-nothing repo yields 0 lines; the pct divide would fail on it.
-    if $total == 0 { error make { msg: "no tracked lines to attribute (empty repo or run from a repo root)" } }
+    if $total == 0 { error make "no tracked lines to attribute (empty repo or run from a repo root)" }
     let claude = $shas | where {|s| $class | get -o $s | default false } | length
     { total_lines: $total, claude_lines: $claude, pct: (($claude * 100 / $total) | math round) }
 }

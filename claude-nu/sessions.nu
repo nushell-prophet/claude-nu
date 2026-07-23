@@ -153,7 +153,7 @@ export def messages [
     let piped_files = resolve-piped-sessions $input
 
     if $piped_files != null and $session != null {
-        error make {msg: "Piped input conflicts with --session"}
+        error make "Piped input conflicts with --session"
     }
 
     let session_files = if $piped_files != null {
@@ -181,7 +181,7 @@ export def messages [
     $session_files
     | each {|session_file|
         if not ($session_file | path exists) {
-            error make {msg: $"Session file not found: ($session_file)"}
+            error make $"Session file not found: ($session_file)"
         }
 
         let session_uuid = $session_file | session-id-from-path
@@ -376,7 +376,7 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
     } else if "session" in $cols {
         $input | get session | compact | ansi strip | uniq | each {|s| resolve-session-file $s }
     } else {
-        error make {msg: "Piped input must have 'path' or 'session' column"}
+        error make "Piped input must have 'path' or 'session' column"
     }
 }
 
@@ -394,7 +394,7 @@ export def "nu-complete claude session-columns" [context: string]: nothing -> li
     let prefix = $chosen | str join ','
     $SESSION_COLUMNS
     | get name
-    | where $it not-in $chosen
+    | difference $chosen
     | each {|c| if ($prefix | is-empty) { $c } else { $"($prefix),($c)" } }
 }
 
@@ -405,7 +405,7 @@ export def "nu-complete claude session-columns" [context: string]: nothing -> li
 def expand-session-paths []: list<path> -> table {
     each {|p|
         if not ($p | path exists) {
-            error make {msg: $"Path not found: ($p)"}
+            error make $"Path not found: ($p)"
         }
         if ($p | path type) == "dir" {
             discover-session-files $p
@@ -453,7 +453,7 @@ export def main [
     | where active
     | get scope
     if ($active_scopes | length) > 1 {
-        error make {msg: $"($active_scopes | str join ' and ') are mutually exclusive — pick one session scope"}
+        error make $"($active_scopes | str join ' and ') are mutually exclusive — pick one session scope"
     }
     # Why: --last/--session resolve to a single top-level file, so there are no
     # subagents to include — flag it as a no-op rather than silently ignore.
@@ -468,7 +468,7 @@ export def main [
     } else if $all_projects {
         let projects_dir = projects-root
         if not ($projects_dir | path exists) {
-            error make {msg: "No projects directory found"}
+            error make "No projects directory found"
         }
         ls $projects_dir | where type == dir | get name | expand-session-paths
     } else {
@@ -487,7 +487,7 @@ export def main [
         | if $subagents { } else { where parent_session_id == null }
 
     if ($session_rows | is-empty) {
-        error make {msg: "No session files found"}
+        error make "No session files found"
     }
 
     let all_names = $SESSION_COLUMNS | get name
@@ -503,7 +503,7 @@ export def main [
         | uniq
 
     if $all_columns and ($requested | is-not-empty) {
-        error make {msg: "--columns and --all-columns are mutually exclusive"}
+        error make "--columns and --all-columns are mutually exclusive"
     }
 
     let selected = if $all_columns {
@@ -513,7 +513,7 @@ export def main [
     } else {
         # Why: fail fast on a typo'd column name — parse-session-columns would
         # otherwise silently omit it, hiding the mistake.
-        let unknown = $requested | where $it not-in $all_names
+        let unknown = $requested | difference $all_names
         if ($unknown | is-not-empty) {
             error make {
                 msg: $"Unknown session column\(s): ($unknown | str join ', ')"
@@ -546,19 +546,19 @@ export def export-session [
     let piped_files = resolve-piped-sessions $input
 
     if $piped_files != null {
-        if $session != null { error make {msg: "Piped input conflicts with --session"} }
-        if $topic != null { error make {msg: "Piped input conflicts with topic argument"} }
+        if $session != null { error make "Piped input conflicts with --session" }
+        if $topic != null { error make "Piped input conflicts with topic argument" }
     }
 
     let export_one = {|session_file|
         if not ($session_file | path exists) {
-            error make --unspanned {msg: $"Session file not found: ($session_file)"}
+            error make --unspanned $"Session file not found: ($session_file)"
         }
 
         let records = $session_file | read-session-records
 
         if ($records | is-empty) {
-            error make {msg: "Session file is empty"}
+            error make "Session file is empty"
         }
 
         let summary = $records | extract-summary
@@ -634,7 +634,7 @@ export def save-markdown [
     # Normalize to table
     let rows = if $was_record { [$input] } else { $input }
 
-    let missing = [session date topic markdown] | where $it not-in ($rows | columns)
+    let missing = [session date topic markdown] | difference ($rows | columns)
     if ($rows | is-not-empty) and ($missing | is-not-empty) {
         error make --unspanned {
             msg: $"input is missing columns: ($missing | str join ', ')"

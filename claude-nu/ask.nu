@@ -59,7 +59,7 @@ export def main [
                 # Why: claude exits 0 even on API errors; the result line is the one place
                 # success/failure is reported, so surface the error there (fail fast).
                 if ($rec.type? == "result" and $rec.is_error?) {
-                    error make --unspanned { msg: $"claude-nu ask: ($rec.result?)" }
+                    error make --unspanned $"claude-nu ask: ($rec.result?)"
                 }
                 let text = $rec | get event?.delta?.text? | default ""
                 if $collect { } else { print --no-newline $text }
