@@ -443,11 +443,14 @@ def gi-enable [
     let mode = if $install { "with the Stop hook" } else { "setup only — `gi enable --hook` adds the Stop hook" }
     print $"gi enabled \(($mode)\). Run /clear or start a new session for the Canvas output style to load."
     if $imported != null {
-        print $"imported this session into ($doc_abs) — the current turn is not in it; the session log is written as the turn runs."
-        # The agent's own $env.GI_HOOK_DOC was snapshotted at session start, so
-        # after a re-point it names the previous doc until /clear. The hook reads
-        # settings fresh, so its block message is right — but only after a block.
-        print $"tell the agent that path: its $env.GI_HOOK_DOC was snapshotted at session start and won't name this doc until /clear."
+        # One pasteable block instead of instructions to relay. Two gaps to
+        # cover: the agent's $env.GI_HOOK_DOC was snapshotted at session start
+        # (stale until /clear), and the log can never hold the turn that ran
+        # the import — but the agent still has that turn in its context, so
+        # telling it to append closes the gap the file's note can only state.
+        print $"imported this session into ($doc_abs) — paste this to the agent:"
+        print ""
+        print $"  The gi canvas is now `($doc)` — ignore $env.GI_HOOK_DOC until /clear; it was snapshotted at session start. The doc ends before the turn that ran the import: append the missing tail of our dialogue to it from your context."
     }
     # Same guard the hook enforces, surfaced at opt-in time — switching now
     # beats being blocked mid-session with commits already on the branch.
