@@ -184,7 +184,7 @@ claude --resume <TAB>
 **Dynamic script completions:**
 ```
 nu toolkit.nu <TAB>
-# test │ test-unit │ check │ fetch-claude-docs │ …
+# test │ test-unit │ check │ vendor-sessions │ …
 ```
 
 ### Claude Code Skills
@@ -229,8 +229,6 @@ nu toolkit.nu test --fail   # Non-zero exit on failures
 
 ```nushell no-run
 nu toolkit.nu check [file]             # Static syntax check with diagnostics (whole repo if no file)
-nu toolkit.nu fetch-claude-docs        # Download Claude Code docs
-nu toolkit.nu fetch-nushell-docs       # Sparse clone of Nushell docs
 nu toolkit.nu vendor-sessions          # Obfuscate real sessions into test fixtures
 ```
 

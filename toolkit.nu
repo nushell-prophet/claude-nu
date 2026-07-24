@@ -153,23 +153,6 @@ def print-test-result [result: record] {
     }
 }
 
-# Download Claude Code documentation pages from the sitemap
-@example "Fetch docs" { nu toolkit.nu fetch-claude-docs }
-@example "Fetch and commit" { nu toolkit.nu fetch-claude-docs --commit }
-export def 'main fetch-claude-docs' [
-    --commit # Create a git commit after downloading
-] {
-    use claude-nu/docs.nu
-    docs fetch-claude-docs --commit=$commit
-}
-
-# Fetch Nushell documentation (book, cookbook, blog) via shallow sparse checkout
-@example "Fetch/update Nushell docs" { nu toolkit.nu fetch-nushell-docs }
-export def 'main fetch-nushell-docs' [] {
-    use claude-nu/docs.nu
-    docs fetch-nushell-docs
-}
-
 # Vendor real session files as test fixtures (with obfuscated session IDs)
 @example "Vendor 3 most recent sessions" { nu toolkit.nu vendor-sessions }
 @example "Vendor 5 sessions" { nu toolkit.nu vendor-sessions --count 5 }

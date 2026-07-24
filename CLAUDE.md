@@ -31,10 +31,10 @@ claude-nu/
 │   ├── chafa.nu         # chafa image viewer (35+ completers)
 │   └── sandbox-exec.nu  # macOS sandbox-exec
 ├── tests/               # 60+ tests (nutest framework)
-├── toolkit.nu           # Dev tools: test, fetch-docs, vendor-sessions, check
-├── ../claude-code-docs/    # Downloaded Claude Code documentation (60+ pages)
-└── ../nushell-docs/        # Sparse clone of Nushell docs (book, cookbook, blog)
+└── toolkit.nu           # Dev tools: test, vendor-sessions, check
 ```
+
+Reference-doc fetchers (Claude Code + Nushell docs) moved to cozy: `cozy docs claude` / `cozy docs nushell` (see `../cozy/cozy-module/docs.nu`).
 
 **Key concepts:**
 - Session files: JSONL in `~/.claude/projects/<encoded-path>/` where path is `-` separated segments
@@ -92,10 +92,6 @@ nu toolkit.nu test --fail              # Exit non-zero on failures (for CI)
 nu toolkit.nu test --json              # Force JSON on a terminal; --pretty forces human view when piped
 nu toolkit.nu check                    # Static syntax check of every tracked .nu file
 nu toolkit.nu check claude-nu/gi.nu    # ...or of one file; rows carry file, line, severity, message, source
-
-# Documentation management
-nu toolkit.nu fetch-claude-docs        # Download Claude Code docs (sitemap-based, parallel)
-nu toolkit.nu fetch-nushell-docs       # Sparse clone of Nushell docs
 
 # Test fixtures
 nu toolkit.nu vendor-sessions         # Obfuscate real sessions for safe sharing
