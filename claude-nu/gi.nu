@@ -160,18 +160,23 @@ def gi-session-id []: nothing -> string {
 
 # The working doc's starting content for --from-session: the canvas header, an
 # import note, then the session's dialogue — user messages and Claude's visible
-# replies, tool calls and thinking dropped. Why a note carrying the .jsonl path:
-# everything left out is one `open` away, and the import can never contain the
-# turn that asked for it (Claude Code writes the log as the turn runs), so the
-# gap is stated in the file rather than only in the terminal, where it scrolls
-# away. Exported for tests, which drive it with a fixture session.
-export def gi-import-text [session_id: string]: nothing -> string { # UUID, or a .jsonl path (what the tests pass)
+# replies; tool calls dropped, or kept as one-line placeholders with --tools.
+# Why a note carrying the .jsonl path: everything left out is one `open` away,
+# and the import can never contain the turn that asked for it (Claude Code
+# writes the log as the turn runs), so the gap is stated in the file rather
+# than only in the terminal, where it scrolls away. Exported for tests, which
+# drive it with a fixture session.
+export def gi-import-text [
+    session_id: string # UUID, or a .jsonl path (what the tests pass)
+    --tools # Keep tool calls as one-line placeholders instead of dropping them
+]: nothing -> string {
     let file = resolve-session-file $session_id
-    let note = $"> Imported from the live session on (date now | format date '%Y-%m-%d %H:%M'). The turn that ran the import is missing — Claude Code writes the session log as the turn runs. Tool calls, results, and thinking are dropped here; the full record is `($file)`."
+    let left_out = if $tools { "Thinking is dropped here; tool calls are one-line placeholders" } else { "Tool calls, results, and thinking are dropped here" }
+    let note = $"> Imported from the live session on (date now | format date '%Y-%m-%d %H:%M'). The turn that ran the import is missing — Claude Code writes the session log as the turn runs. ($left_out); the full record is `($file)`."
     # Replace the H1 rather than prepend the header: export-session titles the
     # doc from the session summary, and two H1s in a committed doc is noise.
     # First match only (no --all) — later `# ` lines belong to the dialogue.
-    export-session --session $session_id
+    export-session --session $session_id --tools=$tools
     | get markdown
     | str replace --multiline --no-expand '^# .+' ([(open --raw $GI_HEADER_SRC) $note] | str join "\n")
 }
@@ -260,6 +265,7 @@ export def main [
     --from-session # enable only: start the working doc from this session's dialogue
     --commit # --from-session only: commit the imported doc
     --gitignore # --from-session only: keep the imported doc out of git
+    --tools # --from-session only: keep tool calls in the import as one-line placeholders
 ]: any -> any {
     let event = $in # check reads the Stop event here; the others ignore it
     # Every enable-only option in one guard. Why a table: each option needs its
@@ -273,6 +279,7 @@ export def main [
         [$from_session "--from-session only makes sense with enable" "gi enable --from-session" (metadata $from_session).span]
         [$commit "--commit only makes sense with enable" "gi enable --from-session --commit" (metadata $commit).span]
         [$gitignore "--gitignore only makes sense with enable" "gi enable --from-session --gitignore" (metadata $gitignore).span]
+        [$tools "--tools only makes sense with enable" "gi enable --from-session --tools" (metadata $tools).span]
     ]
     | where given
     if $action != "enable" and ($misplaced | is-not-empty) {
@@ -285,18 +292,25 @@ export def main [
             label: {text: "pick one: put the import in git, or keep it out" span: (metadata $gitignore).span}
         }
     }
-    # Both flags decide what git does with the imported transcript, so neither
-    # means anything without an import — committing whatever an older canvas
-    # happens to hold is a different action, not this one.
-    if ($commit or $gitignore) and not $from_session {
+    # These flags shape or file the imported transcript, so none of them means
+    # anything without an import — committing whatever an older canvas happens
+    # to hold is a different action, not this one.
+    let import_only = [
+        [given span];
+        [$commit (metadata $commit).span]
+        [$gitignore (metadata $gitignore).span]
+        [$tools (metadata $tools).span]
+    ]
+    | where given
+    if not $from_session and ($import_only | is-not-empty) {
         error make {
-            msg: "--commit and --gitignore apply to the imported doc"
-            label: {text: "add --from-session, or handle the doc with git yourself" span: (metadata $commit).span}
+            msg: "--commit, --gitignore, and --tools apply to the imported doc"
+            label: {text: "add --from-session to import this session" span: ($import_only | first | get span)}
         }
     }
     match $action {
         null | "status" => (gi-status --root $root)
-        "enable" => (gi-enable --root $root --doc $doc --force=$force --hook=$hook --from-session=$from_session --commit=$commit --gitignore=$gitignore)
+        "enable" => (gi-enable --root $root --doc $doc --force=$force --hook=$hook --from-session=$from_session --commit=$commit --gitignore=$gitignore --tools=$tools)
         "disable" => (gi-disable --root $root)
         "check" => ($event | gi-check)
         _ => {
@@ -319,6 +333,7 @@ def gi-enable [
     --from-session # Start the working doc from this session's dialogue
     --commit # Commit the imported doc
     --gitignore # Keep the imported doc out of git
+    --tools # Keep tool calls in the import as one-line placeholders
 ]: nothing -> record {
     let root = $root | default (gi-repo-root) | path expand
     let paths = gi-paths $root
@@ -352,7 +367,7 @@ def gi-enable [
                 help: "the import is the doc's starting content and won't overwrite work already in it — delete the file to re-import, or name another doc: gi enable <doc> --from-session"
             }
         }
-        gi-import-text $sid
+        gi-import-text $sid --tools=$tools
     }
 
     # The hook is opt-in: --hook installs it; plain enable leaves the on/off

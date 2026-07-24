@@ -682,6 +682,15 @@ def "import text carries the canvas header, the pointer note, and the dialogue" 
     assert str contains $body "## User"
     # The session title is replaced, not joined — one H1 in a committed doc.
     assert equal ($body | lines | where $it starts-with "# ") ["# Working area"]
+    assert not ($body | str contains "> [Bash:") # tool calls dropped by default
+}
+
+@test
+def "import text with the tools flag keeps one-line tool placeholders" [] {
+    let body = gi-import-text ($FIXTURES_SESSIONS_DIR | path join $"($FIXTURE_SESSION).jsonl") --tools
+
+    assert str contains $body "> [Bash:"
+    assert str contains $body "tool calls are one-line placeholders" # the note matches the content
 }
 
 @test
@@ -768,5 +777,11 @@ def "commit and gitignore flags contradict each other" [] {
 @test
 def "the commit flag without an import errors" [] {
     let out = try { gi enable --commit; null } catch {|e| $e.msg }
+    assert ($out | str contains "apply to the imported doc")
+}
+
+@test
+def "the tools flag without an import errors" [] {
+    let out = try { gi enable --tools; null } catch {|e| $e.msg }
     assert ($out | str contains "apply to the imported doc")
 }
