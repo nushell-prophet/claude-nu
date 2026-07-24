@@ -591,6 +591,22 @@ def "check falls back to generic wording when no doc is recorded" [] {
 }
 
 @test
+def "check binds to the per-session GI_CANVAS over the settings default" [] {
+    let root = temp-root
+    gi enable gi/default.md --hook --root $root | ignore
+    let prose = "Long prose without any link signal that must be blocked by the rule"
+    # gi resume sets GI_CANVAS per session; it must win over the repo default
+    # recorded in settings.env, so parallel canvases each get their own doc named.
+    let reason = with-env { GI_CANVAS: "gi/session-abc.md" } {
+        block-decision { last_assistant_message: $prose, cwd: $root }
+    } | from json | get reason
+    rm -rf $root
+
+    assert ($reason | str contains "`gi/session-abc.md`")
+    assert (not ($reason | str contains "default.md"))
+}
+
+@test
 def "check stands down where no live settings carry the hook" [] {
     # The user's disable-then-check scenario: Claude Code snapshots hook
     # config at session start, so a mid-session disable leaves the snapshotted
@@ -784,4 +800,56 @@ def "the commit flag without an import errors" [] {
 def "the tools flag without an import errors" [] {
     let out = try { gi enable --tools; null } catch {|e| $e.msg }
     assert ($out | str contains "apply to the imported doc")
+}
+
+# =============================================================================
+# gi resume — reopen a canvas from its frontmatter session
+# =============================================================================
+
+@test
+def "resume reads the full session id from a from-session canvas frontmatter" [] {
+    let root = temp-root
+    let home = temp-root
+    stage-session $home
+    with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
+        gi enable --root $root --from-session | ignore
+    }
+    let doc = $root | path join "gi" $"session-($FIXTURE_SESSION | str substring 0..7).md"
+    let sid = gi-frontmatter-session $doc
+    rm -rf $root $home
+
+    # The 8-char key names the file; the frontmatter carries the full UUID resume needs.
+    assert equal $sid $FIXTURE_SESSION
+}
+
+@test
+def "frontmatter-session is null for a canvas without a session" [] {
+    let root = temp-root
+    gi enable gi/plain.md --root $root | ignore
+    let sid = gi-frontmatter-session ($root | path join "gi" "plain.md")
+    rm -rf $root
+
+    assert equal $sid null
+}
+
+@test
+def "resume without a doc is rejected" [] {
+    let out = try { gi resume; null } catch {|e| $e.msg }
+    assert ($out | str contains "needs a canvas file")
+}
+
+@test
+def "resume on a canvas with no session errors before launching" [] {
+    let root = temp-root
+    gi enable gi/plain.md --root $root | ignore
+    let out = try { gi resume ($root | path join "gi" "plain.md"); null } catch {|e| $e.msg }
+    rm -rf $root
+
+    assert ($out | str contains "no `session:`")
+}
+
+@test
+def "a doc positional on a non-enable, non-resume action is rejected" [] {
+    let out = try { gi status some.md; null } catch {|e| $e.msg }
+    assert ($out | str contains "enable or resume")
 }

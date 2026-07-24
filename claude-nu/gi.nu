@@ -245,6 +245,7 @@ def "nu-complete gi-actions" []: nothing -> table {
         [enable "seed the style, skills, and working doc; --hook adds the Stop hook"]
         [disable "remove the hook and outputStyle (seeded files stay)"]
         [status "show what is installed"]
+        [resume "reopen a canvas: claude --resume its frontmatter session, GI_CANVAS set to it"]
         [check "hook body — reads the Stop event JSON on stdin"]
     ]
 }
@@ -257,8 +258,8 @@ def "nu-complete gi-actions" []: nothing -> table {
 # Named `main` because a module can't export a command named the same as the
 # module — importing this file yields the `gi` command.
 export def main [
-    action?: string@"nu-complete gi-actions" # enable | disable | status | check (default: status)
-    doc?: path # enable only: working-doc path (default: keep the recorded one, else gi/canvas-<timestamp>.md; with --from-session gi/session-<id>.md)
+    action?: string@"nu-complete gi-actions" # enable | disable | status | resume | check (default: status)
+    doc?: path # enable: working-doc path (default: keep the recorded one, else gi/canvas-<timestamp>.md; with --from-session gi/session-<id>.md). resume: the canvas to reopen
     --root: path # Repo root (default: git top-level); ignored by check
     --force # enable only: overwrite the seeded style and skills with the module's versions
     --hook # enable only: also install the Stop hook (the hard floor)
@@ -273,7 +274,6 @@ export def main [
     # buried the two guards below that actually say something.
     let misplaced = [
         [given msg hint span];
-        [($doc != null) "a working-doc path only makes sense with enable" "gi enable <doc>" (metadata $doc).span]
         [$force "--force only makes sense with enable" "gi enable --force" (metadata $force).span]
         [$hook "--hook only makes sense with enable" "gi enable --hook" (metadata $hook).span]
         [$from_session "--from-session only makes sense with enable" "gi enable --from-session" (metadata $from_session).span]
@@ -285,6 +285,21 @@ export def main [
     if $action != "enable" and ($misplaced | is-not-empty) {
         let bad = $misplaced | first
         error make {msg: $bad.msg label: {text: $"drop this, or use: ($bad.hint)" span: $bad.span}}
+    }
+    # The doc positional is shared by two actions with different meanings — the
+    # working doc for enable, the canvas to reopen for resume — so it is valid
+    # for both and misplaced elsewhere. resume can't run without one.
+    if $doc != null and $action not-in ["enable" "resume"] {
+        error make {
+            msg: "a working-doc path only makes sense with enable or resume"
+            label: {text: "drop this, or use: gi enable <doc> / gi resume <doc>" span: (metadata $doc).span}
+        }
+    }
+    if $action == "resume" and $doc == null {
+        error make {
+            msg: "gi resume needs a canvas file"
+            label: {text: "name the canvas to reopen: gi resume <doc>" span: (metadata $doc).span}
+        }
     }
     if $commit and $gitignore {
         error make {
@@ -312,11 +327,12 @@ export def main [
         null | "status" => (gi-status --root $root)
         "enable" => (gi-enable --root $root --doc $doc --force=$force --hook=$hook --from-session=$from_session --commit=$commit --gitignore=$gitignore --tools=$tools)
         "disable" => (gi-disable --root $root)
+        "resume" => (gi-resume $doc --root $root)
         "check" => ($event | gi-check)
         _ => {
             error make {
                 msg: $"unknown gi action: ($action)"
-                label: {text: "expected enable, disable, status, or check" span: (metadata $action).span}
+                label: {text: "expected enable, disable, status, resume, or check" span: (metadata $action).span}
             }
         }
     }
@@ -492,6 +508,56 @@ def gi-disable [
     gi-status --root $root
 }
 
+# The `session:` value from a canvas's YAML frontmatter, or null when the file
+# has no frontmatter or no session key. export-session writes this key, so any
+# canvas seeded with `gi enable --from-session` carries it; the plain template
+# does not. Exported for tests. Why parse by hand and not `open`: a .md file is
+# raw text to nushell, and the frontmatter is between the first two `---` lines.
+export def gi-frontmatter-session [file: path]: nothing -> any {
+    let raw = open --raw $file
+    if not ($raw | str starts-with "---") { return null }
+    let block = $raw | lines | skip 1 | take until {|l| $l == "---" }
+    let meta = try { $block | str join "\n" | from yaml } catch { {} }
+    $meta.session?
+}
+
+# Reopen a canvas: resume the Claude Code session recorded in its frontmatter,
+# with $env.GI_CANVAS pointing at the canvas so both the agent and the Stop hook
+# bind to it for this session. Why a per-session env var, not settings: settings
+# `env` is repo-wide and overrides a same-named launch var, so several canvases
+# in one repo could not each carry their own doc through settings — the launch
+# env var is the only per-session channel the hook inherits (GI_HOOK_DOC in
+# settings stays the repo default). --resume keeps the session id, so the
+# canvas's frontmatter stays valid across reopens (--fork-session would mint a
+# new id and orphan it).
+def gi-resume [
+    doc: path # The canvas to reopen; its frontmatter session drives claude --resume
+    --root: path # Repo root (default: git top-level)
+]: nothing -> nothing {
+    let root = $root | default (gi-repo-root) | path expand
+    let doc_abs = $doc | path expand
+    if not ($doc_abs | path exists) {
+        error make {msg: $"no such canvas: ($doc_abs)" label: {text: "file not found" span: (metadata $doc).span}}
+    }
+    let sid = gi-frontmatter-session $doc_abs
+    if ($sid | is-empty) {
+        error make --unspanned {
+            msg: $"($doc_abs) has no `session:` in its frontmatter — nothing to resume"
+            help: "only canvases seeded with `gi enable --from-session` carry a session id"
+        }
+    }
+    # Root-relative when under root, to match how GI_HOOK_DOC is stored and how
+    # the hook (cwd at the project) reads it back.
+    let doc_rel = if ($doc_abs | str starts-with $"($root)/") { $doc_abs | path relative-to $root } else { $doc_abs }
+    print $"resuming session (gi-session-key $sid) with canvas ($doc_rel)"
+    # cd so claude resolves the session under this project and GI_CANVAS's
+    # root-relative path lands at the right file.
+    do {
+        cd $root
+        with-env { GI_CANVAS: $doc_rel } { ^claude --resume $sid }
+    }
+}
+
 # Report what gi installed in this repo. Pipeline-friendly record.
 def gi-status [
     --root: path # Repo root to inspect (default: git top-level)
@@ -567,12 +633,19 @@ def gi-check-rules []: record -> any {
     let message = $payload.last_assistant_message? | default ""
     if (gi-allowed $message) { return }
 
-    # Name the exact working doc when enable recorded one. Why: the doc name is
-    # timestamped or user-chosen, so a blocked agent can't guess it; naming it
-    # makes the correction actionable without a discovery step. Read fresh from
-    # settings at the event's cwd — not from $env, which Claude Code snapshots
-    # at session start and would go stale on a mid-session re-enable.
-    let doc = gi-doc (gi-open-settings (gi-paths $root).settings)
+    # Name the exact working doc when one is bound. Two sources, in order:
+    # $env.GI_CANVAS is the per-session canvas set by `gi resume` — the only
+    # per-session channel the hook inherits (settings is repo-wide); it is never
+    # written to settings.env, so it can't be clobbered by the injected default.
+    # Otherwise fall back to the repo default recorded in settings, read fresh at
+    # the event's cwd — not from $env.GI_HOOK_DOC, which Claude Code snapshots at
+    # session start and would go stale on a mid-session re-enable.
+    let session_canvas = $env.GI_CANVAS? | default ""
+    let doc = if ($session_canvas | is-not-empty) {
+        $session_canvas
+    } else {
+        gi-doc (gi-open-settings (gi-paths $root).settings)
+    }
     let doc = match ($doc | default "") {
         "" => "the working document"
         $p => $"`($p)`"
