@@ -655,3 +655,118 @@ def "allow-rule budget is tunable via GI_HOOK_MAX_LEN" [] {
         assert (gi-allowed "short `f.nu`")
     }
 }
+
+# =============================================================================
+# enable --from-session — the live session's dialogue as the working doc
+# =============================================================================
+
+const FIXTURE_SESSION = '99bf0e5b-212c-4891-abb2-6bc585af2ea0'
+const FIXTURES_SESSIONS_DIR = path self fixtures/sessions
+
+# Stage a fixture session under a temp HOME: resolve-session-file finds a UUID by
+# globbing ~/.claude/projects, so this is what makes the env-var path resolvable
+# the way it is in a live session.
+def stage-session [home: path]: nothing -> nothing {
+    let dir = $home | path join ".claude" "projects" "-tmp-proj"
+    mkdir $dir
+    cp ($FIXTURES_SESSIONS_DIR | path join $"($FIXTURE_SESSION).jsonl") $dir
+}
+
+@test
+def "import text carries the canvas header, the pointer note, and the dialogue" [] {
+    let body = gi-import-text ($FIXTURES_SESSIONS_DIR | path join $"($FIXTURE_SESSION).jsonl")
+
+    assert ($body | str starts-with "---\n") # export-session's frontmatter
+    assert str contains $body "# Working area"
+    assert str contains $body $"($FIXTURE_SESSION).jsonl`" # pointer to the full record
+    assert str contains $body "## User"
+    # The session title is replaced, not joined — one H1 in a committed doc.
+    assert equal ($body | lines | where $it starts-with "# ") ["# Working area"]
+}
+
+@test
+def "enable from-session writes a session-keyed doc and records it" [] {
+    let root = temp-root
+    let home = temp-root
+    stage-session $home
+    with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
+        gi enable --root $root --from-session | ignore
+    }
+    let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
+    let body = open --raw ($root | path join $recorded)
+    rm -rf $root $home
+
+    assert equal $recorded $"gi/session-($FIXTURE_SESSION | str substring 0..7).md"
+    assert str contains $body "## User"
+}
+
+@test
+def "from-session refuses to overwrite an existing doc" [] {
+    let root = temp-root
+    let home = temp-root
+    stage-session $home
+    let out = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
+        gi enable --root $root --from-session | ignore
+        try { gi enable --root $root --from-session | ignore; null } catch {|e| $e.msg }
+    }
+    rm -rf $root $home
+
+    assert ($out | str contains "already exists")
+}
+
+@test
+def "from-session errors when no live session id is exported" [] {
+    let root = temp-root
+    let out = with-env {CLAUDE_CODE_SESSION_ID: null} {
+        try { gi enable --root $root --from-session | ignore; null } catch {|e| $e.msg }
+    }
+    rm -rf $root
+
+    assert ($out | str contains "no live session")
+}
+
+@test
+def "the gitignore flag keeps the import out of git, beside the doc" [] {
+    let root = temp-root
+    let home = temp-root
+    stage-session $home
+    with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
+        gi enable --root $root --from-session --gitignore | ignore
+    }
+    let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
+    let ignored = open --raw ($root | path join "gi" ".gitignore") | lines
+    rm -rf $root $home
+
+    assert equal $ignored [($recorded | path basename)]
+}
+
+@test
+def "the commit flag puts the import into git history" [] {
+    let root = temp-root
+    let home = temp-root
+    stage-session $home
+    mkdir $root
+    git -C $root init --quiet
+    git -C $root config user.email "test@example.com"
+    git -C $root config user.name "test"
+    with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
+        gi enable --root $root --from-session --commit | ignore
+    }
+    let committed = git -C $root show --name-only --format="%s" HEAD | lines
+    rm -rf $root $home
+
+    assert equal $committed.0 $"gi: import session ($FIXTURE_SESSION | str substring 0..7) as the working doc"
+    assert ($committed | any {|l| $l | str ends-with ".md" })
+}
+
+@test
+def "commit and gitignore flags contradict each other" [] {
+    let out = try { gi enable --from-session --commit --gitignore; null } catch {|e| $e.msg }
+    assert ($out | str contains "contradict")
+}
+
+@test
+def "the commit flag without an import errors" [] {
+    let out = try { gi enable --commit; null } catch {|e| $e.msg }
+    assert ($out | str contains "apply to the imported doc")
+}

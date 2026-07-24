@@ -22,6 +22,8 @@
 # re-run `gi enable` (which rewrites the entry); the command alias itself is
 # gone.
 
+use sessions.nu [export-session resolve-session-file]
+
 # Substrings that identify our Stop entry inside settings.local.json. Why: the
 # command line is the only stable signature to match on for idempotent enable
 # and surgical disable — see `gi disable`. Two spellings: entries written
@@ -45,6 +47,11 @@ const GI_STYLE = "Canvas"
 # the moment the settings file is used where that checkout does not exist;
 # following the symlink at run time is exactly the dev-link contract.
 const GI_MODULE_DIR = (path self | path dirname)
+
+# The working-doc seed. A const of its own because two callers need it and only
+# one of them has a repo root: gi-paths bundles it for enable, gi-import-text
+# reads it with no root in hand.
+const GI_HEADER_SRC = ($GI_MODULE_DIR | path join "gi-md-src" "canvas-header.md")
 
 # The shell command Claude Code runs for the Stop event. Single-quote the `-c`
 # body so the outer shell does not expand `$in`; `--stdin` feeds the event JSON
@@ -93,7 +100,7 @@ def gi-branch [root: path]: nothing -> any {
 def gi-paths [root: path]: nothing -> record {
     {
         settings: ($root | path join ".claude" "settings.local.json")
-        template_src: ($GI_MODULE_DIR | path join "gi-md-src" "canvas-header.md")
+        template_src: $GI_HEADER_SRC
         style_src: ($GI_MODULE_DIR | path join "gi-md-src" "canvas-output-style.md")
         style_dst: ($root | path join ".claude" "output-styles" "canvas.md")
         skills_src: ($GI_MODULE_DIR | path join "gi-md-src" "skills")
@@ -132,6 +139,46 @@ def gi-stale [paths: record]: nothing -> list {
     gi-refresh-seeds $paths
     | where {|s| ($s.dst | path exists) and (open --raw $s.dst) != (open --raw $s.src) }
     | get dst
+}
+
+# The UUID of the session this command runs inside. Why the env var and not
+# export-session's default (newest session file by mtime): during a live session
+# the newest file is just as likely a subagent transcript or a session running in
+# another window, and importing someone else's dialogue as your canvas is silent
+# and wrong. Errors when unset — no fallback, since the wrong import is worse
+# than none.
+def gi-session-id []: nothing -> string {
+    let sid = $env.CLAUDE_CODE_SESSION_ID? | default ""
+    if ($sid | is-empty) {
+        error make --unspanned {
+            msg: "no live session: $env.CLAUDE_CODE_SESSION_ID is unset"
+            help: "--from-session imports the session it runs inside — run it from a Claude Code session"
+        }
+    }
+    $sid
+}
+
+# The working doc's starting content for --from-session: the canvas header, an
+# import note, then the session's dialogue — user messages and Claude's visible
+# replies, tool calls and thinking dropped. Why a note carrying the .jsonl path:
+# everything left out is one `open` away, and the import can never contain the
+# turn that asked for it (Claude Code writes the log as the turn runs), so the
+# gap is stated in the file rather than only in the terminal, where it scrolls
+# away. Exported for tests, which drive it with a fixture session.
+export def gi-import-text [session_id: string]: nothing -> string { # UUID, or a .jsonl path (what the tests pass)
+    let file = resolve-session-file $session_id
+    let note = $"> Imported from the live session on (date now | format date '%Y-%m-%d %H:%M'). The turn that ran the import is missing — Claude Code writes the session log as the turn runs. Tool calls, results, and thinking are dropped here; the full record is `($file)`."
+    # Replace the H1 rather than prepend the header: export-session titles the
+    # doc from the session summary, and two H1s in a committed doc is noise.
+    # First match only (no --all) — later `# ` lines belong to the dialogue.
+    export-session --session $session_id
+    | get markdown
+    | str replace --multiline --no-expand '^# .+' ([(open --raw $GI_HEADER_SRC) $note] | str join "\n")
+}
+
+# The 8-char session key used in the default doc name.
+def gi-session-key [session_id: string]: nothing -> string {
+    $session_id | str substring 0..7
 }
 
 # The working doc recorded in settings (env.GI_HOOK_DOC), or null. The doc name
@@ -206,33 +253,50 @@ def "nu-complete gi-actions" []: nothing -> table {
 # module — importing this file yields the `gi` command.
 export def main [
     action?: string@"nu-complete gi-actions" # enable | disable | status | check (default: status)
-    doc?: path # enable only: working-doc path (default: keep the recorded one, else gi/canvas-<timestamp>.md)
+    doc?: path # enable only: working-doc path (default: keep the recorded one, else gi/canvas-<timestamp>.md; with --from-session gi/session-<id>.md)
     --root: path # Repo root (default: git top-level); ignored by check
     --force # enable only: overwrite the seeded style and skills with the module's versions
     --hook # enable only: also install the Stop hook (the hard floor)
+    --from-session # enable only: start the working doc from this session's dialogue
+    --commit # --from-session only: commit the imported doc
+    --gitignore # --from-session only: keep the imported doc out of git
 ]: any -> any {
     let event = $in # check reads the Stop event here; the others ignore it
-    if $doc != null and $action != "enable" {
+    # Every enable-only option in one guard. Why a table: each option needs its
+    # own span for the error label, and six copies of the same five-line `if`
+    # buried the two guards below that actually say something.
+    let misplaced = [
+        [given msg hint span];
+        [($doc != null) "a working-doc path only makes sense with enable" "gi enable <doc>" (metadata $doc).span]
+        [$force "--force only makes sense with enable" "gi enable --force" (metadata $force).span]
+        [$hook "--hook only makes sense with enable" "gi enable --hook" (metadata $hook).span]
+        [$from_session "--from-session only makes sense with enable" "gi enable --from-session" (metadata $from_session).span]
+        [$commit "--commit only makes sense with enable" "gi enable --from-session --commit" (metadata $commit).span]
+        [$gitignore "--gitignore only makes sense with enable" "gi enable --from-session --gitignore" (metadata $gitignore).span]
+    ]
+    | where given
+    if $action != "enable" and ($misplaced | is-not-empty) {
+        let bad = $misplaced | first
+        error make {msg: $bad.msg label: {text: $"drop this, or use: ($bad.hint)" span: $bad.span}}
+    }
+    if $commit and $gitignore {
         error make {
-            msg: "a working-doc path only makes sense with enable"
-            label: {text: "drop this, or use: gi enable <doc>" span: (metadata $doc).span}
+            msg: "--commit and --gitignore contradict each other"
+            label: {text: "pick one: put the import in git, or keep it out" span: (metadata $gitignore).span}
         }
     }
-    if $force and $action != "enable" {
+    # Both flags decide what git does with the imported transcript, so neither
+    # means anything without an import — committing whatever an older canvas
+    # happens to hold is a different action, not this one.
+    if ($commit or $gitignore) and not $from_session {
         error make {
-            msg: "--force only makes sense with enable"
-            label: {text: "drop this, or use: gi enable --force" span: (metadata $force).span}
-        }
-    }
-    if $hook and $action != "enable" {
-        error make {
-            msg: "--hook only makes sense with enable"
-            label: {text: "drop this, or use: gi enable --hook" span: (metadata $hook).span}
+            msg: "--commit and --gitignore apply to the imported doc"
+            label: {text: "add --from-session, or handle the doc with git yourself" span: (metadata $commit).span}
         }
     }
     match $action {
         null | "status" => (gi-status --root $root)
-        "enable" => (gi-enable --root $root --doc $doc --force=$force --hook=$hook)
+        "enable" => (gi-enable --root $root --doc $doc --force=$force --hook=$hook --from-session=$from_session --commit=$commit --gitignore=$gitignore)
         "disable" => (gi-disable --root $root)
         "check" => ($event | gi-check)
         _ => {
@@ -252,22 +316,44 @@ def gi-enable [
     --doc: path # Working-doc path, relative to root (absolute also accepted)
     --force # Overwrite the seeded style and skills with the module's versions
     --hook # Also install the Stop hook
+    --from-session # Start the working doc from this session's dialogue
+    --commit # Commit the imported doc
+    --gitignore # Keep the imported doc out of git
 ]: nothing -> record {
     let root = $root | default (gi-repo-root) | path expand
     let paths = gi-paths $root
     let settings = gi-open-settings $paths.settings
+    let sid = if $from_session { gi-session-id }
 
-    # Resolve the working doc: explicit arg wins; else keep the recorded one so
-    # re-enable is idempotent; else mint a timestamped default. Stored
-    # root-relative when under root — the hook runs with cwd at the project, so
-    # the short form works in the block message and survives a checkout move.
-    let doc = $doc | default (gi-doc $settings) | default $"gi/canvas-(date now | format date '%J_%Q').md"
+    # Resolve the working doc: explicit arg wins; else an import gets its own
+    # session-keyed name — re-running it in one session refreshes one file, and
+    # the repo's older canvas (the recorded doc) is left alone; else keep the
+    # recorded one so re-enable is idempotent; else mint a timestamped default.
+    # Stored root-relative when under root — the hook runs with cwd at the
+    # project, so the short form works in the block message and survives a
+    # checkout move.
+    let doc = $doc
+        | default (if $from_session { $"gi/session-(gi-session-key $sid).md" })
+        | default (gi-doc $settings)
+        | default $"gi/canvas-(date now | format date '%J_%Q').md"
     let doc_abs = $root | path join $doc
     # Expand the dirname, not the whole path: the doc may not exist yet, and
     # `path expand` resolves symlinks only for paths that exist. This keeps an
     # absolute doc arriving through a symlink (cozy's ~/repos) root-relative.
     let doc_abs = $doc_abs | path dirname | path expand | path join ($doc_abs | path basename)
     let doc = if ($doc_abs | str starts-with $"($root)/") { $doc_abs | path relative-to $root } else { $doc_abs }
+
+    # Build the import before anything is written: a session that can't be read
+    # must not leave settings pointing at a doc that was never created.
+    let imported = if $from_session {
+        if ($doc_abs | path exists) {
+            error make --unspanned {
+                msg: $"working doc already exists: ($doc_abs)"
+                help: "the import is the doc's starting content and won't overwrite work already in it — delete the file to re-import, or name another doc: gi enable <doc> --from-session"
+            }
+        }
+        gi-import-text $sid
+    }
 
     # The hook is opt-in: --hook installs it; plain enable leaves the on/off
     # state alone but still refreshes an already-installed entry. Why refresh:
@@ -293,6 +379,13 @@ def gi-enable [
     | upsert outputStyle $GI_STYLE
     | save --force $paths.settings
 
+    # The import is the working doc's first content, so it lands before the seed
+    # loop — whose copy-if-absent rule then skips the plain template.
+    if $imported != null {
+        mkdir ($doc_abs | path dirname)
+        $imported | save --force $doc_abs
+    }
+
     # Seed the working-doc template, the output style, and the gi skills. Why
     # not clobber: once they exist they are the user's files — refreshing would
     # destroy their edits. --force overwrites the style and skills — they are
@@ -309,10 +402,38 @@ def gi-enable [
             cp $seed.src $seed.dst
         }
     }
+    # An import lands in the working tree and stays there: neither flag by
+    # default. Why not tracked: a transcript carries raw paths and whatever the
+    # dialogue quoted, and that is the user's call to make once they have read
+    # it. Why not ignored: gi runs on `git diff` and commit messages, so an
+    # ignored canvas would keep every later turn out of git — the exact failure
+    # gi exists to prevent.
+    if $gitignore {
+        # Beside the doc, not in the root .gitignore: gi owns that directory,
+        # and the entry stays with the file it names wherever the doc lives.
+        let ignore_file = $doc_abs | path dirname | path join ".gitignore"
+        let entry = $doc_abs | path basename
+        let lines = if ($ignore_file | path exists) { open --raw $ignore_file | lines } else { [] }
+        if $entry not-in $lines {
+            $lines | append $entry | append "" | str join "\n" | save --force $ignore_file
+        }
+    }
+    if $commit {
+        ^git -C $root add -- $doc_abs
+        ^git -C $root commit --quiet -m $"gi: import session (gi-session-key $sid) as the working doc" -m "Dialogue up to the import; the full session log stays outside the repo." -- $doc_abs
+    }
+
     # The style is read once at session start, so it won't apply until /clear or
     # a new session; the hook (when installed) takes effect immediately.
     let mode = if $install { "with the Stop hook" } else { "setup only — `gi enable --hook` adds the Stop hook" }
     print $"gi enabled \(($mode)\). Run /clear or start a new session for the Canvas output style to load."
+    if $imported != null {
+        print $"imported this session into ($doc_abs) — the current turn is not in it; the session log is written as the turn runs."
+        # The agent's own $env.GI_HOOK_DOC was snapshotted at session start, so
+        # after a re-point it names the previous doc until /clear. The hook reads
+        # settings fresh, so its block message is right — but only after a block.
+        print $"tell the agent that path: its $env.GI_HOOK_DOC was snapshotted at session start and won't name this doc until /clear."
+    }
     # Same guard the hook enforces, surfaced at opt-in time — switching now
     # beats being blocked mid-session with commits already on the branch.
     # Gated on the hook: without it nothing blocks, so there is nothing to warn about.

@@ -74,6 +74,8 @@ claude-nu gi enable                    # Seed the Canvas style, gi skills, and w
 claude-nu gi enable --hook             # Same, plus the Stop hook that keeps chat terse (strict gi protocol)
 claude-nu gi enable notes/plan.md      # Same, with a chosen working-doc path (default: gi/canvas-<timestamp>.md)
 claude-nu gi enable --force            # Re-seed the style and skills from the module (working doc untouched)
+claude-nu gi enable --from-session     # Start the working doc from this session's dialogue (gi/session-<id>.md)
+claude-nu gi enable --from-session --commit    # ...and commit it; --gitignore keeps it out of git instead
 claude-nu gi status                    # { hook, settings, doc, style, skills, stale, output_style_set }
 ```
 
