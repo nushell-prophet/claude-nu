@@ -138,6 +138,12 @@ def gi-doc-path [root: path, doc: path]: nothing -> record {
     }
 }
 
+# The canvas name minted when the user names none. A def and not a const: the
+# timestamp has to be read when the command runs, not when the module parses.
+def gi-default-doc []: nothing -> string {
+    $"gi/canvas-(date now | format date '%J_%Q').md"
+}
+
 # The bundled skills as [src dst] seed rows for enable's copy-if-absent loop.
 # Enumerated from disk, not hardcoded: adding a skill under gi-md-src/skills
 # is the whole change.
@@ -340,7 +346,7 @@ def gi-enable [
     # holds as many as you like.
     let doc = $doc
         | default (if $from_session { $"gi/session-(gi-session-key $sid).md" })
-        | default $"gi/canvas-(date now | format date '%J_%Q').md"
+        | default (gi-default-doc)
     let paths_doc = gi-doc-path $root $doc
     let doc_abs = $paths_doc.abs
     let doc = $paths_doc.rel
@@ -481,9 +487,10 @@ def gi-launch [
     --hook # Carry the Stop-hook floor into the session
 ]: nothing -> nothing {
     let root = $root | default (gi-repo-root) | path expand
-    let doc = $doc | default $"gi/canvas-(date now | format date '%J_%Q').md"
-    let doc_abs = (gi-doc-path $root $doc).abs
-    let doc_rel = (gi-doc-path $root $doc).rel
+    let doc = $doc | default (gi-default-doc)
+    let paths_doc = gi-doc-path $root $doc
+    let doc_abs = $paths_doc.abs
+    let doc_rel = $paths_doc.rel
     let style = (gi-paths $root).style_dst
     # outputStyle names a style file that must already be on disk here; without
     # it Claude Code would launch with no style and gi would be silently half on.
