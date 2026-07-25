@@ -236,63 +236,13 @@ def "open refuses to launch before the repo is seeded" [] {
 }
 
 @test
-def "resume on a missing canvas errors before launching" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    let out = try { gi resume ($root | path join "gi" "nope.md") --root $root; null } catch {|e| $e.msg }
-    rm -rf $root
-
-    assert ($out | str contains "no such canvas")
-}
-
-@test
-def "resume on a canvas with no session errors before launching" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    plain-canvas $root "gi/plain.md"
-    let out = try { gi resume ($root | path join "gi" "plain.md") --root $root; null } catch {|e| $e.msg }
-    rm -rf $root
-
-    assert ($out | str contains "no `session:`")
-}
-
-@test
-def "the canvas verb follows the file, not the flags that made it" [] {
-    let root = temp-root
-    let doc = plain-canvas $root "gi/plain.md"
-    let fresh = gi-canvas-verb $doc
-    gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
-    let bound = gi-canvas-verb $doc
-    rm -rf $root
-
-    # This is what `enable` prints as the next step. It used to be read off
-    # --from-session, so an `enable` run days after the import sent the user to
-    # `gi open`, which then refused the canvas.
-    assert equal $fresh "open"
-    assert equal $bound "resume"
-}
-
-@test
-def "open refuses a canvas already bound to a session" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    let doc = plain-canvas $root "gi/plain.md"
-    gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
-    let out = try { gi open $doc --root $root; null } catch {|e| $e.msg }
-    rm -rf $root
-
-    # `claude --session-id` rejects an id already on disk, so a second open
-    # could never work — the refusal names `gi resume` instead of leaking that.
-    assert ($out | str contains "already bound to session")
-}
-
-@test
 def "launch args bind the canvas session and name the session after it" [] {
     let sid = "11111111-2222-3333-4444-555555555555"
 
-    # open mints the id, so it is passed as --session-id; resume returns to it.
+    # A minted id is declared with --session-id; one the canvas already carried
+    # is returned to with --resume. One verb, and the canvas decides which.
     assert equal (gi-launch-args $sid "gi/plan.md") ["--session-id" $sid "--name" "gi/plan.md"]
-    assert equal (gi-launch-args $sid "gi/plan.md" --continue) ["--resume" $sid "--name" "gi/plan.md"]
+    assert equal (gi-launch-args $sid "gi/plan.md" --resume) ["--resume" $sid "--name" "gi/plan.md"]
 }
 
 @test
@@ -324,10 +274,12 @@ def "stamping a session joins an existing frontmatter block" [] {
     assert equal $meta {session: "11111111-2222-3333-4444-555555555555" title: "my plan"}
 }
 
-# No tests here for `gi resume` without a canvas, `gi --force`,
-# `gi enable --no-hook`, or `gi <doc>`. Each verb is its own command
-# now, so the parser rejects all four before the code runs — and a parse error
-# cannot be caught by `try`, which is the point: the signature states the rule.
+# No tests here for `gi --force`, `gi enable --no-hook`, or `gi <doc>`: each
+# verb is its own command, so the parser rejects those before the code runs —
+# and a parse error cannot be caught by `try`, which is the point.
+#
+# Nor for "open refuses a bound canvas" / "resume needs a session": there is
+# one verb now, and the canvas decides which half of it runs.
 
 # =============================================================================
 # check — the Stop hook decision (contract)

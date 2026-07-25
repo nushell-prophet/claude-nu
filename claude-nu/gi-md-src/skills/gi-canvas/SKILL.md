@@ -19,7 +19,7 @@ nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi'
 
 If that path does not exist on this machine, find the module (`ls ~/repos/claude-nu ~/git/claude-nu`) and use the real one.
 
-The commands **the user** runs go into their REPL, where the module is already loaded — hand those over bare: `claude-nu gi resume <doc>`.
+The commands **the user** runs go into their REPL, where the module is already loaded — hand those over bare: `claude-nu gi open <doc>`.
 
 ## Which case
 
@@ -27,9 +27,9 @@ Read `$ARGUMENTS` and the conversation:
 
 - **No canvas yet, and this chat is worth keeping** (the usual case) → import this session.
 - **No canvas yet, nothing here worth keeping** → a blank canvas.
-- **A canvas path is given or exists in `gi/`** → open it if it is new, resume it if it already holds a session.
+- **A canvas path is given or exists in `gi/`** → open it.
 
-A canvas keeps one session for life: `gi open` mints the id and writes it into the canvas's frontmatter, `gi resume` returns to it. So `Read` the canvas first — a `session:` line in its frontmatter means `resume`, and `open` will refuse it.
+A canvas keeps one session for life, and `gi open` handles both halves of that: a canvas with no `session:` in its frontmatter gets one minted and written in, one that has it is resumed. You do not have to tell them apart.
 
 `gi` on its own tells you what is seeded here and whether this session is already bound (`canvas` non-null → it already is a canvas session; say so and stop). `ls gi/*.md` lists the repo's canvases.
 
@@ -43,7 +43,7 @@ nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi enable notes/x.md --from-s
 
 It refuses to overwrite an existing doc — that is deliberate, do not delete the old one to get past it; name another path instead (`gi enable <doc> --from-session`).
 
-Then tell the user, in one line: exit this session and run `claude-nu gi resume <doc>`. That reopens **this same session** (same id, full context) with the canvas bound, so the missing tail — the turns after the import, which the session log cannot contain yet — is still in context and can be appended there.
+Then tell the user, in one line: exit this session and run `claude-nu gi open <doc>`. The import wrote this session's id into the canvas, so that reopens **this same session** (same id, full context) with the canvas bound, and the missing tail — the turns after the import, which the session log cannot contain yet — is still in context and can be appended there.
 
 ## Blank canvas, or an existing one
 
@@ -51,9 +51,8 @@ Then tell the user, in one line: exit this session and run `claude-nu gi resume 
 
 ```nushell
 claude-nu gi open                 # new timestamped canvas, then launch
-claude-nu gi open gi/plan.md      # a named one; created from the template if new
+claude-nu gi open gi/plan.md      # a named one; created if new, resumed if it holds a session
 claude-nu gi open <doc> --no-hook # style only, no Stop-hook floor
-claude-nu gi resume gi/plan.md    # a canvas that already holds a session
 ```
 
 ## What to report
