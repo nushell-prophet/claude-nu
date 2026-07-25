@@ -261,6 +261,36 @@ def "stamping a session creates the frontmatter block when there is none" [] {
 }
 
 @test
+def "stamping a session replaces an id already recorded" [] {
+    let root = temp-root
+    let doc = plain-canvas $root "gi/plain.md"
+    gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
+    gi-stamp-session $doc "99999999-8888-7777-6666-555555555555"
+    let raw = open --raw $doc
+    let sid = gi-frontmatter-session $doc
+    rm -rf $root
+
+    # This is what `gi open --new-session` does: the canvas names one session,
+    # never two, so the old key is overwritten rather than joined.
+    assert equal $sid "99999999-8888-7777-6666-555555555555"
+    assert equal ($raw | lines | where $it starts-with "session:" | length) 1
+}
+
+@test
+def "stamping a session leaves a session-like line in the prose alone" [] {
+    let root = temp-root
+    mkdir ($root | path join "gi")
+    let doc = $root | path join "gi" "prose.md"
+    "---\nsession: 11111111-2222-3333-4444-555555555555\n---\n\nsession: not frontmatter\n" | save $doc
+    gi-stamp-session $doc "99999999-8888-7777-6666-555555555555"
+    let body = open --raw $doc | lines | last
+    rm -rf $root
+
+    # The rewrite is scoped to the block above the closing fence.
+    assert equal $body "session: not frontmatter"
+}
+
+@test
 def "stamping a session joins an existing frontmatter block" [] {
     let root = temp-root
     mkdir ($root | path join "gi")

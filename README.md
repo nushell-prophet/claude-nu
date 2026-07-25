@@ -133,7 +133,7 @@ Filters out system-generated messages, keeping only user prompts and assistant r
 
 ### `claude-nu gi`
 
-Set up the gi protocol in a repo — where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing. It comes in two halves. `enable` **seeds** the repo: the Canvas output style and the gi skills. `open`/`resume` **launch** a session bound to one canvas, creating the canvas if it does not exist yet — that launch is the only thing that turns gi on.
+Set up the gi protocol in a repo — where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing. It comes in two halves. `enable` **seeds** the repo: the Canvas output style and the gi skills. `open` **launches** a session bound to one canvas, creating the canvas if it does not exist yet — that launch is the only thing that turns gi on.
 
 Each verb is a real Nushell subcommand, so it carries its own flags and its own `help claude-nu gi <verb>`, and `claude-nu gi <TAB>` completes them.
 
@@ -147,6 +147,7 @@ claude-nu gi enable --from-session --gitignore # ...or keep it out of git
 claude-nu gi open              # new canvas + a session bound to it
 claude-nu gi open gi/plan.md   # ...a named one: created from the template if new, resumed if it already holds a session
 claude-nu gi open gi/plan.md --no-hook # style only, without the Stop-hook floor
+claude-nu gi open gi/plan.md --new-session # start over on it: mint a fresh id, overwrite the recorded one
 claude-nu gi                   # { canvas, style, skills, stale }
 ```
 
@@ -156,7 +157,7 @@ claude-nu gi                   # { canvas, style, skills, stale }
 
 A repo can hold as many canvases as you like — each `open`/`resume` binds one session to one file, so parallel canvases never collide.
 
-**One canvas, one session, for life.** On a canvas with no `session:` in its frontmatter, `gi open` mints the session id itself (`claude --session-id`) and writes it in; on one that already has it, the same command resumes that session (`claude --resume`). So the same file reopens into the same conversation days later — a canvas is a working document, not a one-sitting scratchpad — and there is no second verb to pick, because the file already says which case it is. The launch also passes `--name <canvas>`, which puts the canvas in the prompt box, the `/resume` picker, and the terminal title, so a window says which canvas it belongs to.
+**One canvas, one session, for life.** On a canvas with no `session:` in its frontmatter, `gi open` mints the session id itself (`claude --session-id`) and writes it in; on one that already has it, the same command resumes that session (`claude --resume`). So the same file reopens into the same conversation days later — a canvas is a working document, not a one-sitting scratchpad — and there is no second verb to pick, because the file already says which case it is. `--new-session` is the way out when that session is gone — deleted, expired, or simply not worth continuing: it mints a fresh id and overwrites the one the canvas records, naming the id it drops as it goes. The launch also passes `--name <canvas>`, which puts the canvas in the prompt box, the `/resume` picker, and the terminal title, so a window says which canvas it belongs to.
 
 **Switching into gi mid-chat:** `--from-session` starts the canvas from the dialogue so far instead of the empty template, so the discussion that led you to gi is the canvas's first content. It reads the session it runs inside (`$env.CLAUDE_CODE_SESSION_ID` — not "the newest session file", which during a live session is as likely a subagent transcript), keeps user messages and Claude's visible replies, and drops tool calls and thinking behind a note pointing at the raw `.jsonl` (`--tools` keeps tool calls as one-line placeholders — useful when the session's value is in what was tried, not only what was said). The turn that runs the import is never in it: Claude Code writes the session log as the turn runs, so the last exchange is still missing. The doc is named for the session (`gi/session-<id>.md`) and is never overwritten — delete it to re-import. It lands in the working tree untracked; `--commit` puts it in git, `--gitignore` keeps it out (they are mutually exclusive). Neither is the default: a transcript carries raw paths and whatever the dialogue quoted, so tracking it is your call — but leaving it ignored means every later gi turn stays out of git too, which is the failure gi exists to prevent.
 

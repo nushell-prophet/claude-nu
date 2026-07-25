@@ -15,6 +15,8 @@
 #                      one session for life — a canvas with no session gets one
 #                      minted and written in, one that has it is resumed. Which
 #                      case it is, the file says; there is no second verb.
+#                      `--new-session` is the way out when that session is gone
+#                      (deleted, expired): it overwrites the recorded id.
 #
 # Why activation lives at launch and not in .claude/settings.local.json (which
 # is what this replaced): outputStyle, hooks, and env in a settings file are
@@ -256,8 +258,9 @@ export def "gi open" [
     doc?: path # The canvas (default: gi/canvas-<timestamp>.md)
     --root: path # Repo root (default: git top-level)
     --no-hook # Launch with the Canvas style but without the Stop-hook floor
+    --new-session # Start a fresh session on this canvas, overwriting the id it records
 ]: nothing -> nothing {
-    gi-launch --root $root --doc $doc --hook=(not $no_hook)
+    gi-launch --root $root --doc $doc --hook=(not $no_hook) --new-session=$new_session
 }
 
 # Seed the gi protocol into this repo: the Canvas style and the gi skills.
@@ -410,19 +413,25 @@ export def gi-frontmatter-session [file: path]: nothing -> any {
     $meta.session?
 }
 
-# Write `session: <sid>` into a canvas's frontmatter, creating the block when
-# the file has none. Why stamp the file rather than keep a side record: a
-# `--from-session` canvas already carries this key, so both origins end up with
-# one mechanism, and the binding travels with the file — move or copy a canvas
-# and it still names its session. Exported for tests.
+# Write `session: <sid>` into a canvas's frontmatter — replacing the key when
+# it is already there (that is `--new-session`), adding it to an existing block,
+# or creating the block when the file has none. Why stamp the file rather than
+# keep a side record: a `--from-session` canvas already carries this key, so
+# both origins end up with one mechanism, and the binding travels with the file
+# — move or copy a canvas and it still names its session. Exported for tests.
 export def gi-stamp-session [file: path, sid: string]: nothing -> nothing {
     let raw = open --raw $file
-    # First `---\n` only: inside an existing block the key joins it; with no
-    # block, a new one is prepended. A canvas that already has `session:` never
-    # reaches here — gi-launch refuses it (see the open branch).
-    $raw
-    | if ($raw | str starts-with "---\n") { str replace "---\n" $"---\nsession: ($sid)\n" } else { $"---\nsession: ($sid)\n---\n\n($in)" }
-    | save --force $file
+    if not ($raw | str starts-with "---\n") {
+        return ($"---\nsession: ($sid)\n---\n\n($raw)" | save --force $file)
+    }
+    # Split at the closing fence: head is the opening `---` plus the keys. The
+    # rewrite happens inside head only, so a line of prose that happens to start
+    # with `session:` is never touched. The body is passed through untouched,
+    # trailing newline and all.
+    let parts = $raw | split row --number 2 "\n---\n"
+    let head = $parts.0
+    | if ($in =~ '(?m)^session:') { str replace --regex --multiline '^session:.*$' $"session: ($sid)" } else { $"($in)\nsession: ($sid)" }
+    $"($head)\n---\n($parts.1)" | save --force $file
 }
 
 # The `claude` flags that bind a launch to a canvas's session. Split out of
@@ -449,6 +458,7 @@ def gi-launch [
     --doc: path # The canvas; created from the template when new
     --root: path # Repo root (default: git top-level)
     --hook # Carry the Stop-hook floor into the session
+    --new-session # Mint a fresh session id, overwriting the one the canvas records
 ]: nothing -> nothing {
     let root = $root | default (gi-repo-root) | path expand
     let doc = $doc | default (gi-default-doc)
@@ -472,10 +482,21 @@ def gi-launch [
     }
     # One canvas, one session, for life — and the canvas says which case this
     # is, so the caller does not. A `session:` in its frontmatter is one to
-    # return to; without one, gi mints an id and writes it in.
-    let bound = gi-frontmatter-session $doc_abs
+    # return to; without one, gi mints an id and writes it in. --new-session
+    # declines to read it, which mints and overwrites instead: a session file
+    # can be deleted or expire, and `claude --resume` then fails on an id the
+    # canvas can do nothing about.
+    let bound = if $new_session { null } else { gi-frontmatter-session $doc_abs }
     let sid = $bound | default (random uuid)
-    if ($bound | is-empty) { gi-stamp-session $doc_abs $sid }
+    if ($bound | is-empty) {
+        # Name what is being dropped. The canvas is untracked by default, so
+        # git may not hold the old id and there is nothing to read it back from.
+        let replaced = if $new_session { gi-frontmatter-session $doc_abs }
+        if ($replaced | is-not-empty) {
+            print $"note: replacing session (gi-session-key $replaced) recorded in ($doc_rel)"
+        }
+        gi-stamp-session $doc_abs $sid
+    }
     # Same guard the hook enforces, surfaced before the session starts — a
     # branch switch now beats being blocked mid-session with commits already made.
     let branch = gi-branch $root
