@@ -38,6 +38,7 @@ A canvas keeps one session for life: `gi open` mints the id and writes it into t
 ```nushell
 nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi enable --from-session'          # → gi/session-<id>.md, seeds style + skills
 nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi enable --from-session --tools'  # ...keeping tool calls as one-line placeholders
+nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi enable notes/x.md --from-session' # ...at a chosen path
 ```
 
 It refuses to overwrite an existing doc — that is deliberate, do not delete the old one to get past it; name another path instead (`gi enable <doc> --from-session`).

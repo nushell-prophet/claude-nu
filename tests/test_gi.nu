@@ -13,6 +13,15 @@ def settings-of [root: path]: nothing -> path {
     $root | path join ".claude" "settings.local.json"
 }
 
+# An unbound canvas, the way `gi open` leaves one before a session is stamped
+# in. enable does not make canvases, so tests that need one write it directly.
+def plain-canvas [root: path, rel: string]: nothing -> path {
+    let doc = $root | path join $rel
+    mkdir ($doc | path dirname)
+    "# Working area\n" | save --force $doc
+    $doc
+}
+
 # =============================================================================
 # enable — seeding only; nothing is turned on and nothing is recorded
 # =============================================================================
@@ -43,53 +52,23 @@ def "enable leaves a foreign settings file untouched" [] {
 }
 
 @test
-def "enable seeds a timestamped canvas under gi and returns its path" [] {
+def "enable makes no canvas" [] {
     let root = temp-root
     let status = gi enable --root $root
-    let exists = $status.doc | path exists
-    let body = if $exists { open --raw $status.doc } else { "" }
+    let gi_dir = $root | path join "gi" | path exists
     rm -rf $root
 
-    assert ($status.doc | path basename | str starts-with "canvas-")
-    assert equal ($status.doc | path dirname | path basename) "gi"
-    assert $exists
-    assert ($body | is-not-empty)
+    # Canvases belong to the launcher: `gi open <doc>` creates one and binds a
+    # session to it in the same breath, so a canvas seeded here would be an
+    # unbound file nobody asked for.
+    assert equal $status.doc null
+    assert (not $gi_dir)
 }
 
 @test
-def "enable accepts a custom canvas path" [] {
-    let root = temp-root
-    let status = gi enable notes/plan.md --root $root
-    let exists = $root | path join "notes" "plan.md" | path exists
-    rm -rf $root
-
-    assert equal ($status.doc | path basename) "plan.md"
-    assert $exists
-}
-
-@test
-def "enable does not clobber an existing canvas" [] {
-    let root = temp-root
-    mkdir ($root | path join "gi")
-    let deployed = $root | path join "gi" "doc.md"
-    "my edited working doc" | save $deployed
-    gi enable gi/doc.md --root $root | ignore
-    let body = open --raw $deployed
-    rm -rf $root
-
-    assert equal $body "my edited working doc"
-}
-
-@test
-def "enable stores an absolute canvas arriving through a symlink as root-relative" [] {
-    let root = temp-root
-    mkdir ($root | path join "gi")
-    let link = $"($root)-link"
-    ^ln -s $root $link
-    let status = gi enable ($link | path join "gi" "plan.md") --root $root
-    rm -rf $root $link
-
-    assert equal $status.doc ($root | path join "gi" "plan.md")
+def "a canvas path on enable without an import is rejected" [] {
+    let out = try { gi enable notes/plan.md; null } catch {|e| $e.msg }
+    assert ($out | str contains "makes no canvas")
 }
 
 @test
@@ -160,15 +139,16 @@ def "enable --force refreshes an edited style and skill" [] {
 }
 
 @test
-def "enable --force never overwrites the canvas" [] {
+def "enable --force never touches a canvas" [] {
     let root = temp-root
-    gi enable gi/doc.md --root $root | ignore
-    let doc = $root | path join "gi" "doc.md"
+    let doc = plain-canvas $root "gi/doc.md"
     "my work" | save --force $doc
     gi enable --root $root --force | ignore
     let body = open --raw $doc
     rm -rf $root
 
+    # --force refreshes distributed text (style, skills). A canvas is the
+    # user's work and is not distributed text — enable never writes one.
     assert equal $body "my work"
 }
 
@@ -265,7 +245,8 @@ def "resume on a missing canvas errors before launching" [] {
 @test
 def "resume on a canvas with no session errors before launching" [] {
     let root = temp-root
-    gi enable gi/plain.md --root $root | ignore
+    gi enable --root $root | ignore
+    plain-canvas $root "gi/plain.md"
     let out = try { gi resume ($root | path join "gi" "plain.md") --root $root; null } catch {|e| $e.msg }
     rm -rf $root
 
@@ -275,16 +256,15 @@ def "resume on a canvas with no session errors before launching" [] {
 @test
 def "the canvas verb follows the file, not the flags that made it" [] {
     let root = temp-root
-    gi enable gi/plain.md --root $root | ignore
-    let doc = $root | path join "gi" "plain.md"
+    let doc = plain-canvas $root "gi/plain.md"
     let fresh = gi-canvas-verb $doc
     gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
     let bound = gi-canvas-verb $doc
     rm -rf $root
 
     # This is what `enable` prints as the next step. It used to be read off
-    # --from-session, so a plain `enable` on a canvas seeded days earlier sent
-    # the user to `gi open`, which then refused it.
+    # --from-session, so an `enable` run days after the import sent the user to
+    # `gi open`, which then refused the canvas.
     assert equal $fresh "open"
     assert equal $bound "resume"
 }
@@ -292,8 +272,8 @@ def "the canvas verb follows the file, not the flags that made it" [] {
 @test
 def "open refuses a canvas already bound to a session" [] {
     let root = temp-root
-    gi enable gi/plain.md --root $root | ignore
-    let doc = $root | path join "gi" "plain.md"
+    gi enable --root $root | ignore
+    let doc = plain-canvas $root "gi/plain.md"
     gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
     let out = try { gi open $doc --root $root; null } catch {|e| $e.msg }
     rm -rf $root
@@ -315,8 +295,7 @@ def "launch args bind the canvas session and name the session after it" [] {
 @test
 def "stamping a session creates the frontmatter block when there is none" [] {
     let root = temp-root
-    gi enable gi/plain.md --root $root | ignore
-    let doc = $root | path join "gi" "plain.md"
+    let doc = plain-canvas $root "gi/plain.md"
     let before = open --raw $doc
     gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
     let after = open --raw $doc
@@ -706,7 +685,7 @@ def "a from-session canvas carries the full session id in its frontmatter" [] {
 @test
 def "frontmatter-session is null for a canvas without a session" [] {
     let root = temp-root
-    gi enable gi/plain.md --root $root | ignore
+    plain-canvas $root "gi/plain.md" | ignore
     let sid = gi-frontmatter-session ($root | path join "gi" "plain.md")
     rm -rf $root
 

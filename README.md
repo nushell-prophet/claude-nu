@@ -133,12 +133,12 @@ Filters out system-generated messages, keeping only user prompts and assistant r
 
 ### `claude-nu gi`
 
-Set up the gi protocol in a repo — where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing. It comes in two halves. `enable` **seeds** the repo: the Canvas output style, the gi skills, and a canvas (the working doc). `open`/`resume` **launch** a session bound to one canvas — that launch is the only thing that turns gi on.
+Set up the gi protocol in a repo — where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing. It comes in two halves. `enable` **seeds** the repo: the Canvas output style and the gi skills. `open`/`resume` **launch** a session bound to one canvas, creating the canvas if it does not exist yet — that launch is the only thing that turns gi on.
 
 ```nushell no-run
-claude-nu gi enable            # seed style/skills/canvas into this repo
-claude-nu gi enable notes/x.md # choose the canvas path (default: gi/canvas-<timestamp>.md)
-claude-nu gi enable --from-session            # start the canvas from this session's dialogue (gi/session-<id>.md)
+claude-nu gi enable            # seed style + skills into this repo (no canvas)
+claude-nu gi enable --from-session            # ...and start a canvas from this session's dialogue (gi/session-<id>.md)
+claude-nu gi enable notes/x.md --from-session # ...at a chosen path
 claude-nu gi enable --from-session --tools    # ...keeping tool calls as one-line placeholders
 claude-nu gi enable --from-session --commit   # ...and commit it
 claude-nu gi enable --from-session --gitignore # ...or keep it out of git
@@ -162,7 +162,7 @@ A repo can hold as many canvases as you like — each `open`/`resume` binds one 
 
 A canvas seeded this way records the session it was imported from, so `gi resume <doc>` reopens **that same session** (`claude --resume`, so the id keeps matching the frontmatter) with the canvas bound, and the agent — still holding the turns the session log could not contain yet — can append that missing tail itself. The `gi-canvas` skill drives the whole flow from inside a chat session, so you don't type nushell into Bash: it runs the import and hands you the one line to run.
 
-`enable` seeds the **Canvas** output style (the proactive half — the hook is the reactive floor) as `.claude/output-styles/canvas.md`, the gi skills into `.claude/skills/`, and the canvas from a template. Seeded files are never overwritten, so your edits are safe; `--force` refreshes the style and skills from the module (never the canvas), and `status.stale` lists seeds that have drifted from it.
+`enable` seeds the **Canvas** output style (the proactive half — the hook is the reactive floor) as `.claude/output-styles/canvas.md`, and the gi skills into `.claude/skills/`. That is all it writes: canvases belong to `gi open`, which creates one from the template and binds a session to it in the same breath, so the two halves never write the same file. A path on `enable` therefore only says where `--from-session` puts its import. Seeded files are never overwritten, so your edits are safe; `--force` refreshes the style and skills from the module, and `status.stale` lists seeds that have drifted from it.
 
 ## CLI Completions
 

@@ -4,9 +4,10 @@
 # carry the record, the chat carries almost nothing. Two commands, and the split
 # between them is the whole design:
 #
-#   gi enable          seeds files into the repo — the Canvas output style, the
-#                      gi skills, a working doc (the canvas). Writes nothing to
-#                      settings, turns nothing on.
+#   gi enable          seeds files into the repo — the Canvas output style and
+#                      the gi skills. Writes nothing to settings, turns nothing
+#                      on, and makes no canvas: that is the launcher's job, so
+#                      the two halves never write the same file.
 #   gi open / resume   launches Claude Code bound to one canvas: `--settings`
 #                      carries the output style and the Stop hook for that launch
 #                      alone, and $env.GI_CANVAS names the canvas. Both reach the
@@ -52,9 +53,9 @@ const GI_STYLE = "Canvas"
 # following the symlink at run time is exactly the dev-link contract.
 const GI_MODULE_DIR = (path self | path dirname)
 
-# The working-doc seed. A const of its own because two callers need it and only
-# one of them has a repo root: gi-paths bundles it for enable, gi-import-text
-# reads it with no root in hand.
+# The canvas seed. A const of its own because two callers need it: gi-launch
+# copies it when opening a canvas that does not exist yet, and gi-import-text
+# puts it at the head of an imported dialogue.
 const GI_HEADER_SRC = ($GI_MODULE_DIR | path join "gi-md-src" "canvas-header.md")
 
 # The shell command Claude Code runs for the Stop event. Single-quote the `-c`
@@ -100,10 +101,9 @@ def gi-branch [root: path]: nothing -> any {
     if $out.exit_code == 0 and ($branch | is-not-empty) { $branch }
 }
 
-# Every path gi touches, in one record. No settings file among them: gi writes
-# to none — activation travels with the launch (see gi-launch).
-# - template_src: the gi working-doc seed; its destination is chosen per-enable
-#   (see gi-enable), so only the src lives here.
+# Every path enable seeds, in one record. No settings file among them: gi writes
+# to none — activation travels with the launch (see gi-launch). No canvas among
+# them either: `gi open` creates that, from $GI_HEADER_SRC.
 # - style: the Canvas output style. Why distribute a local copy: this module is
 #   vendored on its own, so it must carry the style itself rather than depend on
 #   a Claude plugin being installed — `enable` drops it as a per-repo project
@@ -114,7 +114,6 @@ def gi-branch [root: path]: nothing -> any {
 #   makes that reference real in any gi-enabled repo.
 def gi-paths [root: path]: nothing -> record {
     {
-        template_src: $GI_HEADER_SRC
         style_src: ($GI_MODULE_DIR | path join "gi-md-src" "canvas-output-style.md")
         style_dst: ($root | path join ".claude" "output-styles" "canvas.md")
         skills_src: ($GI_MODULE_DIR | path join "gi-md-src" "skills")
@@ -226,7 +225,7 @@ def gi-session-key [session_id: string]: nothing -> string {
 def "nu-complete gi-actions" []: nothing -> table {
     [
         [value description];
-        [enable "seed this repo: the Canvas style, the gi skills, a working doc"]
+        [enable "seed this repo: the Canvas style and the gi skills"]
         [open "launch a session on an unbound canvas (creating it if new) and record it there"]
         [resume "same, continuing the session the canvas records"]
         [status "show what is seeded here, and the canvas this session is bound to"]
@@ -243,7 +242,7 @@ def "nu-complete gi-actions" []: nothing -> table {
 # module — importing this file yields the `gi` command.
 export def main [
     action?: string@"nu-complete gi-actions" # enable | open | resume | status | check (default: status)
-    doc?: path # The canvas. enable: where to seed it (default gi/canvas-<timestamp>.md, or gi/session-<id>.md with --from-session); open: what to launch on, created from the template if new; resume: which canvas to continue
+    doc?: path # The canvas. enable: where --from-session puts the import (default gi/session-<id>.md); open: what to launch on, created from the template if new; resume: which canvas to continue
     --root: path # Repo root (default: git top-level); ignored by check
     --force # enable only: overwrite the seeded style and skills with the module's versions
     --from-session # enable only: start the working doc from this session's dialogue
@@ -270,13 +269,22 @@ export def main [
         let bad = $misplaced | first
         error make {msg: $bad.msg label: {text: $"drop this, or use: ($bad.hint)" span: $bad.span}}
     }
-    # The doc positional means a canvas for all three actions that take one —
-    # where to seed it, or which one to launch on — and nothing anywhere else.
-    # Only resume can't run without it: open mints a default, enable seeds one.
+    # The doc positional names a canvas: which one to launch on, or — for
+    # enable — where the imported dialogue lands. Only resume can't run without
+    # it: open mints a default.
     if $doc != null and $action not-in ["enable" "open" "resume"] {
         error make {
             msg: "a canvas path only makes sense with enable, open, or resume"
-            label: {text: "drop this, or use: gi enable <doc> / gi open <doc> / gi resume <doc>" span: (metadata $doc).span}
+            label: {text: "drop this, or use: gi enable <doc> --from-session / gi open <doc> / gi resume <doc>" span: (metadata $doc).span}
+        }
+    }
+    # enable seeds the style and the skills; it does not make canvases. `gi open
+    # <doc>` does that, and binds a session in the same breath — so a path here
+    # with nothing to import would name a file enable has no reason to write.
+    if $action == "enable" and $doc != null and not $from_session {
+        error make {
+            msg: "gi enable makes no canvas — a path here is where --from-session puts the import"
+            label: {text: "to start a canvas: gi open <doc>; to import this session into it: gi enable <doc> --from-session" span: (metadata $doc).span}
         }
     }
     if $action == "resume" and $doc == null {
@@ -322,12 +330,12 @@ export def main [
     }
 }
 
-# Seed the gi protocol into this repo: the Canvas style, the gi skills, and a
-# canvas. Turns nothing on — `gi open`/`gi resume` do that, per session — and
-# writes to no settings file. Re-runnable: seeded files are never clobbered.
+# Seed the gi protocol into this repo: the Canvas style and the gi skills.
+# Turns nothing on — `gi open`/`gi resume` do that, per session — and writes to
+# no settings file. Re-runnable: seeded files are never clobbered.
 def gi-enable [
     --root: path # Repo root to seed (default: git top-level)
-    --doc: path # Canvas path, relative to root (absolute also accepted)
+    --doc: path # Where the --from-session import lands (default: gi/session-<id>.md)
     --force # Overwrite the seeded style and skills with the module's versions
     --from-session # Start the working doc from this session's dialogue
     --commit # Commit the imported doc
@@ -338,18 +346,15 @@ def gi-enable [
     let paths = gi-paths $root
     let sid = if $from_session { gi-session-id }
 
-    # Resolve the canvas: explicit arg wins; else an import gets its own
-    # session-keyed name, so re-running it in one session refreshes one file and
-    # leaves the repo's older canvases alone; else mint a timestamped one.
-    # Why no "remember the last doc": nothing is recorded anywhere now — the
-    # canvas is named by the path you pass to `gi open`/`gi resume`, and a repo
-    # holds as many as you like.
-    let doc = $doc
-        | default (if $from_session { $"gi/session-(gi-session-key $sid).md" })
-        | default (gi-default-doc)
-    let paths_doc = gi-doc-path $root $doc
-    let doc_abs = $paths_doc.abs
-    let doc = $paths_doc.rel
+    # Canvases are not enable's business: `gi open <doc>` creates one from the
+    # template and binds a session to it in the same breath. Only an import
+    # needs a path here, because the dialogue has to land in a file. Default is
+    # session-keyed, so re-running it in one session refreshes one file and
+    # leaves the repo's older canvases alone.
+    let paths_doc = if $from_session {
+        gi-doc-path $root ($doc | default $"gi/session-(gi-session-key $sid).md")
+    }
+    let doc_abs = $paths_doc.abs?
 
     # Build the import before anything is written: a session that can't be read
     # must not leave a half-seeded repo behind.
@@ -363,24 +368,16 @@ def gi-enable [
         gi-import-text $sid --tools=$tools
     }
 
-    # The import is the working doc's first content, so it lands before the seed
-    # loop — whose copy-if-absent rule then skips the plain template.
     if $imported != null {
         mkdir ($doc_abs | path dirname)
         $imported | save --force $doc_abs
     }
 
-    # Seed the working-doc template, the output style, and the gi skills. Why
-    # not clobber: once they exist they are the user's files — refreshing would
-    # destroy their edits. --force overwrites the style and skills — they are
-    # distributed text a module update should be able to refresh — but never
-    # the working doc, which holds the user's work.
-    for seed in (
-        [
-            [src dst overwrite];
-            [$paths.template_src $doc_abs false]
-        ] | append (gi-refresh-seeds $paths | insert overwrite $force)
-    ) {
+    # Seed the output style and the gi skills. Why not clobber: once they exist
+    # they are the user's files — refreshing would destroy their edits. --force
+    # overwrites them, because they are distributed text a module update should
+    # be able to refresh.
+    for seed in (gi-refresh-seeds $paths | insert overwrite $force) {
         if $seed.overwrite or not ($seed.dst | path exists) {
             mkdir ($seed.dst | path dirname)
             cp $seed.src $seed.dst
@@ -409,10 +406,14 @@ def gi-enable [
 
     # Seeding alone changes nothing about the session that ran it: the style and
     # the hook arrive with `gi open`/`gi resume`, so the next line is the whole
-    # instruction.
-    let verb = gi-canvas-verb $doc_abs
-    print $"gi seeded in ($root). Canvas: ($doc)"
-    print $"open a bound session on it:  claude-nu gi ($verb) ($doc)"
+    # instruction. With no import there is no canvas yet — `gi open` mints one.
+    print $"gi seeded in ($root)."
+    if $doc_abs == null {
+        print $"start a canvas:  claude-nu gi open [<doc>]"
+    } else {
+        print $"canvas: ($paths_doc.rel)"
+        print $"open a bound session on it:  claude-nu gi (gi-canvas-verb $doc_abs) ($paths_doc.rel)"
+    }
     if $imported != null {
         # The log can never hold the turn that ran the import (Claude Code writes
         # it as the turn runs). After `gi resume` the agent is back in this same
@@ -427,7 +428,8 @@ def gi-enable [
         print $"note: ($status.stale | length) seeded file\(s\) differ from the module — `gi enable --force` refreshes them."
     }
     # `doc` and status's `canvas` are different questions: the canvas this call
-    # seeded, versus the one the calling session is bound to (usually none).
+    # imported (null without --from-session — seeding writes no canvas), versus
+    # the one the calling session is bound to (usually none).
     $status | insert doc $doc_abs
 }
 
