@@ -149,7 +149,6 @@ claude-nu gi open gi/plan.md   # ...a named one, created from the template if ne
 claude-nu gi open gi/plan.md --no-hook # style only, without the Stop-hook floor
 claude-nu gi resume gi/plan.md # continue the session that canvas records
 claude-nu gi                   # { canvas, style, skills, stale }
-claude-nu gi check             # hook body — reads the Stop event JSON on stdin
 ```
 
 **The Stop hook** is the hard floor that comes with every bound session: the agent's final chat message must be `done`/`noted` or a short pointer (one line with a path/link); anything longer blocks the turn with an instruction to move the answer into the canvas and commit it — the block message names the exact file. It also blocks any turn ending on `main`/`master`: gi commits are internal working history; they reach a public branch only squash-merged, after finalization. The "short pointer" length budget defaults to 480 and is tunable via `GI_HOOK_MAX_LEN`.

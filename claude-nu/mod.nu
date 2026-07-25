@@ -19,7 +19,9 @@
 export use sessions.nu [
     projects messages main export-session save-markdown
 ]
-export use gi.nu [ main "gi enable" "gi open" "gi resume" "gi check" ]
+# `gi check` is deliberately absent: it is the Stop hook's body, not a verb a
+# user types, and the hook imports it straight from gi.nu (see GI_COMMAND).
+export use gi.nu [ main "gi enable" "gi open" "gi resume" ]
 export use attribution.nu [ commits code-authorship ]
 use sessions.nu [ find-session-files ]
 

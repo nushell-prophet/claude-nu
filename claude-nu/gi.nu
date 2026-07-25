@@ -58,11 +58,17 @@ const GI_MODULE_DIR = (path self | path dirname)
 # puts it at the head of an imported dialogue.
 const GI_HEADER_SRC = ($GI_MODULE_DIR | path join "gi-md-src" "canvas-header.md")
 
-# The shell command Claude Code runs for the Stop event. Single-quote the `-c`
-# body so the outer shell does not expand `$in`; `--stdin` feeds the event JSON
-# to nushell as `$in`. The absolute module path is required — relative paths are
-# not resolved at hook time.
-const GI_COMMAND = $"nu --stdin -c 'use \"($GI_MODULE_DIR)\"; $in | claude-nu gi check'"
+# The shell command Claude Code runs for the Stop event. `--stdin` feeds the
+# event JSON to the script as `$in`. The absolute path is required — relative
+# paths are not resolved at hook time — and quoted, for a module dir with a
+# space in it.
+# Why a script and not `-c 'use ...; $in | gi check'`: the hook body then lives
+# in a checked file (see gi-hook.nu) rather than in a string literal nesting
+# quotes through JSON and a shell. Why gi-hook.nu imports gi.nu rather than the
+# `claude-nu` umbrella: `gi check` is the hook's body, not a verb anyone types,
+# so mod.nu does not re-export it and `claude-nu gi <TAB>` stays the verbs a
+# user has a reason to run.
+const GI_COMMAND = $"nu --stdin \"($GI_MODULE_DIR | path join 'gi-hook.nu')\""
 
 # The settings gi hands to `claude` at launch. Verified against the CLI:
 # --settings takes a JSON string as well as a path, its keys MERGE with the
@@ -552,6 +558,7 @@ def gi-status [
 # unit-testable. The single `to json` lives here, next to the contract it
 # serves — the rules deal in records only. Also accepts nothing: run by hand
 # with no stdin, the normalization below treats it as an empty event.
+# Exported so the hook can import it, but kept out of mod.nu: nobody types this.
 export def "gi check" []: [string -> any, nothing -> any] {
     let payload = try { $in | default "" | from json } catch { {} }
     # Valid JSON need not be an object ("hi", 123, null, [1]) — normalize to a

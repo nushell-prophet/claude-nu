@@ -213,7 +213,10 @@ def "launch settings carry the Canvas style and the Stop hook" [] {
 
     assert equal $with_hook.outputStyle "Canvas"
     assert equal ($with_hook.hooks.Stop | length) 1
-    assert ($with_hook.hooks.Stop.0.hooks.0.command | str contains "claude-nu gi check")
+    # The hook runs the entry script, not `-c` with an import string: the body
+    # lives in a file the syntax check can see. `gi check` is that body, not a
+    # verb anyone types, so mod.nu does not re-export it.
+    assert ($with_hook.hooks.Stop.0.hooks.0.command | str contains "gi-hook.nu")
     # --no-hook keeps the proactive style and drops the floor — so the payload
     # must carry no Stop key at all, not an empty one.
     assert equal $without.outputStyle "Canvas"

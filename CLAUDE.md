@@ -22,7 +22,8 @@ claude-nu/
 │   ├── discovery.nu     # On-disk session layout: enumerate, resolve, read session files
 │   ├── extract.nu       # Session records -> text, dialogue, metrics
 │   ├── render.nu        # Record content -> markdown text
-│   ├── gi.nu            # gi protocol, as real subcommands (`gi enable|open|resume|status|check`): enable seeds the repo, open/resume launch a session bound to one canvas (style + Stop hook travel with the launch)
+│   ├── gi.nu            # gi protocol, as real subcommands (`gi enable|open|resume`, bare `gi` for status): enable seeds the repo, open/resume launch a session bound to one canvas (style + Stop hook travel with the launch)
+│   ├── gi-hook.nu       # Stop-hook entry point — `nu --stdin` runs this file; it imports `gi check` from gi.nu, which mod.nu deliberately does not re-export
 │   └── attribution.nu   # Claude-authorship of git history: commits (--by-month) and code-authorship (blame)
 ├── completions/         # External command completions
 │   ├── claude.nu        # claude CLI (50+ flags, session picker, MCP/plugin subcommands)
