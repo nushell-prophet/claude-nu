@@ -33,10 +33,10 @@
 
 use sessions.nu [export-session resolve-session-file]
 
-# The output-style name gi enable installs. Why a const: enable writes it into
-# settings.local.json (outputStyle) and disable removes it only if it still
-# matches — so a user's own outputStyle is never clobbered. Matches the `name:`
-# frontmatter in the seeded style file.
+# The output-style name gi passes to `claude --settings` at launch. Matches the
+# `name:` frontmatter in the seeded style file — outputStyle names a style, and
+# Claude Code resolves it against .claude/output-styles in the launch directory,
+# so the two must agree or the launch is silently style-less.
 const GI_STYLE = "Canvas"
 
 # Absolute path to this module's directory, resolved at parse time. Why a const:
