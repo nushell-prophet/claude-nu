@@ -115,12 +115,22 @@ def collect-unit-results []: nothing -> table {
     | from json
     | each {|row|
         let status = if $row.result == 'PASS' { 'passed' } else { 'failed' }
-        let message = if $status == 'failed' {
-            let msgs = $row.output? | default [] | each {|o| $o.msg? } | compact
-            if ($msgs | is-empty) { null } else { $msgs | str join '; ' }
-        } else { null }
-        {type: 'unit' name: $row.test status: $status file: null message: $message}
+        {type: 'unit' name: $row.test status: $status file: null message: (if $status == 'failed' { $row.output? | failure-message })}
     }
+}
+
+# The failure text nutest attached to a row. Entries come in two shapes, because
+# nutest reports two kinds of failure: an event record per assertion for a test
+# that ran and failed, and a bare string for a file that never ran at all — a
+# parse error in it, which nutest reports as one synthetic failing row. Indexing
+# that string for `.msg` threw, so a whole unparseable suite surfaced as a crash
+# inside this toolkit instead of as the parse error it is.
+def failure-message []: any -> any {
+    let msgs = $in
+    | default []
+    | each {|o| if ($o | describe) == "string" { $o | str trim } else { $o.msg? } }
+    | compact
+    if ($msgs | is-empty) { null } else { $msgs | str join '; ' }
 }
 
 # Print the human view: non-passing tests (or all with --all), then a summary line.
