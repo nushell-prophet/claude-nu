@@ -160,8 +160,8 @@ def "enable --force never touches a canvas" [] {
 def "status reports the session canvas from the environment" [] {
     let root = temp-root
     gi enable --root $root | ignore
-    let unbound = gi status --root $root
-    let bound = with-env { GI_CANVAS: "/repo/gi/session-abc.md" } { gi status --root $root }
+    let unbound = gi --root $root
+    let bound = with-env { GI_CANVAS: "/repo/gi/session-abc.md" } { gi --root $root }
     rm -rf $root
 
     # Activation is per session, so status answers "am I in a canvas session"
@@ -177,7 +177,7 @@ def "status returns absolute paths regardless of cwd" [] {
     let expected = $root | path expand | path join ".claude" "output-styles" "canvas.md"
     let orig = $env.PWD
     cd $root
-    let status = gi status --root $root
+    let status = gi --root $root
     cd $orig
     rm -rf $root
 
@@ -190,11 +190,11 @@ def "status returns absolute paths regardless of cwd" [] {
 def "status reports seeds differing from the module as stale" [] {
     let root = temp-root
     gi enable --root $root | ignore
-    let fresh = gi status --root $root | get stale
+    let fresh = gi --root $root | get stale
     "user edit" | save --force ($root | path join ".claude" "skills" "git-intent" "SKILL.md")
-    let edited = gi status --root $root | get stale
+    let edited = gi --root $root | get stale
     gi enable --root $root --force | ignore
-    let refreshed = gi status --root $root | get stale
+    let refreshed = gi --root $root | get stale
     rm -rf $root
 
     assert equal $fresh []
@@ -321,8 +321,8 @@ def "stamping a session joins an existing frontmatter block" [] {
     assert equal $meta {session: "11111111-2222-3333-4444-555555555555" title: "my plan"}
 }
 
-# No tests here for `gi resume` without a canvas, `gi status --force`,
-# `gi enable --no-hook`, or `gi status <doc>`. Each verb is its own command
+# No tests here for `gi resume` without a canvas, `gi --force`,
+# `gi enable --no-hook`, or `gi <doc>`. Each verb is its own command
 # now, so the parser rejects all four before the code runs — and a parse error
 # cannot be caught by `try`, which is the point: the signature states the rule.
 

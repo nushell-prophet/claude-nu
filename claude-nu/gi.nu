@@ -235,16 +235,8 @@ def gi-session-key [session_id: string]: nothing -> string {
 # blank line.
 
 # What gi has seeded in this repo, and the canvas this session is bound to.
-# The verbs: `gi enable`, `gi open`, `gi resume`, `gi status`, `gi check`.
+# The verbs: `gi enable`, `gi open`, `gi resume`.
 export def main [
-    --root: path # Repo root to inspect (default: git top-level)
-]: nothing -> record {
-    gi-status --root $root
-}
-
-# Same as bare `gi`. Why both: `gi status` is the spelling the docs and the
-# skills use, and a verb that exists only by omission is hard to find.
-export def "gi status" [
     --root: path # Repo root to inspect (default: git top-level)
 ]: nothing -> record {
     gi-status --root $root
@@ -613,7 +605,7 @@ def gi-check-rules []: record -> any {
     # on the user's screen, and the stop_hook_active guard ends the turn on the
     # follow-up whatever it says — a misfire can redirect one reply, never trap
     # the agent.
-    let reason = $"Chat may carry only `done`/`noted` or a short pointer \(one line with a path/link). Move the full answer into `($doc)` and commit it; leave only a pointer in chat. If this block looks like a misfire — wrong canvas, no gi work in this session — don't move anything: reply with one short line telling the user to read your previous message above in the chat and to check the session's canvas \(`claude-nu gi status`)."
+    let reason = $"Chat may carry only `done`/`noted` or a short pointer \(one line with a path/link). Move the full answer into `($doc)` and commit it; leave only a pointer in chat. If this block looks like a misfire — wrong canvas, no gi work in this session — don't move anything: reply with one short line telling the user to read your previous message above in the chat and to check the session's canvas \(`claude-nu gi`)."
     {decision: "block" reason: $reason}
 }
 

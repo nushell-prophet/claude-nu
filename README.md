@@ -148,7 +148,7 @@ claude-nu gi open              # new canvas + a session bound to it
 claude-nu gi open gi/plan.md   # ...a named one, created from the template if new
 claude-nu gi open gi/plan.md --no-hook # style only, without the Stop-hook floor
 claude-nu gi resume gi/plan.md # continue the session that canvas records
-claude-nu gi status            # { canvas, style, skills, stale }
+claude-nu gi                   # { canvas, style, skills, stale }
 claude-nu gi check             # hook body — reads the Stop event JSON on stdin
 ```
 

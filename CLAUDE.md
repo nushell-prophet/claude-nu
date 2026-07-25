@@ -80,7 +80,7 @@ claude-nu gi enable --from-session --tools     # ...keeping tool calls as one-li
 claude-nu gi enable --from-session --commit    # ...and commit it; --gitignore keeps it out of git instead
 claude-nu gi open gi/plan.md           # Launch a session bound to that canvas: style + Stop hook via `claude --settings`, $env.GI_CANVAS set, session id minted and written into the canvas (created from the template if new; --no-hook drops the floor)
 claude-nu gi resume gi/plan.md         # Same, continuing the session the canvas records (parallel canvases per repo; `gi open` refuses a canvas that already has one)
-claude-nu gi status                    # { canvas, style, skills, stale } — canvas comes from $env.GI_CANVAS, i.e. the asking session
+claude-nu gi                           # { canvas, style, skills, stale } — canvas comes from $env.GI_CANVAS, i.e. the asking session
 ```
 
 ## Development

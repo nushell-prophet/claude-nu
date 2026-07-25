@@ -9,7 +9,7 @@
 #   save-markdown   # Write exported markdown to files
 #   commits         # Per-commit Claude-authorship table; --by-month for the monthly share
 #   code-authorship # Claude's share of the lines living in the tree now (git blame)
-#   gi              # gi protocol; subcommands: gi enable (seed a repo), gi open / gi resume (launch a session bound to a canvas), gi status, gi check
+#   gi              # gi protocol: status on its own; gi enable seeds a repo, gi open / gi resume launch a session bound to a canvas
 #
 # Usage:
 #   use claude-nu
@@ -19,7 +19,7 @@
 export use sessions.nu [
     projects messages main export-session save-markdown
 ]
-export use gi.nu [ main "gi enable" "gi open" "gi resume" "gi status" "gi check" ]
+export use gi.nu [ main "gi enable" "gi open" "gi resume" "gi check" ]
 export use attribution.nu [ commits code-authorship ]
 use sessions.nu [ find-session-files ]
 

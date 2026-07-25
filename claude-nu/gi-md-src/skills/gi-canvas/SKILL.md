@@ -14,7 +14,7 @@ A canvas session cannot be started from within a session: the Canvas style, the 
 `claude-nu` is a nushell module command, not a program on PATH: it is loaded in the user's interactive REPL, and a one-shot `nu -c` does not load it. So every command **you** run has to import it first:
 
 ```nushell
-nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi status'
+nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi'
 ```
 
 If that path does not exist on this machine, find the module (`ls ~/repos/claude-nu ~/git/claude-nu`) and use the real one.
@@ -31,7 +31,7 @@ Read `$ARGUMENTS` and the conversation:
 
 A canvas keeps one session for life: `gi open` mints the id and writes it into the canvas's frontmatter, `gi resume` returns to it. So `Read` the canvas first — a `session:` line in its frontmatter means `resume`, and `open` will refuse it.
 
-`gi status` tells you what is seeded here and whether this session is already bound (`canvas` non-null → it already is a canvas session; say so and stop). `ls gi/*.md` lists the repo's canvases.
+`gi` on its own tells you what is seeded here and whether this session is already bound (`canvas` non-null → it already is a canvas session; say so and stop). `ls gi/*.md` lists the repo's canvases.
 
 ## Import this session
 
