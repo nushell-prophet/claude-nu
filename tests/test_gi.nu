@@ -246,6 +246,44 @@ def "launch args bind the canvas session and name the session after it" [] {
 }
 
 @test
+def "the session plan resumes what the canvas records and mints when it holds none" [] {
+    let sid = "11111111-2222-3333-4444-555555555555"
+
+    let bound = gi-session-plan $sid
+    let fresh = gi-session-plan null
+
+    # One canvas, one session, for life: a recorded id is returned to, and only
+    # a canvas holding none gets a new one.
+    assert equal $bound {sid: $sid, resume: true, replaced: null}
+    assert equal $fresh.resume false
+    assert equal $fresh.replaced null
+    assert ($fresh.sid != $sid)
+}
+
+@test
+def "the session plan drops the recorded id for --new-session" [] {
+    let sid = "11111111-2222-3333-4444-555555555555"
+    let plan = gi-session-plan $sid --new-session
+
+    # The way out of a canvas whose session is gone: mint regardless of what is
+    # recorded, and hand back the id being dropped so the launcher can name it —
+    # the canvas is untracked by default, so nothing else holds it.
+    assert equal $plan.resume false
+    assert equal $plan.replaced $sid
+    assert ($plan.sid != $sid)
+}
+
+@test
+def "the plan reports no drop when --new-session hits an unbound canvas" [] {
+    let plan = gi-session-plan null --new-session
+
+    # Not an error: the flag says "start fresh", and a canvas with no session
+    # already is. There is just no dropped id to name.
+    assert equal $plan.resume false
+    assert equal $plan.replaced null
+}
+
+@test
 def "stamping a session creates the frontmatter block when there is none" [] {
     let root = temp-root
     let doc = plain-canvas $root "gi/plain.md"
@@ -288,6 +326,21 @@ def "stamping a session leaves a session-like line in the prose alone" [] {
 
     # The rewrite is scoped to the block above the closing fence.
     assert equal $body "session: not frontmatter"
+}
+
+@test
+def "stamping a session names the file when the frontmatter is not closed" [] {
+    let root = temp-root
+    mkdir ($root | path join "gi")
+    let doc = $root | path join "gi" "broken.md"
+    "---\ntitle: my plan\n" | save $doc
+    let out = try { gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"; null } catch {|e| $e.msg }
+    rm -rf $root
+
+    # Indexing past the split would throw "Row number too large", which names
+    # neither the file nor what is wrong with it.
+    assert ($out | str contains "frontmatter is not closed")
+    assert ($out | str contains "broken.md")
 }
 
 @test

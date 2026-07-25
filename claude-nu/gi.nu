@@ -1,8 +1,8 @@
 # gi — the gi protocol: seeded per repo, activated per session at launch.
 #
 # The gi protocol moves all "what/why" into git: the diff and the commit body
-# carry the record, the chat carries almost nothing. Two commands, and the split
-# between them is the whole design:
+# carry the record, the chat carries almost nothing. Two commands do the work,
+# and the split between them is the whole design:
 #
 #   gi enable          seeds files into the repo — the Canvas output style and
 #                      the gi skills. Writes nothing to settings, turns nothing
@@ -17,6 +17,9 @@
 #                      case it is, the file says; there is no second verb.
 #                      `--new-session` is the way out when that session is gone
 #                      (deleted, expired): it overwrites the recorded id.
+#
+# Bare `gi` is the third name and does no work: it reports what is seeded here
+# and which canvas the asking session is bound to.
 #
 # Why activation lives at launch and not in .claude/settings.local.json (which
 # is what this replaced): outputStyle, hooks, and env in a settings file are
@@ -264,7 +267,7 @@ export def "gi open" [
 }
 
 # Seed the gi protocol into this repo: the Canvas style and the gi skills.
-# Turns nothing on — `gi open` do that, per session — and writes to
+# Turns nothing on — `gi open` does that, per session — and writes to
 # no settings file. Re-runnable: seeded files are never clobbered.
 export def "gi enable" [
     doc?: path # Where the --from-session import lands (default: gi/session-<id>.md)
@@ -429,9 +432,36 @@ export def gi-stamp-session [file: path, sid: string]: nothing -> nothing {
     # with `session:` is never touched. The body is passed through untouched,
     # trailing newline and all.
     let parts = $raw | split row --number 2 "\n---\n"
+    if ($parts | length) < 2 {
+        # Say which file and what is wrong with it. Indexing past the split
+        # would throw "Row number too large", which names neither.
+        error make --unspanned {
+            msg: $"canvas frontmatter is not closed: ($file)"
+            help: "the block opened by `---` needs a closing `---` line of its own before the body"
+        }
+    }
     let head = $parts.0
     | if ($in =~ '(?m)^session:') { str replace --regex --multiline '^session:.*$' $"session: ($sid)" } else { $"($in)\nsession: ($sid)" }
     $"($head)\n---\n($parts.1)" | save --force $file
+}
+
+# Which session a launch runs on, decided from what the canvas records. Split
+# out of gi-launch for the same reason as gi-launch-args: that command ends in
+# an exec and can't be tested, and this decision — mint or resume — is the whole
+# of "one canvas, one session, for life".
+# - resume: the canvas names a session and nothing overrides it.
+# - sid: that session, or a fresh id.
+# - replaced: the id --new-session is dropping, null otherwise. Named because
+#   the canvas is untracked by default, so git may not hold the old id and
+#   nothing else records it.
+# Exported for tests.
+export def gi-session-plan [recorded: any, --new-session]: nothing -> record {
+    let resume = (not $new_session) and ($recorded | is-not-empty)
+    {
+        sid: (if $resume { $recorded } else { random uuid })
+        resume: $resume
+        replaced: (if not $resume { $recorded })
+    }
 }
 
 # The `claude` flags that bind a launch to a canvas's session. Split out of
@@ -486,16 +516,12 @@ def gi-launch [
     # declines to read it, which mints and overwrites instead: a session file
     # can be deleted or expire, and `claude --resume` then fails on an id the
     # canvas can do nothing about.
-    let bound = if $new_session { null } else { gi-frontmatter-session $doc_abs }
-    let sid = $bound | default (random uuid)
-    if ($bound | is-empty) {
-        # Name what is being dropped. The canvas is untracked by default, so
-        # git may not hold the old id and there is nothing to read it back from.
-        let replaced = if $new_session { gi-frontmatter-session $doc_abs }
-        if ($replaced | is-not-empty) {
-            print $"note: replacing session (gi-session-key $replaced) recorded in ($doc_rel)"
+    let plan = gi-session-plan (gi-frontmatter-session $doc_abs) --new-session=$new_session
+    if not $plan.resume {
+        if ($plan.replaced | is-not-empty) {
+            print $"note: replacing session (gi-session-key $plan.replaced) recorded in ($doc_rel)"
         }
-        gi-stamp-session $doc_abs $sid
+        gi-stamp-session $doc_abs $plan.sid
     }
     # Same guard the hook enforces, surfaced before the session starts — a
     # branch switch now beats being blocked mid-session with commits already made.
@@ -503,8 +529,8 @@ def gi-launch [
     if $hook and ($branch in $GI_PROTECTED_BRANCHES) {
         print $"note: this repo is on ($branch) — gi commits belong on a work branch; the Stop hook will block turns until you switch."
     }
-    let args = gi-launch-args $sid $doc_rel --resume=($bound | is-not-empty)
-    print $"canvas ($doc_rel), session (gi-session-key $sid)(if $hook { '' } else { ', no Stop hook' })"
+    let args = gi-launch-args $plan.sid $doc_rel --resume=$plan.resume
+    print $"canvas ($doc_rel), session (gi-session-key $plan.sid)(if $hook { '' } else { ', no Stop hook' })"
     # cd so claude resolves the session under this project and so outputStyle
     # finds .claude/output-styles here.
     do {
