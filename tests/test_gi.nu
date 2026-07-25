@@ -273,6 +273,59 @@ def "resume on a canvas with no session errors before launching" [] {
 }
 
 @test
+def "open refuses a canvas already bound to a session" [] {
+    let root = temp-root
+    gi enable gi/plain.md --root $root | ignore
+    let doc = $root | path join "gi" "plain.md"
+    gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
+    let out = try { gi open $doc --root $root; null } catch {|e| $e.msg }
+    rm -rf $root
+
+    # `claude --session-id` rejects an id already on disk, so a second open
+    # could never work — the refusal names `gi resume` instead of leaking that.
+    assert ($out | str contains "already bound to session")
+}
+
+@test
+def "launch args bind the canvas session and name the session after it" [] {
+    let sid = "11111111-2222-3333-4444-555555555555"
+
+    # open mints the id, so it is passed as --session-id; resume returns to it.
+    assert equal (gi-launch-args $sid "gi/plan.md") ["--session-id" $sid "--name" "gi/plan.md"]
+    assert equal (gi-launch-args $sid "gi/plan.md" --continue) ["--resume" $sid "--name" "gi/plan.md"]
+}
+
+@test
+def "stamping a session creates the frontmatter block when there is none" [] {
+    let root = temp-root
+    gi enable gi/plain.md --root $root | ignore
+    let doc = $root | path join "gi" "plain.md"
+    let before = open --raw $doc
+    gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
+    let after = open --raw $doc
+    let sid = gi-frontmatter-session $doc
+    rm -rf $root
+
+    assert equal $sid "11111111-2222-3333-4444-555555555555"
+    # The canvas's own content survives untouched below the new block.
+    assert ($after | str ends-with $before)
+}
+
+@test
+def "stamping a session joins an existing frontmatter block" [] {
+    let root = temp-root
+    mkdir ($root | path join "gi")
+    let doc = $root | path join "gi" "titled.md"
+    "---\ntitle: my plan\n---\n\n# Working area\n" | save $doc
+    gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
+    let meta = open --raw $doc | lines | skip 1 | take until {|l| $l == "---" } | str join "\n" | from yaml
+    rm -rf $root
+
+    # One block, not two: a hand-written key keeps its place.
+    assert equal $meta {session: "11111111-2222-3333-4444-555555555555" title: "my plan"}
+}
+
+@test
 def "resume without a doc is rejected" [] {
     let out = try { gi resume; null } catch {|e| $e.msg }
     assert ($out | str contains "needs a canvas file")

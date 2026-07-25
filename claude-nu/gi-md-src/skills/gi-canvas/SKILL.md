@@ -27,7 +27,9 @@ Read `$ARGUMENTS` and the conversation:
 
 - **No canvas yet, and this chat is worth keeping** (the usual case) → import this session.
 - **No canvas yet, nothing here worth keeping** → a blank canvas.
-- **A canvas path is given or exists in `gi/`** → just open it.
+- **A canvas path is given or exists in `gi/`** → open it if it is new, resume it if it already holds a session.
+
+A canvas keeps one session for life: `gi open` mints the id and writes it into the canvas's frontmatter, `gi resume` returns to it. So `Read` the canvas first — a `session:` line in its frontmatter means `resume`, and `open` will refuse it.
 
 `gi status` tells you what is seeded here and whether this session is already bound (`canvas` non-null → it already is a canvas session; say so and stop). `ls gi/*.md` lists the repo's canvases.
 
@@ -50,6 +52,7 @@ Then tell the user, in one line: exit this session and run `claude-nu gi resume 
 claude-nu gi open                 # new timestamped canvas, then launch
 claude-nu gi open gi/plan.md      # a named one; created from the template if new
 claude-nu gi open <doc> --no-hook # style only, no Stop-hook floor
+claude-nu gi resume gi/plan.md    # a canvas that already holds a session
 ```
 
 ## What to report

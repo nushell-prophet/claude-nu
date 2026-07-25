@@ -10,7 +10,9 @@
 #   gi open / resume   launches Claude Code bound to one canvas: `--settings`
 #                      carries the output style and the Stop hook for that launch
 #                      alone, and $env.GI_CANVAS names the canvas. Both reach the
-#                      hook, which runs as a child of that session.
+#                      hook, which runs as a child of that session. A canvas holds
+#                      one session for life — open mints its id and writes it into
+#                      the canvas, resume reads it back.
 #
 # Why activation lives at launch and not in .claude/settings.local.json (which
 # is what this replaced): outputStyle, hooks, and env in a settings file are
@@ -219,8 +221,8 @@ def "nu-complete gi-actions" []: nothing -> table {
     [
         [value description];
         [enable "seed this repo: the Canvas style, the gi skills, a working doc"]
-        [open "launch a session bound to a canvas (creates it from the template if new)"]
-        [resume "same, continuing the session recorded in the canvas frontmatter"]
+        [open "launch a session on an unbound canvas (creating it if new) and record it there"]
+        [resume "same, continuing the session the canvas records"]
         [status "show what is seeded here, and the canvas this session is bound to"]
         [check "hook body — reads the Stop event JSON on stdin"]
     ]
@@ -424,10 +426,11 @@ def gi-enable [
 }
 
 # The `session:` value from a canvas's YAML frontmatter, or null when the file
-# has no frontmatter or no session key. export-session writes this key, so any
-# canvas seeded with `gi enable --from-session` carries it; the plain template
-# does not. Exported for tests. Why parse by hand and not `open`: a .md file is
-# raw text to nushell, and the frontmatter is between the first two `---` lines.
+# has no frontmatter or no session key. Both origins write it: export-session
+# for a canvas seeded with `gi enable --from-session`, and `gi open` for every
+# other one. Null therefore means an unbound canvas — one `gi open` may claim.
+# Exported for tests. Why parse by hand and not `open`: a .md file is raw text
+# to nushell, and the frontmatter is between the first two `---` lines.
 export def gi-frontmatter-session [file: path]: nothing -> any {
     let raw = open --raw $file
     if not ($raw | str starts-with "---") { return null }
@@ -436,14 +439,41 @@ export def gi-frontmatter-session [file: path]: nothing -> any {
     $meta.session?
 }
 
+# Write `session: <sid>` into a canvas's frontmatter, creating the block when
+# the file has none. Why stamp the file rather than keep a side record: a
+# `--from-session` canvas already carries this key, so both origins end up with
+# one mechanism, and the binding travels with the file — move or copy a canvas
+# and it still names its session. Exported for tests.
+export def gi-stamp-session [file: path, sid: string]: nothing -> nothing {
+    let raw = open --raw $file
+    # First `---\n` only: inside an existing block the key joins it; with no
+    # block, a new one is prepended. A canvas that already has `session:` never
+    # reaches here — gi-launch refuses it (see the open branch).
+    $raw
+    | if ($raw | str starts-with "---\n") { str replace "---\n" $"---\nsession: ($sid)\n" } else { $"---\nsession: ($sid)\n---\n\n($in)" }
+    | save --force $file
+}
+
+# The `claude` flags that bind a launch to a canvas's session. Split out of
+# gi-launch because that command ends in an exec and can't be tested; this is
+# the part worth pinning. --session-id mints the id up front (the canvas records
+# it, so the canvas can be reopened); --resume returns to it. --name puts the
+# canvas in the prompt box, the /resume picker, and the terminal title, so the
+# session says which canvas it belongs to.
+export def gi-launch-args [sid: string, doc: string, --continue]: nothing -> list<string> {
+    if $continue { ["--resume" $sid] } else { ["--session-id" $sid] }
+    | append ["--name" $doc]
+}
+
 # Launch Claude Code bound to one canvas — the only thing that turns gi on.
 # Everything travels with the launch and nothing is left in the repo:
 # `--settings` carries the Canvas style and (unless --no-hook) the Stop hook for
 # this process only, and $env.GI_CANVAS names the canvas for the agent and for
 # the hook, which inherits it as a child process.
-# With --continue, the canvas's frontmatter session is resumed. Why `--resume`
-# and not `--fork-session`: the session id must keep matching the frontmatter,
-# or the canvas can't be reopened a second time.
+# One canvas holds one session for life: open mints the session id itself
+# (`--session-id`) and stamps it into the canvas's frontmatter, --continue reads
+# it back and resumes. Why `--resume` and not `--fork-session`: the id must keep
+# matching the frontmatter, or the canvas can't be reopened a third time.
 def gi-launch [
     --doc: path # The canvas; created from the template when new (without --continue)
     --root: path # Repo root (default: git top-level)
@@ -463,6 +493,12 @@ def gi-launch [
             help: "run `claude-nu gi enable` first"
         }
     }
+    # The canvas exists before a session is bound to it: open stamps the id it
+    # mints into the frontmatter, and there must be a file to stamp.
+    if not $continue and not ($doc_abs | path exists) {
+        mkdir ($doc_abs | path dirname)
+        cp $GI_HEADER_SRC $doc_abs
+    }
     let sid = if $continue {
         if not ($doc_abs | path exists) {
             error make --unspanned {msg: $"no such canvas: ($doc_abs)" help: "check the path, or start one: claude-nu gi open <doc>"}
@@ -471,14 +507,25 @@ def gi-launch [
         if ($sid | is-empty) {
             error make --unspanned {
                 msg: $"($doc_abs) has no `session:` in its frontmatter — nothing to resume"
-                help: "only canvases seeded with `gi enable --from-session` carry a session id; open it in a fresh session instead: claude-nu gi open <doc>"
+                help: "an unbound canvas gets its session on the first `claude-nu gi open <doc>`; run that instead"
             }
         }
         $sid
-    }
-    if not ($doc_abs | path exists) {
-        mkdir ($doc_abs | path dirname)
-        cp $GI_HEADER_SRC $doc_abs
+    } else {
+        # One canvas, one session, for life. `claude --session-id` rejects an id
+        # already on disk ("Session ID … is already in use"), so opening a bound
+        # canvas would fail in the CLI anyway — say it here, where the fix is a
+        # word away, instead of letting a raw CLI error land on the user.
+        let bound = gi-frontmatter-session $doc_abs
+        if ($bound | is-not-empty) {
+            error make --unspanned {
+                msg: $"($doc_abs) is already bound to session (gi-session-key $bound)"
+                help: "reopen it with `claude-nu gi resume <doc>`; gi open only takes a canvas that has no session yet"
+            }
+        }
+        let sid = random uuid
+        gi-stamp-session $doc_abs $sid
+        $sid
     }
     # Same guard the hook enforces, surfaced before the session starts — a
     # branch switch now beats being blocked mid-session with commits already made.
@@ -486,8 +533,8 @@ def gi-launch [
     if $hook and ($branch in $GI_PROTECTED_BRANCHES) {
         print $"note: this repo is on ($branch) — gi commits belong on a work branch; the Stop hook will block turns until you switch."
     }
-    let args = if $sid != null { ["--resume" $sid] } else { [] }
-    print $"canvas ($doc_rel)(if $sid != null { $', session (gi-session-key $sid)' })(if $hook { '' } else { ', no Stop hook' })"
+    let args = gi-launch-args $sid $doc_rel --continue=$continue
+    print $"canvas ($doc_rel), session (gi-session-key $sid)(if $hook { '' } else { ', no Stop hook' })"
     # cd so claude resolves the session under this project and so outputStyle
     # finds .claude/output-styles here.
     do {

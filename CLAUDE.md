@@ -77,8 +77,8 @@ claude-nu gi enable --force            # Re-seed the style and skills from the m
 claude-nu gi enable --from-session     # Start the canvas from this session's dialogue (gi/session-<id>.md)
 claude-nu gi enable --from-session --tools     # ...keeping tool calls as one-line placeholders
 claude-nu gi enable --from-session --commit    # ...and commit it; --gitignore keeps it out of git instead
-claude-nu gi open gi/plan.md           # Launch a session bound to that canvas: style + Stop hook via `claude --settings`, $env.GI_CANVAS set (created from the template if new; --no-hook drops the floor)
-claude-nu gi resume gi/session-ab12.md # Same, continuing the session recorded in the canvas frontmatter (parallel canvases per repo)
+claude-nu gi open gi/plan.md           # Launch a session bound to that canvas: style + Stop hook via `claude --settings`, $env.GI_CANVAS set, session id minted and written into the canvas (created from the template if new; --no-hook drops the floor)
+claude-nu gi resume gi/plan.md         # Same, continuing the session the canvas records (parallel canvases per repo; `gi open` refuses a canvas that already has one)
 claude-nu gi status                    # { canvas, style, skills, stale } — canvas comes from $env.GI_CANVAS, i.e. the asking session
 ```
 
