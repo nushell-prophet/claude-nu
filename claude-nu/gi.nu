@@ -221,76 +221,75 @@ def gi-session-key [session_id: string]: nothing -> string {
     $session_id | str substring 0..7
 }
 
-# The gi actions, surfaced as tab completions on the positional below.
-def "nu-complete gi-actions" []: nothing -> table {
-    [
-        [value description];
-        [enable "seed this repo: the Canvas style and the gi skills"]
-        [open "launch a session on an unbound canvas (creating it if new) and record it there"]
-        [resume "same, continuing the session the canvas records"]
-        [status "show what is seeded here, and the canvas this session is bound to"]
-        [check "hook body — reads the Stop event JSON on stdin"]
-    ]
+# Why real subcommands and not one command with an action positional (which is
+# what this replaced): the action was a string, so the parser could not tell
+# `--force` from `--no-hook` and every option had to be matched against the
+# action by hand — six run-time guards that a signature states for free. And
+# `help claude-nu gi` showed every flag at once, including the ones meaningless
+# for the verb being typed. Each verb now carries its own signature and help.
+# `main` is the name a module gives its own command, so importing this file
+# yields `gi`, and `gi <verb>` for the rest.
+#
+# Everything below this line up to the def is the command's own help text —
+# nushell shows the contiguous comment block, so keep the rationale above the
+# blank line.
+
+# What gi has seeded in this repo, and the canvas this session is bound to.
+# The verbs: `gi enable`, `gi open`, `gi resume`, `gi status`, `gi check`.
+export def main [
+    --root: path # Repo root to inspect (default: git top-level)
+]: nothing -> record {
+    gi-status --root $root
 }
 
-# gi — seed the gi protocol in this repo (`enable`), then open a session bound
-# to a canvas (`open`/`resume`). One command, one positional action (tab-
-# completes); with no action it reports status. Why one command, not six
-# subcommands: they are verbs on the same object — a positional with a completer
-# is the same call surface (`gi enable` still parses) with a single export.
-# Named `main` because a module can't export a command named the same as the
-# module — importing this file yields the `gi` command.
-export def main [
-    action?: string@"nu-complete gi-actions" # enable | open | resume | status | check (default: status)
-    doc?: path # The canvas. enable: where --from-session puts the import (default gi/session-<id>.md); open: what to launch on, created from the template if new; resume: which canvas to continue
-    --root: path # Repo root (default: git top-level); ignored by check
-    --force # enable only: overwrite the seeded style and skills with the module's versions
-    --from-session # enable only: start the working doc from this session's dialogue
-    --commit # --from-session only: commit the imported doc
-    --gitignore # --from-session only: keep the imported doc out of git
-    --tools # --from-session only: keep tool calls in the import as one-line placeholders
-    --no-hook # open/resume only: launch with the Canvas style but without the Stop-hook floor
-]: any -> any {
-    let event = $in # check reads the Stop event here; the others ignore it
-    # Every action-bound option in one guard. Why a table: each option needs its
-    # own span for the error label, and a copy of the same five-line `if` per
-    # option buried the guards below that actually say something.
-    let misplaced = [
-        [given actions msg hint span];
-        [$force ["enable"] "--force only makes sense with enable" "gi enable --force" (metadata $force).span]
-        [$from_session ["enable"] "--from-session only makes sense with enable" "gi enable --from-session" (metadata $from_session).span]
-        [$commit ["enable"] "--commit only makes sense with enable" "gi enable --from-session --commit" (metadata $commit).span]
-        [$gitignore ["enable"] "--gitignore only makes sense with enable" "gi enable --from-session --gitignore" (metadata $gitignore).span]
-        [$tools ["enable"] "--tools only makes sense with enable" "gi enable --from-session --tools" (metadata $tools).span]
-        [$no_hook ["open" "resume"] "--no-hook only makes sense when opening a canvas" "gi open <doc> --no-hook" (metadata $no_hook).span]
-    ]
-    | where {|o| $o.given and ($action not-in $o.actions) }
-    if ($misplaced | is-not-empty) {
-        let bad = $misplaced | first
-        error make {msg: $bad.msg label: {text: $"drop this, or use: ($bad.hint)" span: $bad.span}}
-    }
-    # The doc positional names a canvas: which one to launch on, or — for
-    # enable — where the imported dialogue lands. Only resume can't run without
-    # it: open mints a default.
-    if $doc != null and $action not-in ["enable" "open" "resume"] {
-        error make {
-            msg: "a canvas path only makes sense with enable, open, or resume"
-            label: {text: "drop this, or use: gi enable <doc> --from-session / gi open <doc> / gi resume <doc>" span: (metadata $doc).span}
-        }
-    }
+# Same as bare `gi`. Why both: `gi status` is the spelling the docs and the
+# skills use, and a verb that exists only by omission is hard to find.
+export def "gi status" [
+    --root: path # Repo root to inspect (default: git top-level)
+]: nothing -> record {
+    gi-status --root $root
+}
+
+# Launch a session on a canvas that has no session yet, creating the canvas
+# from the template when it does not exist.
+export def "gi open" [
+    doc?: path # The canvas (default: gi/canvas-<timestamp>.md)
+    --root: path # Repo root (default: git top-level)
+    --no-hook # Launch with the Canvas style but without the Stop-hook floor
+]: nothing -> nothing {
+    gi-launch --root $root --doc $doc --hook=(not $no_hook)
+}
+
+# Reopen a canvas into the session recorded in its frontmatter.
+export def "gi resume" [
+    doc: path # The canvas to continue
+    --root: path # Repo root (default: git top-level)
+    --no-hook # Launch with the Canvas style but without the Stop-hook floor
+]: nothing -> nothing {
+    gi-launch --root $root --doc $doc --continue --hook=(not $no_hook)
+}
+
+# Seed the gi protocol into this repo: the Canvas style and the gi skills.
+# Turns nothing on — `gi open`/`gi resume` do that, per session — and writes to
+# no settings file. Re-runnable: seeded files are never clobbered.
+export def "gi enable" [
+    doc?: path # Where the --from-session import lands (default: gi/session-<id>.md)
+    --root: path # Repo root to seed (default: git top-level)
+    --force # Overwrite the seeded style and skills with the module's versions
+    --from-session # Start a canvas from this session's dialogue
+    --commit # Commit the imported doc
+    --gitignore # Keep the imported doc out of git
+    --tools # Keep tool calls in the import as one-line placeholders
+]: nothing -> record {
+    # What is left after the signature: the three rules that relate options to
+    # each other, which no signature can state.
     # enable seeds the style and the skills; it does not make canvases. `gi open
     # <doc>` does that, and binds a session in the same breath — so a path here
     # with nothing to import would name a file enable has no reason to write.
-    if $action == "enable" and $doc != null and not $from_session {
+    if $doc != null and not $from_session {
         error make {
             msg: "gi enable makes no canvas — a path here is where --from-session puts the import"
             label: {text: "to start a canvas: gi open <doc>; to import this session into it: gi enable <doc> --from-session" span: (metadata $doc).span}
-        }
-    }
-    if $action == "resume" and $doc == null {
-        error make {
-            msg: "gi resume needs a canvas file"
-            label: {text: "name the canvas to continue: gi resume <doc>" span: (metadata $doc).span}
         }
     }
     if $commit and $gitignore {
@@ -315,33 +314,6 @@ export def main [
             label: {text: "add --from-session to import this session" span: ($import_only | first | get span)}
         }
     }
-    match $action {
-        null | "status" => (gi-status --root $root)
-        "enable" => (gi-enable --root $root --doc $doc --force=$force --from-session=$from_session --commit=$commit --gitignore=$gitignore --tools=$tools)
-        "open" => (gi-launch --root $root --doc $doc --hook=(not $no_hook))
-        "resume" => (gi-launch --root $root --doc $doc --continue --hook=(not $no_hook))
-        "check" => ($event | gi-check)
-        _ => {
-            error make {
-                msg: $"unknown gi action: ($action)"
-                label: {text: "expected enable, open, resume, status, or check" span: (metadata $action).span}
-            }
-        }
-    }
-}
-
-# Seed the gi protocol into this repo: the Canvas style and the gi skills.
-# Turns nothing on — `gi open`/`gi resume` do that, per session — and writes to
-# no settings file. Re-runnable: seeded files are never clobbered.
-def gi-enable [
-    --root: path # Repo root to seed (default: git top-level)
-    --doc: path # Where the --from-session import lands (default: gi/session-<id>.md)
-    --force # Overwrite the seeded style and skills with the module's versions
-    --from-session # Start the working doc from this session's dialogue
-    --commit # Commit the imported doc
-    --gitignore # Keep the imported doc out of git
-    --tools # Keep tool calls in the import as one-line placeholders
-]: nothing -> record {
     let root = $root | default (gi-repo-root) | path expand
     let paths = gi-paths $root
     let sid = if $from_session { gi-session-id }
@@ -588,7 +560,7 @@ def gi-status [
 # unit-testable. The single `to json` lives here, next to the contract it
 # serves — the rules deal in records only. Also accepts nothing: run by hand
 # with no stdin, the normalization below treats it as an empty event.
-def gi-check []: [string -> any, nothing -> any] {
+export def "gi check" []: [string -> any, nothing -> any] {
     let payload = try { $in | default "" | from json } catch { {} }
     # Valid JSON need not be an object ("hi", 123, null, [1]) — normalize to a
     # record: anything else would throw in the guard below or entering the
@@ -609,7 +581,7 @@ def gi-check []: [string -> any, nothing -> any] {
     if $decision != null { $decision | to json --raw }
 }
 
-# The actual gi rules, free to throw; gi-check owns the exit-0 contract.
+# The actual gi rules, free to throw; `gi check` owns the exit-0 contract.
 def gi-check-rules []: record -> any {
     let payload = $in
     # $env.GI_CANVAS is the activation itself: `gi open`/`gi resume` set it on

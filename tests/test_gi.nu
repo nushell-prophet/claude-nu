@@ -321,31 +321,10 @@ def "stamping a session joins an existing frontmatter block" [] {
     assert equal $meta {session: "11111111-2222-3333-4444-555555555555" title: "my plan"}
 }
 
-@test
-def "resume without a doc is rejected" [] {
-    let out = try { gi resume; null } catch {|e| $e.msg }
-    assert ($out | str contains "needs a canvas file")
-}
-
-# Not named "--force ..." because: nutest interpolates test names into a
-# block, where a leading -- parses as a flag and kills the whole suite.
-@test
-def "a force flag with a non-enable action errors" [] {
-    let out = try { gi status --force; null } catch {|e| $e.msg }
-    assert ($out != null)
-}
-
-@test
-def "a no-hook flag outside open and resume errors" [] {
-    let out = try { gi enable --no-hook; null } catch {|e| $e.msg }
-    assert ($out | str contains "only makes sense when opening a canvas")
-}
-
-@test
-def "a canvas path on an action that takes none is rejected" [] {
-    let out = try { gi status some.md; null } catch {|e| $e.msg }
-    assert ($out | str contains "enable, open, or resume")
-}
+# No tests here for `gi resume` without a canvas, `gi status --force`,
+# `gi enable --no-hook`, or `gi status <doc>`. Each verb is its own command
+# now, so the parser rejects all four before the code runs — and a parse error
+# cannot be caught by `try`, which is the point: the signature states the rule.
 
 # =============================================================================
 # check — the Stop hook decision (contract)

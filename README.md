@@ -135,6 +135,8 @@ Filters out system-generated messages, keeping only user prompts and assistant r
 
 Set up the gi protocol in a repo — where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing. It comes in two halves. `enable` **seeds** the repo: the Canvas output style and the gi skills. `open`/`resume` **launch** a session bound to one canvas, creating the canvas if it does not exist yet — that launch is the only thing that turns gi on.
 
+Each verb is a real Nushell subcommand, so it carries its own flags and its own `help claude-nu gi <verb>`, and `claude-nu gi <TAB>` completes them.
+
 ```nushell no-run
 claude-nu gi enable            # seed style + skills into this repo (no canvas)
 claude-nu gi enable --from-session            # ...and start a canvas from this session's dialogue (gi/session-<id>.md)
