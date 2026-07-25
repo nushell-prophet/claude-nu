@@ -39,7 +39,7 @@ When a cut is judgment-heavy, do less: leaving a live constraint in costs a few 
 ## Procedure
 
 1. **Clean-tree check** — `git status --porcelain`. Non-empty → stop, ask the user to commit or stash.
-2. **Read the canvas in full** — path is `$env.GI_HOOK_DOC`; if unset, ask which document.
+2. **Read the canvas in full** — path is `$env.GI_CANVAS`; if unset, ask which document.
 3. **Classify** — mark each section cut/keep per the taxonomy and any `$ARGUMENTS` / `!!` instructions. Anything genuinely ambiguous between dead and protective: keep it, add a `???`.
 4. **Edit** — remove the cut material; repair what the cuts leave dangling (broken sentences, stale cross-references, list numbering). Never leave the doc mid-broken.
 5. **Commit** — the canvas change as its own commit. Body is thin: the diff *is* the archive, so name what was distilled in one line, not what each removed section said.

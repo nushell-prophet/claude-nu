@@ -1,35 +1,37 @@
-# gi — per-repo setup for the gi protocol, with an opt-in Stop hook.
+# gi — the gi protocol: seeded per repo, activated per session at launch.
 #
 # The gi protocol moves all "what/why" into git: the diff and the commit body
-# carry the record, the chat carries almost nothing. `gi enable` does the
-# setup: it seeds the Canvas output style, the gi skills, and the working doc,
-# and turns the style on in settings.local.json. The style is proactive
-# shaping only — it rests on prose and the agent drifts back to long chat
-# answers. `gi enable --hook` adds a structural barrier on top of it: a Claude
-# Code Stop hook that blocks the turn when the final chat message is more than
-# `done`/`noted` or a short pointer, and tells the agent to move the answer
-# into the recorded working doc. It also blocks turns that end on main/master:
-# gi commits are internal working history — they reach a public branch only
-# squash-merged, after finalization. The hook is opt-in because the floor only
-# fits strict gi sessions; the user often returns to plain chat, and the setup
-# alone must not block those turns. Everything is per-repo, so the classic
-# mode is untouched.
+# carry the record, the chat carries almost nothing. Two commands, and the split
+# between them is the whole design:
 #
-# Renamed from `gi-hook`: once enable stopped installing the hook by default,
-# the old name promised a hook it no longer delivered. Legacy spellings remain
-# where deployed copies depend on them — see GI_MARKERS and the GI_HOOK_* env
-# keys. Settings files still carrying the old `gi-hook check` command must
-# re-run `gi enable` (which rewrites the entry); the command alias itself is
-# gone.
+#   gi enable          seeds files into the repo — the Canvas output style, the
+#                      gi skills, a working doc (the canvas). Writes nothing to
+#                      settings, turns nothing on.
+#   gi open / resume   launches Claude Code bound to one canvas: `--settings`
+#                      carries the output style and the Stop hook for that launch
+#                      alone, and $env.GI_CANVAS names the canvas. Both reach the
+#                      hook, which runs as a child of that session.
+#
+# Why activation lives at launch and not in .claude/settings.local.json (which
+# is what this replaced): outputStyle, hooks, and env in a settings file are
+# repo-wide and load into EVERY session in the repo. A canvas opened yesterday
+# kept shaping unrelated sessions today, and the only cure was remembering to
+# run `gi disable`. With per-launch activation there is no state to forget: a
+# plain `claude` in a gi-seeded repo is a plain session, always.
+#
+# The style is proactive shaping only — it rests on prose, and the agent drifts
+# back to long chat answers. The Stop hook is the structural floor under it: it
+# blocks the turn when the final chat message is more than `done`/`noted` or a
+# short pointer, and blocks turns ending on main/master (gi commits are internal
+# working history — they reach a public branch only squash-merged, after
+# finalization). It comes with every `gi open`/`gi resume`; `--no-hook` opens a
+# canvas with the style alone.
+#
+# There is no `gi disable` and no migration path: gi writes to no settings file,
+# so there is nothing to switch off. A repo set up by the older, repo-wide gi
+# keeps working from its own settings until those keys are deleted by hand.
 
 use sessions.nu [export-session resolve-session-file]
-
-# Substrings that identify our Stop entry inside settings.local.json. Why: the
-# command line is the only stable signature to match on for idempotent enable
-# and surgical disable — see `gi disable`. Two spellings: entries written
-# before the gi-hook → gi rename embed the old command, and enable/disable
-# must still recognize them for refresh and removal.
-const GI_MARKERS = ["gi check" "gi-hook check"]
 
 # The output-style name gi enable installs. Why a const: enable writes it into
 # settings.local.json (outputStyle) and disable removes it only if it still
@@ -59,6 +61,19 @@ const GI_HEADER_SRC = ($GI_MODULE_DIR | path join "gi-md-src" "canvas-header.md"
 # not resolved at hook time.
 const GI_COMMAND = $"nu --stdin -c 'use \"($GI_MODULE_DIR)\"; $in | claude-nu gi check'"
 
+# The settings gi hands to `claude` at launch. Verified against the CLI:
+# --settings takes a JSON string as well as a path, its keys MERGE with the
+# project's settings files rather than replace them (a repo's permissions
+# survive), and outputStyle resolves against .claude/output-styles in the launch
+# directory. So one flag carries the whole activation for one session, and the
+# repo keeps no record of it. Exported for tests: this payload IS the protocol's
+# on-switch, so it is worth pinning down on its own.
+export def gi-launch-settings [--hook]: nothing -> string {
+    {outputStyle: $GI_STYLE}
+    | if $hook { insert hooks {Stop: [{hooks: [{type: "command" command: $GI_COMMAND}]}]} } else { }
+    | to json --raw
+}
+
 # Branches gi commits must never end a turn on. Why: gi history is internal
 # working material — on a branch external users read, it would put them off.
 # It reaches these branches only squash-merged, after finalization (see the
@@ -83,10 +98,8 @@ def gi-branch [root: path]: nothing -> any {
     if $out.exit_code == 0 and ($branch | is-not-empty) { $branch }
 }
 
-# Every path gi touches, in one record.
-# - settings: per-repo, per-machine file the hook lives in. Why this file: it is
-#   already gitignored by Claude Code, so the hook stays local — it never
-#   reaches another checkout or the classic mode.
+# Every path gi touches, in one record. No settings file among them: gi writes
+# to none — activation travels with the launch (see gi-launch).
 # - template_src: the gi working-doc seed; its destination is chosen per-enable
 #   (see gi-enable), so only the src lives here.
 # - style: the Canvas output style. Why distribute a local copy: this module is
@@ -99,12 +112,27 @@ def gi-branch [root: path]: nothing -> any {
 #   makes that reference real in any gi-enabled repo.
 def gi-paths [root: path]: nothing -> record {
     {
-        settings: ($root | path join ".claude" "settings.local.json")
         template_src: $GI_HEADER_SRC
         style_src: ($GI_MODULE_DIR | path join "gi-md-src" "canvas-output-style.md")
         style_dst: ($root | path join ".claude" "output-styles" "canvas.md")
         skills_src: ($GI_MODULE_DIR | path join "gi-md-src" "skills")
         skills_dst: ($root | path join ".claude" "skills")
+    }
+}
+
+# A canvas path in both forms: absolute (what GI_CANVAS carries and what the
+# hook resolves against any cwd) and root-relative (what the user reads in a
+# message). Shared by enable and the launcher so one rule serves both.
+# Why expand the dirname and not the whole path: the canvas may not exist yet,
+# and `path expand` resolves symlinks only for paths that do — this still lets
+# an absolute path arriving through a symlink (cozy's ~/repos) come back
+# root-relative.
+def gi-doc-path [root: path, doc: path]: nothing -> record {
+    let joined = $root | path join $doc
+    let abs = $joined | path dirname | path expand | path join ($joined | path basename)
+    {
+        abs: $abs
+        rel: (if ($abs | str starts-with $"($root)/") { $abs | path relative-to $root } else { $abs })
     }
 }
 
@@ -186,119 +214,67 @@ def gi-session-key [session_id: string]: nothing -> string {
     $session_id | str substring 0..7
 }
 
-# The working doc recorded in settings (env.GI_HOOK_DOC), or null. The doc name
-# is timestamped or user-chosen, so it can't be recomputed — it must be
-# persisted; the sole reader is this command (status and check both come through
-# here), so a re-enable with a new doc applies on the next Stop event, no
-# session restart. Why the `env` key and not a custom one: it is schema-valid
-# in settings.local.json, and Claude Code exports it into the session — the
-# agent itself can locate the canvas via $env.GI_HOOK_DOC. The key keeps the
-# legacy GI_HOOK_ prefix: seeded style files and running sessions already read
-# it, and renaming would orphan every deployed copy.
-def gi-doc [settings: record]: nothing -> any {
-    $settings.env?.GI_HOOK_DOC?
-}
-
-# True if a Stop entry is one we installed (matches by command signature).
-def gi-is-ours []: record -> bool {
-    $in.hooks?
-    | default []
-    | any {|h|
-        let cmd = $h.command? | default ""
-        $GI_MARKERS | any {|m| $cmd | str contains $m }
-    }
-}
-
-def gi-open-settings [path: path]: nothing -> record {
-    if ($path | path exists) { open $path } else { {} }
-}
-
-# The directory whose .claude/settings.local.json governs the event's cwd:
-# the nearest ancestor whose settings file carries our Stop entry — a session
-# may be rooted at a monorepo subproject that enable targeted with --root, and
-# an ancestor short of it may hold unrelated local settings (permissions etc.)
-# that must not shadow the gi-enabled one. Null when no file in scope carries
-# the entry. Why match on the entry, not mere file presence: it makes disable
-# effective immediately — Claude Code snapshots hook config at session start,
-# so after a mid-session `gi disable` the snapshotted hook keeps firing; the
-# live settings file is the truth, and with no entry anywhere check stands
-# down. The walk is bounded by the toplevel: crossing it would adopt an
-# unrelated outer settings file (e.g. ~/.claude) as this repo's.
-def gi-settings-root [dir: path]: nothing -> any {
-    let top = gi-repo-root $dir
-    generate {|d|
-        if $d == $top or ($d | path dirname) == $d { {out: $d} } else { {out: $d next: ($d | path dirname)} }
-    } ($dir | path expand)
-    | where {|d|
-        gi-open-settings ($d | path join ".claude" "settings.local.json")
-        | $in.hooks?.Stop?
-        | default []
-        | any {|e| $e | gi-is-ours }
-    }
-    | get 0?
-}
-
-# The four gi actions, surfaced as tab completions on the positional below.
+# The gi actions, surfaced as tab completions on the positional below.
 def "nu-complete gi-actions" []: nothing -> table {
     [
         [value description];
-        [enable "seed the style, skills, and working doc; --hook adds the Stop hook"]
-        [disable "remove the hook and outputStyle (seeded files stay)"]
-        [status "show what is installed"]
-        [resume "reopen a canvas: claude --resume its frontmatter session, GI_CANVAS set to it"]
+        [enable "seed this repo: the Canvas style, the gi skills, a working doc"]
+        [open "launch a session bound to a canvas (creates it from the template if new)"]
+        [resume "same, continuing the session recorded in the canvas frontmatter"]
+        [status "show what is seeded here, and the canvas this session is bound to"]
         [check "hook body — reads the Stop event JSON on stdin"]
     ]
 }
 
-# gi — set up the gi protocol in this repo; --hook adds the Stop-hook floor.
-# One command, one positional action (tab-completes); with no action it
-# reports status. Why one command, not four subcommands: the four were just
-# verbs on the same object — a positional with a completer is the same call
-# surface (`gi enable` still parses) with a single export to maintain.
+# gi — seed the gi protocol in this repo (`enable`), then open a session bound
+# to a canvas (`open`/`resume`). One command, one positional action (tab-
+# completes); with no action it reports status. Why one command, not six
+# subcommands: they are verbs on the same object — a positional with a completer
+# is the same call surface (`gi enable` still parses) with a single export.
 # Named `main` because a module can't export a command named the same as the
 # module — importing this file yields the `gi` command.
 export def main [
-    action?: string@"nu-complete gi-actions" # enable | disable | status | resume | check (default: status)
-    doc?: path # enable: working-doc path (default: keep the recorded one, else gi/canvas-<timestamp>.md; with --from-session gi/session-<id>.md). resume: the canvas to reopen
+    action?: string@"nu-complete gi-actions" # enable | open | resume | status | check (default: status)
+    doc?: path # The canvas. enable: where to seed it (default gi/canvas-<timestamp>.md, or gi/session-<id>.md with --from-session); open: what to launch on, created from the template if new; resume: which canvas to continue
     --root: path # Repo root (default: git top-level); ignored by check
     --force # enable only: overwrite the seeded style and skills with the module's versions
-    --hook # enable only: also install the Stop hook (the hard floor)
     --from-session # enable only: start the working doc from this session's dialogue
     --commit # --from-session only: commit the imported doc
     --gitignore # --from-session only: keep the imported doc out of git
     --tools # --from-session only: keep tool calls in the import as one-line placeholders
+    --no-hook # open/resume only: launch with the Canvas style but without the Stop-hook floor
 ]: any -> any {
     let event = $in # check reads the Stop event here; the others ignore it
-    # Every enable-only option in one guard. Why a table: each option needs its
-    # own span for the error label, and six copies of the same five-line `if`
-    # buried the two guards below that actually say something.
+    # Every action-bound option in one guard. Why a table: each option needs its
+    # own span for the error label, and a copy of the same five-line `if` per
+    # option buried the guards below that actually say something.
     let misplaced = [
-        [given msg hint span];
-        [$force "--force only makes sense with enable" "gi enable --force" (metadata $force).span]
-        [$hook "--hook only makes sense with enable" "gi enable --hook" (metadata $hook).span]
-        [$from_session "--from-session only makes sense with enable" "gi enable --from-session" (metadata $from_session).span]
-        [$commit "--commit only makes sense with enable" "gi enable --from-session --commit" (metadata $commit).span]
-        [$gitignore "--gitignore only makes sense with enable" "gi enable --from-session --gitignore" (metadata $gitignore).span]
-        [$tools "--tools only makes sense with enable" "gi enable --from-session --tools" (metadata $tools).span]
+        [given actions msg hint span];
+        [$force ["enable"] "--force only makes sense with enable" "gi enable --force" (metadata $force).span]
+        [$from_session ["enable"] "--from-session only makes sense with enable" "gi enable --from-session" (metadata $from_session).span]
+        [$commit ["enable"] "--commit only makes sense with enable" "gi enable --from-session --commit" (metadata $commit).span]
+        [$gitignore ["enable"] "--gitignore only makes sense with enable" "gi enable --from-session --gitignore" (metadata $gitignore).span]
+        [$tools ["enable"] "--tools only makes sense with enable" "gi enable --from-session --tools" (metadata $tools).span]
+        [$no_hook ["open" "resume"] "--no-hook only makes sense when opening a canvas" "gi open <doc> --no-hook" (metadata $no_hook).span]
     ]
-    | where given
-    if $action != "enable" and ($misplaced | is-not-empty) {
+    | where {|o| $o.given and ($action not-in $o.actions) }
+    if ($misplaced | is-not-empty) {
         let bad = $misplaced | first
         error make {msg: $bad.msg label: {text: $"drop this, or use: ($bad.hint)" span: $bad.span}}
     }
-    # The doc positional is shared by two actions with different meanings — the
-    # working doc for enable, the canvas to reopen for resume — so it is valid
-    # for both and misplaced elsewhere. resume can't run without one.
-    if $doc != null and $action not-in ["enable" "resume"] {
+    # The doc positional means a canvas for all three actions that take one —
+    # where to seed it, or which one to launch on — and nothing anywhere else.
+    # Only resume can't run without it: open mints a default, enable seeds one.
+    if $doc != null and $action not-in ["enable" "open" "resume"] {
         error make {
-            msg: "a working-doc path only makes sense with enable or resume"
-            label: {text: "drop this, or use: gi enable <doc> / gi resume <doc>" span: (metadata $doc).span}
+            msg: "a canvas path only makes sense with enable, open, or resume"
+            label: {text: "drop this, or use: gi enable <doc> / gi open <doc> / gi resume <doc>" span: (metadata $doc).span}
         }
     }
     if $action == "resume" and $doc == null {
         error make {
             msg: "gi resume needs a canvas file"
-            label: {text: "name the canvas to reopen: gi resume <doc>" span: (metadata $doc).span}
+            label: {text: "name the canvas to continue: gi resume <doc>" span: (metadata $doc).span}
         }
     }
     if $commit and $gitignore {
@@ -325,27 +301,26 @@ export def main [
     }
     match $action {
         null | "status" => (gi-status --root $root)
-        "enable" => (gi-enable --root $root --doc $doc --force=$force --hook=$hook --from-session=$from_session --commit=$commit --gitignore=$gitignore --tools=$tools)
-        "disable" => (gi-disable --root $root)
-        "resume" => (gi-resume $doc --root $root)
+        "enable" => (gi-enable --root $root --doc $doc --force=$force --from-session=$from_session --commit=$commit --gitignore=$gitignore --tools=$tools)
+        "open" => (gi-launch --root $root --doc $doc --hook=(not $no_hook))
+        "resume" => (gi-launch --root $root --doc $doc --continue --hook=(not $no_hook))
         "check" => ($event | gi-check)
         _ => {
             error make {
                 msg: $"unknown gi action: ($action)"
-                label: {text: "expected enable, disable, status, resume, or check" span: (metadata $action).span}
+                label: {text: "expected enable, open, resume, status, or check" span: (metadata $action).span}
             }
         }
     }
 }
 
-# Set up the gi protocol in this repo's .claude/settings.local.json: seed the
-# style, skills, and working doc, and turn the Canvas style on. With --hook,
-# also install the Stop hook. Idempotent: a second enable adds no duplicate.
+# Seed the gi protocol into this repo: the Canvas style, the gi skills, and a
+# canvas. Turns nothing on — `gi open`/`gi resume` do that, per session — and
+# writes to no settings file. Re-runnable: seeded files are never clobbered.
 def gi-enable [
-    --root: path # Repo root to install into (default: git top-level)
-    --doc: path # Working-doc path, relative to root (absolute also accepted)
+    --root: path # Repo root to seed (default: git top-level)
+    --doc: path # Canvas path, relative to root (absolute also accepted)
     --force # Overwrite the seeded style and skills with the module's versions
-    --hook # Also install the Stop hook
     --from-session # Start the working doc from this session's dialogue
     --commit # Commit the imported doc
     --gitignore # Keep the imported doc out of git
@@ -353,29 +328,23 @@ def gi-enable [
 ]: nothing -> record {
     let root = $root | default (gi-repo-root) | path expand
     let paths = gi-paths $root
-    let settings = gi-open-settings $paths.settings
     let sid = if $from_session { gi-session-id }
 
-    # Resolve the working doc: explicit arg wins; else an import gets its own
-    # session-keyed name — re-running it in one session refreshes one file, and
-    # the repo's older canvas (the recorded doc) is left alone; else keep the
-    # recorded one so re-enable is idempotent; else mint a timestamped default.
-    # Stored root-relative when under root — the hook runs with cwd at the
-    # project, so the short form works in the block message and survives a
-    # checkout move.
+    # Resolve the canvas: explicit arg wins; else an import gets its own
+    # session-keyed name, so re-running it in one session refreshes one file and
+    # leaves the repo's older canvases alone; else mint a timestamped one.
+    # Why no "remember the last doc": nothing is recorded anywhere now — the
+    # canvas is named by the path you pass to `gi open`/`gi resume`, and a repo
+    # holds as many as you like.
     let doc = $doc
         | default (if $from_session { $"gi/session-(gi-session-key $sid).md" })
-        | default (gi-doc $settings)
         | default $"gi/canvas-(date now | format date '%J_%Q').md"
-    let doc_abs = $root | path join $doc
-    # Expand the dirname, not the whole path: the doc may not exist yet, and
-    # `path expand` resolves symlinks only for paths that exist. This keeps an
-    # absolute doc arriving through a symlink (cozy's ~/repos) root-relative.
-    let doc_abs = $doc_abs | path dirname | path expand | path join ($doc_abs | path basename)
-    let doc = if ($doc_abs | str starts-with $"($root)/") { $doc_abs | path relative-to $root } else { $doc_abs }
+    let paths_doc = gi-doc-path $root $doc
+    let doc_abs = $paths_doc.abs
+    let doc = $paths_doc.rel
 
     # Build the import before anything is written: a session that can't be read
-    # must not leave settings pointing at a doc that was never created.
+    # must not leave a half-seeded repo behind.
     let imported = if $from_session {
         if ($doc_abs | path exists) {
             error make --unspanned {
@@ -385,30 +354,6 @@ def gi-enable [
         }
         gi-import-text $sid --tools=$tools
     }
-
-    # The hook is opt-in: --hook installs it; plain enable leaves the on/off
-    # state alone but still refreshes an already-installed entry. Why refresh:
-    # the command embeds the module path, so re-enable must refresh an entry
-    # recorded from a since-moved checkout — a stale path fails at `use` time,
-    # outside anything the module can catch. Refresh drops any prior entry of
-    # ours (old spelling included) before appending the current one.
-    let prior = $settings.hooks?.Stop? | default []
-    let install = $hook or ($prior | any {|e| $e | gi-is-ours })
-    let stop = $prior
-        | where {|e| not ($e | gi-is-ours) }
-        | if $install { append {hooks: [{type: "command" command: $GI_COMMAND}]} } else { }
-
-    let hooks = $settings.hooks? | default {} | upsert Stop $stop
-    let env_block = $settings.env? | default {} | upsert GI_HOOK_DOC $doc
-    mkdir ($paths.settings | path dirname)
-    # Set outputStyle in the same write. Why: the style shapes what gets
-    # written proactively; the optional hook is the hard floor on top — LLMs
-    # are non-deterministic, so strict sessions add the floor via --hook.
-    $settings
-    | upsert hooks $hooks
-    | upsert env $env_block
-    | upsert outputStyle $GI_STYLE
-    | save --force $paths.settings
 
     # The import is the working doc's first content, so it lands before the seed
     # loop — whose copy-if-absent rule then skips the plain template.
@@ -454,26 +399,18 @@ def gi-enable [
         ^git -C $root commit --quiet -m $"gi: import session (gi-session-key $sid) as the working doc" -m "Dialogue up to the import; the full session log stays outside the repo." -- $doc_abs
     }
 
-    # The style is read once at session start, so it won't apply until /clear or
-    # a new session; the hook (when installed) takes effect immediately.
-    let mode = if $install { "with the Stop hook" } else { "setup only — `gi enable --hook` adds the Stop hook" }
-    print $"gi enabled \(($mode)\). Run /clear or start a new session for the Canvas output style to load."
+    # Seeding alone changes nothing about the session that ran it: the style and
+    # the hook arrive with `gi open`/`gi resume`, so the next line is the whole
+    # instruction. An imported canvas continues its own session, hence resume.
+    let verb = if $from_session { "resume" } else { "open" }
+    print $"gi seeded in ($root). Canvas: ($doc)"
+    print $"open a bound session on it:  claude-nu gi ($verb) ($doc)"
     if $imported != null {
-        # One pasteable block instead of instructions to relay. Two gaps to
-        # cover: the agent's $env.GI_HOOK_DOC was snapshotted at session start
-        # (stale until /clear), and the log can never hold the turn that ran
-        # the import — but the agent still has that turn in its context, so
-        # telling it to append closes the gap the file's note can only state.
-        print $"imported this session into ($doc_abs) — paste this to the agent:"
-        print ""
-        print $"  The gi canvas is now `($doc)` — ignore $env.GI_HOOK_DOC until /clear; it was snapshotted at session start. The doc ends before the turn that ran the import: append the missing tail of our dialogue to it from your context."
-    }
-    # Same guard the hook enforces, surfaced at opt-in time — switching now
-    # beats being blocked mid-session with commits already on the branch.
-    # Gated on the hook: without it nothing blocks, so there is nothing to warn about.
-    let branch = gi-branch $root
-    if $install and ($branch in $GI_PROTECTED_BRANCHES) {
-        print $"note: this repo is on ($branch) — gi commits belong on a work branch; the Stop hook will block turns until you switch."
+        # The log can never hold the turn that ran the import (Claude Code writes
+        # it as the turn runs). After `gi resume` the agent is back in this same
+        # session and still holds that turn, so it can close the gap itself —
+        # the file's note can only state it.
+        print $"the import stops before this turn — after resuming, ask the agent to append the tail from its context."
     }
     let status = gi-status --root $root
     # Surface drift at the moment the user is already touching gi — status
@@ -481,31 +418,9 @@ def gi-enable [
     if not $force and ($status.stale | is-not-empty) {
         print $"note: ($status.stale | length) seeded file\(s\) differ from the module — `gi enable --force` refreshes them."
     }
-    $status
-}
-
-# Remove our Stop hook, outputStyle, and recorded doc, leaving any other hooks
-# intact. No-op if absent.
-def gi-disable [
-    --root: path # Repo root to remove from (default: git top-level)
-]: nothing -> record {
-    let root = $root | default (gi-repo-root) | path expand
-    let path = (gi-paths $root).settings
-    if not ($path | path exists) { return (gi-status --root $root) }
-
-    # Emptied containers (hooks: {Stop: []}, env: {}) stay behind on purpose:
-    # harmless in a gitignored machine-local file, and pruning them tripled
-    # this body.
-    gi-open-settings $path
-    | if ($in.hooks?.Stop? == null) { } else {
-        update hooks.Stop { where {|e| not ($e | gi-is-ours) } }
-    }
-    # Drop outputStyle only if it is still ours — never clobber a value the user
-    # set themselves. The seeded style and working doc are left in place (user files).
-    | if ($in.outputStyle? == $GI_STYLE) { reject outputStyle } else { }
-    | reject env?.GI_HOOK_DOC?
-    | save --force $path
-    gi-status --root $root
+    # `doc` and status's `canvas` are different questions: the canvas this call
+    # seeded, versus the one the calling session is bound to (usually none).
+    $status | insert doc $doc_abs
 }
 
 # The `session:` value from a canvas's YAML frontmatter, or null when the file
@@ -521,64 +436,83 @@ export def gi-frontmatter-session [file: path]: nothing -> any {
     $meta.session?
 }
 
-# Reopen a canvas: resume the Claude Code session recorded in its frontmatter,
-# with $env.GI_CANVAS pointing at the canvas so both the agent and the Stop hook
-# bind to it for this session. Why a per-session env var, not settings: settings
-# `env` is repo-wide and overrides a same-named launch var, so several canvases
-# in one repo could not each carry their own doc through settings — the launch
-# env var is the only per-session channel the hook inherits (GI_HOOK_DOC in
-# settings stays the repo default). --resume keeps the session id, so the
-# canvas's frontmatter stays valid across reopens (--fork-session would mint a
-# new id and orphan it).
-def gi-resume [
-    doc: path # The canvas to reopen; its frontmatter session drives claude --resume
+# Launch Claude Code bound to one canvas — the only thing that turns gi on.
+# Everything travels with the launch and nothing is left in the repo:
+# `--settings` carries the Canvas style and (unless --no-hook) the Stop hook for
+# this process only, and $env.GI_CANVAS names the canvas for the agent and for
+# the hook, which inherits it as a child process.
+# With --continue, the canvas's frontmatter session is resumed. Why `--resume`
+# and not `--fork-session`: the session id must keep matching the frontmatter,
+# or the canvas can't be reopened a second time.
+def gi-launch [
+    --doc: path # The canvas; created from the template when new (without --continue)
     --root: path # Repo root (default: git top-level)
+    --continue # Continue the session recorded in the canvas frontmatter
+    --hook # Carry the Stop-hook floor into the session
 ]: nothing -> nothing {
     let root = $root | default (gi-repo-root) | path expand
-    let doc_abs = $doc | path expand
-    if not ($doc_abs | path exists) {
-        error make {msg: $"no such canvas: ($doc_abs)" label: {text: "file not found" span: (metadata $doc).span}}
-    }
-    let sid = gi-frontmatter-session $doc_abs
-    if ($sid | is-empty) {
+    let doc = $doc | default $"gi/canvas-(date now | format date '%J_%Q').md"
+    let doc_abs = (gi-doc-path $root $doc).abs
+    let doc_rel = (gi-doc-path $root $doc).rel
+    let style = (gi-paths $root).style_dst
+    # outputStyle names a style file that must already be on disk here; without
+    # it Claude Code would launch with no style and gi would be silently half on.
+    if not ($style | path exists) {
         error make --unspanned {
-            msg: $"($doc_abs) has no `session:` in its frontmatter — nothing to resume"
-            help: "only canvases seeded with `gi enable --from-session` carry a session id"
+            msg: $"the Canvas style is not seeded in this repo: ($style)"
+            help: "run `claude-nu gi enable` first"
         }
     }
-    # Root-relative when under root, to match how GI_HOOK_DOC is stored and how
-    # the hook (cwd at the project) reads it back.
-    let doc_rel = if ($doc_abs | str starts-with $"($root)/") { $doc_abs | path relative-to $root } else { $doc_abs }
-    print $"resuming session (gi-session-key $sid) with canvas ($doc_rel)"
-    # cd so claude resolves the session under this project and GI_CANVAS's
-    # root-relative path lands at the right file.
+    let sid = if $continue {
+        if not ($doc_abs | path exists) {
+            error make --unspanned {msg: $"no such canvas: ($doc_abs)" help: "check the path, or start one: claude-nu gi open <doc>"}
+        }
+        let sid = gi-frontmatter-session $doc_abs
+        if ($sid | is-empty) {
+            error make --unspanned {
+                msg: $"($doc_abs) has no `session:` in its frontmatter — nothing to resume"
+                help: "only canvases seeded with `gi enable --from-session` carry a session id; open it in a fresh session instead: claude-nu gi open <doc>"
+            }
+        }
+        $sid
+    }
+    if not ($doc_abs | path exists) {
+        mkdir ($doc_abs | path dirname)
+        cp $GI_HEADER_SRC $doc_abs
+    }
+    # Same guard the hook enforces, surfaced before the session starts — a
+    # branch switch now beats being blocked mid-session with commits already made.
+    let branch = gi-branch $root
+    if $hook and ($branch in $GI_PROTECTED_BRANCHES) {
+        print $"note: this repo is on ($branch) — gi commits belong on a work branch; the Stop hook will block turns until you switch."
+    }
+    let args = if $sid != null { ["--resume" $sid] } else { [] }
+    print $"canvas ($doc_rel)(if $sid != null { $', session (gi-session-key $sid)' })(if $hook { '' } else { ', no Stop hook' })"
+    # cd so claude resolves the session under this project and so outputStyle
+    # finds .claude/output-styles here.
     do {
         cd $root
-        with-env { GI_CANVAS: $doc_rel } { ^claude --resume $sid }
+        with-env { GI_CANVAS: $doc_abs } { ^claude --settings (gi-launch-settings --hook=$hook) ...$args }
     }
 }
 
-# Report what gi installed in this repo. Pipeline-friendly record.
+# What gi has seeded in this repo, plus whether the session asking is bound to a
+# canvas. Pipeline-friendly record.
 def gi-status [
     --root: path # Repo root to inspect (default: git top-level)
 ]: nothing -> record {
     let root = $root | default (gi-repo-root) | path expand
     let paths = gi-paths $root
-    let settings = gi-open-settings $paths.settings
-    let doc = gi-doc $settings
-    # Paths stay absolute and present whenever recorded. Shortening them
-    # against PWD made the same field change spelling with where you stand,
-    # and nulling missing seed files collapsed two states into one — a null
-    # doc could mean "not recorded" or "recorded but deleted", which need
-    # different user actions. Data here, display is the caller's business.
+    # Paths stay absolute. Shortening them against PWD made the same field
+    # change spelling with where you stand. Data here; display is the caller's
+    # business.
     {
-        hook: ($settings.hooks?.Stop? | default [] | any {|e| $e | gi-is-ours })
-        settings: $paths.settings
-        doc: (if $doc != null { $root | path join $doc })
+        # Read from the environment, not from a file: activation is per session,
+        # so "is gi on" is a property of who is asking, not of the repo.
+        canvas: ($env.GI_CANVAS?)
         style: $paths.style_dst
         skills: (gi-skill-seeds $paths | get dst)
         stale: (gi-stale $paths)
-        output_style_set: ($settings.outputStyle? == $GI_STYLE)
     }
 }
 
@@ -613,13 +547,15 @@ def gi-check []: [string -> any, nothing -> any] {
 # The actual gi rules, free to throw; gi-check owns the exit-0 contract.
 def gi-check-rules []: record -> any {
     let payload = $in
-    # Not the raw event cwd: the session's cwd may have drifted into a
-    # subdirectory of wherever enable wrote the settings (and recorded doc).
-    let root = gi-settings-root ($payload.cwd? | default $env.PWD)
-    # No live hook anywhere in scope: gi is disabled (possibly mid-session,
-    # after the hook-config snapshot) or check was run by hand outside a
-    # gi-enabled repo. Nothing to enforce.
-    if $root == null { return }
+    # $env.GI_CANVAS is the activation itself: `gi open`/`gi resume` set it on
+    # the session they launch, and the hook inherits it as a child process. It is
+    # also the only thing that makes a block actionable — the reason has to name
+    # the canvas to move the answer into. Unset, there is no canvas, no gi
+    # session, and nothing to enforce; the turn ends. No second source to consult.
+    let canvas = $env.GI_CANVAS? | default ""
+    if ($canvas | is-empty) { return }
+
+    let root = gi-repo-root ($payload.cwd? | default $env.PWD)
 
     # Branch guard, before the message rule: even a perfect `done` may not end
     # a turn on a protected branch — gi commits are internal working history,
@@ -633,28 +569,14 @@ def gi-check-rules []: record -> any {
     let message = $payload.last_assistant_message? | default ""
     if (gi-allowed $message) { return }
 
-    # Name the exact working doc when one is bound. Two sources, in order:
-    # $env.GI_CANVAS is the per-session canvas set by `gi resume` — the only
-    # per-session channel the hook inherits (settings is repo-wide); it is never
-    # written to settings.env, so it can't be clobbered by the injected default.
-    # Otherwise fall back to the repo default recorded in settings, read fresh at
-    # the event's cwd — not from $env.GI_HOOK_DOC, which Claude Code snapshots at
-    # session start and would go stale on a mid-session re-enable.
-    let session_canvas = $env.GI_CANVAS? | default ""
-    let doc = if ($session_canvas | is-not-empty) {
-        $session_canvas
-    } else {
-        gi-doc (gi-open-settings (gi-paths $root).settings)
-    }
-    let doc = match ($doc | default "") {
-        "" => "the working document"
-        $p => $"`($p)`"
-    }
+    # Name the canvas the short way when it is inside this repo — the agent
+    # reads this path in a message, and the absolute form is noise there.
+    let doc = if ($canvas | str starts-with $"($root)/") { $canvas | path relative-to $root } else { $canvas }
     # The escape hatch is safe by construction: the blocked message is already
     # on the user's screen, and the stop_hook_active guard ends the turn on the
-    # follow-up whatever it says — a stale hook can redirect one reply, never
-    # trap the agent.
-    let reason = $"Chat may carry only `done`/`noted` or a short pointer \(one line with a path/link). Move the full answer into ($doc) and commit it; leave only a pointer in chat. If this block looks like a misfire — stale hook, wrong doc, no gi work in this session — don't move anything: reply with one short line telling the user to read your previous message above in the chat and to check this hook \(`gi status` / `gi disable`)."
+    # follow-up whatever it says — a misfire can redirect one reply, never trap
+    # the agent.
+    let reason = $"Chat may carry only `done`/`noted` or a short pointer \(one line with a path/link). Move the full answer into `($doc)` and commit it; leave only a pointer in chat. If this block looks like a misfire — wrong canvas, no gi work in this session — don't move anything: reply with one short line telling the user to read your previous message above in the chat and to check the session's canvas \(`claude-nu gi status`)."
     {decision: "block" reason: $reason}
 }
 

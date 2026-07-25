@@ -14,185 +14,61 @@ def settings-of [root: path]: nothing -> path {
 }
 
 # =============================================================================
-# enable / disable / status — settings.local.json manipulation
+# enable — seeding only; nothing is turned on and nothing is recorded
 # =============================================================================
 
 @test
-def "plain enable does not install the Stop hook" [] {
+def "enable writes no settings file" [] {
     let root = temp-root
-    let status = gi enable --root $root
-    let settings = open (settings-of $root)
-    rm -rf $root
-
-    assert (not $status.hook)
-    assert $status.output_style_set
-    assert equal $settings.hooks.Stop []
-}
-
-@test
-def "enable with hook flag writes the Stop hook into an empty settings file" [] {
-    let root = temp-root
-    let status = gi enable --hook --root $root
-    let settings = open (settings-of $root)
-    rm -rf $root
-
-    assert $status.hook
-    assert equal ($settings.hooks.Stop | length) 1
-    let entry = $settings.hooks.Stop.0.hooks.0
-    assert equal $entry.type "command"
-    assert ($entry.command | str contains "gi check")
-}
-
-@test
-def "enable is idempotent — a second enable adds no duplicate" [] {
-    let root = temp-root
-    gi enable --hook --root $root | ignore
-    gi enable --hook --root $root | ignore
-    let settings = open (settings-of $root)
-    rm -rf $root
-
-    assert equal ($settings.hooks.Stop | length) 1
-}
-
-@test
-def "re-enable without hook flag keeps an installed hook" [] {
-    let root = temp-root
-    gi enable --hook --root $root | ignore
-    # Plain re-enable (e.g. to switch the doc) must not silently drop the floor.
-    gi enable other.md --root $root | ignore
-    let settings = open (settings-of $root)
-    rm -rf $root
-
-    assert equal ($settings.hooks.Stop | length) 1
-}
-
-@test
-def "re-enable refreshes a stale hook command, pre-rename spelling included" [] {
-    let root = temp-root
-    mkdir ($root | path join ".claude")
-    # Our marker in its pre-rename spelling, with a command recorded from a
-    # since-moved checkout. Plain enable must recognize it as ours and refresh
-    # it in place — not drop it, not add a second entry.
-    {
-        hooks: { Stop: [ { hooks: [ { type: "command", command: "nu -c 'use /old/checkout; gi-hook check'" } ] } ] }
-    } | save (settings-of $root)
     gi enable --root $root | ignore
-    let settings = open (settings-of $root)
+    let wrote_settings = settings-of $root | path exists
     rm -rf $root
 
-    assert equal ($settings.hooks.Stop | length) 1
-    assert ($settings.hooks.Stop.0.hooks.0.command | str contains "--stdin")
-    assert ($settings.hooks.Stop.0.hooks.0.command | str contains "claude-nu gi check")
+    # The whole point of the redesign: activation travels with `gi open`, so a
+    # seeded repo carries no outputStyle, no hook, and no env for other sessions.
+    assert (not $wrote_settings)
 }
 
 @test
-def "enable preserves foreign hooks and other settings keys" [] {
+def "enable leaves a foreign settings file untouched" [] {
     let root = temp-root
     mkdir ($root | path join ".claude")
-    {
-        permissions: { allow: ["Bash(ls:*)"] }
-        hooks: { Stop: [ { hooks: [ { type: "command", command: "echo other" } ] } ] }
-    } | save (settings-of $root)
-
-    gi enable --hook --root $root | ignore
-    let settings = open (settings-of $root)
+    let before = { permissions: { allow: ["Bash(ls:*)"] } }
+    $before | save (settings-of $root)
+    gi enable --root $root | ignore
+    let after = open (settings-of $root)
     rm -rf $root
 
-    # Our entry was appended next to the foreign one; nothing else touched.
-    assert equal ($settings.hooks.Stop | length) 2
-    assert equal $settings.permissions.allow ["Bash(ls:*)"]
-    assert ($settings.hooks.Stop | any {|e| $e.hooks.0.command == "echo other" })
+    assert equal $after $before
 }
 
 @test
-def "disable removes only our entry and leaves foreign hooks" [] {
-    let root = temp-root
-    mkdir ($root | path join ".claude")
-    {
-        hooks: { Stop: [ { hooks: [ { type: "command", command: "echo other" } ] } ] }
-    } | save (settings-of $root)
-    gi enable --hook --root $root | ignore
-
-    let status = gi disable --root $root
-    let settings = open (settings-of $root)
-    rm -rf $root
-
-    assert (not $status.hook)
-    assert equal ($settings.hooks.Stop | length) 1
-    assert equal $settings.hooks.Stop.0.hooks.0.command "echo other"
-}
-
-@test
-def "disable removes every value gi set" [] {
-    let root = temp-root
-    gi enable --hook --root $root | ignore
-    gi disable --root $root | ignore
-    let settings = open (settings-of $root)
-    rm -rf $root
-
-    # Emptied containers stay behind (harmless in a gitignored local file);
-    # what matters is that no gi entry, doc, or style survives.
-    assert equal $settings.hooks.Stop []
-    assert equal $settings.env {}
-    assert equal $settings.outputStyle? null
-}
-
-@test
-def "disable is a no-op when nothing is installed" [] {
-    let root = temp-root
-    let status = gi disable --root $root
-    let existed = settings-of $root | path exists
-    rm -rf $root
-
-    assert (not $status.hook)
-    assert (not $existed)
-}
-
-@test
-def "enable seeds a timestamped working doc under gi and records it" [] {
+def "enable seeds a timestamped canvas under gi and returns its path" [] {
     let root = temp-root
     let status = gi enable --root $root
-    let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
-    let deployed = $root | path join $recorded
-    let exists = $deployed | path exists
-    let body = if $exists { open --raw $deployed } else { "" }
+    let exists = $status.doc | path exists
+    let body = if $exists { open --raw $status.doc } else { "" }
     rm -rf $root
 
-    assert ($status.doc != null)
-    assert ($recorded | str starts-with "gi/canvas-")
+    assert ($status.doc | path basename | str starts-with "canvas-")
+    assert equal ($status.doc | path dirname | path basename) "gi"
     assert $exists
     assert ($body | is-not-empty)
 }
 
 @test
-def "enable accepts a custom working-doc path" [] {
+def "enable accepts a custom canvas path" [] {
     let root = temp-root
-    gi enable notes/plan.md --root $root | ignore
-    let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
+    let status = gi enable notes/plan.md --root $root
     let exists = $root | path join "notes" "plan.md" | path exists
     rm -rf $root
 
-    assert equal $recorded "notes/plan.md"
+    assert equal ($status.doc | path basename) "plan.md"
     assert $exists
 }
 
 @test
-def "re-enable keeps the recorded doc unless a new one is given" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    let first = open (settings-of $root) | get env.GI_HOOK_DOC
-    gi enable --root $root | ignore
-    let second = open (settings-of $root) | get env.GI_HOOK_DOC
-    gi enable other.md --root $root | ignore
-    let third = open (settings-of $root) | get env.GI_HOOK_DOC
-    rm -rf $root
-
-    assert equal $first $second
-    assert equal $third "other.md"
-}
-
-@test
-def "enable does not clobber an existing working doc" [] {
+def "enable does not clobber an existing canvas" [] {
     let root = temp-root
     mkdir ($root | path join "gi")
     let deployed = $root | path join "gi" "doc.md"
@@ -205,42 +81,27 @@ def "enable does not clobber an existing working doc" [] {
 }
 
 @test
-def "a doc path with a non-enable action errors" [] {
+def "enable stores an absolute canvas arriving through a symlink as root-relative" [] {
     let root = temp-root
-    let out = try { gi status some.md --root $root; null } catch {|e| $e.msg }
-    rm -rf $root
+    mkdir ($root | path join "gi")
+    let link = $"($root)-link"
+    ^ln -s $root $link
+    let status = gi enable ($link | path join "gi" "plan.md") --root $root
+    rm -rf $root $link
 
-    assert ($out != null)
+    assert equal $status.doc ($root | path join "gi" "plan.md")
 }
 
 @test
-def "disable removes the recorded doc and preserves foreign env vars" [] {
-    let root = temp-root
-    mkdir ($root | path join ".claude")
-    { env: { OTHER: "kept" } } | save (settings-of $root)
-    gi enable --root $root | ignore
-    gi disable --root $root | ignore
-    let settings = open (settings-of $root)
-    rm -rf $root
-
-    assert equal $settings.env { OTHER: "kept" }
-}
-
-@test
-def "enable distributes the output style and sets outputStyle" [] {
+def "enable distributes the output style" [] {
     let root = temp-root
     let status = gi enable --root $root
-    let style = $root | path join ".claude" "output-styles" "canvas.md"
-    let exists = $style | path exists
-    let body = if $exists { open --raw $style } else { "" }
-    let settings = open (settings-of $root)
+    let exists = $status.style | path exists
+    let body = if $exists { open --raw $status.style } else { "" }
     rm -rf $root
 
-    assert ($status.style != null)
-    assert $status.output_style_set
     assert $exists
     assert ($body | str contains "name: Canvas")
-    assert equal $settings.outputStyle "Canvas"
 }
 
 @test
@@ -299,6 +160,53 @@ def "enable --force refreshes an edited style and skill" [] {
 }
 
 @test
+def "enable --force never overwrites the canvas" [] {
+    let root = temp-root
+    gi enable gi/doc.md --root $root | ignore
+    let doc = $root | path join "gi" "doc.md"
+    "my work" | save --force $doc
+    gi enable --root $root --force | ignore
+    let body = open --raw $doc
+    rm -rf $root
+
+    assert equal $body "my work"
+}
+
+# =============================================================================
+# status — what is seeded here, and what this session is bound to
+# =============================================================================
+
+@test
+def "status reports the session canvas from the environment" [] {
+    let root = temp-root
+    gi enable --root $root | ignore
+    let unbound = gi status --root $root
+    let bound = with-env { GI_CANVAS: "/repo/gi/session-abc.md" } { gi status --root $root }
+    rm -rf $root
+
+    # Activation is per session, so status answers "am I in a canvas session"
+    # from the environment — there is no repo-side flag to read.
+    assert equal $unbound.canvas null
+    assert equal $bound.canvas "/repo/gi/session-abc.md"
+}
+
+@test
+def "status returns absolute paths regardless of cwd" [] {
+    let root = temp-root
+    gi enable --root $root | ignore
+    let expected = $root | path expand | path join ".claude" "output-styles" "canvas.md"
+    let orig = $env.PWD
+    cd $root
+    let status = gi status --root $root
+    cd $orig
+    rm -rf $root
+
+    # Data, not display: paths never shorten against PWD, so a consumer gets
+    # the same value wherever status is called from.
+    assert equal $status.style $expected
+}
+
+@test
 def "status reports seeds differing from the module as stale" [] {
     let root = temp-root
     gi enable --root $root | ignore
@@ -314,17 +222,60 @@ def "status reports seeds differing from the module as stale" [] {
     assert equal $refreshed []
 }
 
+# =============================================================================
+# launch — the activation payload and the guards that run before claude does
+# =============================================================================
+
 @test
-def "enable --force never overwrites the working doc" [] {
+def "launch settings carry the Canvas style and the Stop hook" [] {
+    let with_hook = gi-launch-settings --hook | from json
+    let without = gi-launch-settings | from json
+
+    assert equal $with_hook.outputStyle "Canvas"
+    assert equal ($with_hook.hooks.Stop | length) 1
+    assert ($with_hook.hooks.Stop.0.hooks.0.command | str contains "claude-nu gi check")
+    # --no-hook keeps the proactive style and drops the floor — so the payload
+    # must carry no Stop key at all, not an empty one.
+    assert equal $without.outputStyle "Canvas"
+    assert equal $without.hooks? null
+}
+
+@test
+def "open refuses to launch before the repo is seeded" [] {
     let root = temp-root
-    gi enable gi/doc.md --root $root | ignore
-    let doc = $root | path join "gi" "doc.md"
-    "my work" | save --force $doc
-    gi enable --root $root --force | ignore
-    let body = open --raw $doc
+    mkdir $root
+    let out = try { gi open gi/plan.md --root $root; null } catch {|e| $e.msg }
     rm -rf $root
 
-    assert equal $body "my work"
+    # outputStyle names a file that must exist here, or the session would start
+    # with no style and gi would be half on.
+    assert ($out | str contains "not seeded")
+}
+
+@test
+def "resume on a missing canvas errors before launching" [] {
+    let root = temp-root
+    gi enable --root $root | ignore
+    let out = try { gi resume ($root | path join "gi" "nope.md") --root $root; null } catch {|e| $e.msg }
+    rm -rf $root
+
+    assert ($out | str contains "no such canvas")
+}
+
+@test
+def "resume on a canvas with no session errors before launching" [] {
+    let root = temp-root
+    gi enable gi/plain.md --root $root | ignore
+    let out = try { gi resume ($root | path join "gi" "plain.md") --root $root; null } catch {|e| $e.msg }
+    rm -rf $root
+
+    assert ($out | str contains "no `session:`")
+}
+
+@test
+def "resume without a doc is rejected" [] {
+    let out = try { gi resume; null } catch {|e| $e.msg }
+    assert ($out | str contains "needs a canvas file")
 }
 
 # Not named "--force ..." because: nutest interpolates test names into a
@@ -336,89 +287,41 @@ def "a force flag with a non-enable action errors" [] {
 }
 
 @test
-def "a hook flag with a non-enable action errors" [] {
-    let out = try { gi status --hook; null } catch {|e| $e.msg }
-    assert ($out != null)
+def "a no-hook flag outside open and resume errors" [] {
+    let out = try { gi enable --no-hook; null } catch {|e| $e.msg }
+    assert ($out | str contains "only makes sense when opening a canvas")
 }
 
 @test
-def "disable drops our outputStyle but keeps a foreign one" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    # User switched to their own style while canvas mode was on; disable must
-    # leave it, removing only the value we set.
-    open (settings-of $root) | upsert outputStyle "Explanatory" | save --force (settings-of $root)
-    gi disable --root $root | ignore
-    let settings = open (settings-of $root)
-    rm -rf $root
-
-    assert equal $settings.outputStyle "Explanatory"
-}
-
-@test
-def "enable stores an absolute doc arriving through a symlink as root-relative" [] {
-    let root = temp-root
-    mkdir ($root | path join "gi")
-    let link = $"($root)-link"
-    ^ln -s $root $link
-    gi enable ($link | path join "gi" "plan.md") --root $root | ignore
-    let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
-    rm -rf $root $link
-
-    assert equal $recorded "gi/plan.md"
-}
-
-@test
-def "status returns absolute paths regardless of cwd" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    let expected = settings-of ($root | path expand)
-    let orig = $env.PWD
-    cd $root
-    let status = gi status --root $root
-    cd $orig
-    rm -rf $root
-
-    # Data, not display: paths never shorten against PWD, so a consumer gets
-    # the same value wherever status is called from.
-    assert equal $status.settings $expected
-}
-
-@test
-def "status reflects hook state across enable and disable" [] {
-    let root = temp-root
-    let before = gi status --root $root
-    gi enable --hook --root $root | ignore
-    let after = gi status --root $root
-    rm -rf $root
-
-    assert (not $before.hook)
-    assert $after.hook
-    # doc is null until enable records one in settings.
-    assert equal $before.doc null
-    assert ($after.doc != null)
+def "a canvas path on an action that takes none is rejected" [] {
+    let out = try { gi status some.md; null } catch {|e| $e.msg }
+    assert ($out | str contains "enable, open, or resume")
 }
 
 # =============================================================================
 # check — the Stop hook decision (contract)
 # =============================================================================
 
-# A fresh root with the hook installed. check stands down wherever the live
-# settings carry no Stop entry of ours, so every rule test needs one.
-def hooked-root []: nothing -> path {
-    let root = temp-root
-    gi enable --hook --root $root | ignore
-    $root
+# GI_CANVAS is what makes the hook enforce anything, so every rule test binds
+# one. cwd defaults to a non-repo dir: the branch guard must see the payload's
+# state, not whatever branch the test runner's own repo happens to be on.
+def block-decision [payload: record, --canvas: string]: nothing -> any {
+    let canvas = $canvas | default "/elsewhere/gi/canvas.md"
+    with-env { GI_CANVAS: $canvas } {
+        {cwd: $nu.temp-dir} | merge $payload | to json | gi check
+    }
 }
 
-def block-decision [payload: record]: nothing -> any {
-    # Default cwd to a hooked non-repo dir: check only enforces where the hook
-    # is installed, and outside a repo the branch guard sees the payload's
-    # state, not whatever branch the test runner's own repo happens to be on.
-    let root = hooked-root
-    let out = {cwd: $root} | merge $payload | to json | gi check
-    rm -rf $root
-    $out
+@test
+def "check stands down when no canvas is bound to the session" [] {
+    let prose = "Long prose without any link signal that must be blocked by the rule"
+    let out = with-env { GI_CANVAS: null } {
+        {cwd: $nu.temp-dir, last_assistant_message: $prose} | to json | gi check
+    }
+
+    # A plain `claude` session never sets GI_CANVAS, so the same hook body is
+    # inert there — this is the whole on/off switch.
+    assert equal $out null
 }
 
 @test
@@ -458,44 +361,64 @@ def "check treats an empty message as allowed" [] {
 
 @test
 def "check treats a non-object payload as empty, inside the contract" [] {
-    # cd away from the test runner's repo: a {} payload falls back to PWD.
+    # cd away from the test runner's repo: a payload with no cwd falls back to
+    # PWD, and this repo's own branch would drive the branch guard.
     let orig = $env.PWD
     cd $nu.temp-dir
-    for raw in ['"hi"' '123' 'null' '[1, 2]'] {
-        assert equal ($raw | gi check) null
+    let outs = ['"hi"' '123' 'null' '[1, 2]'] | each {|raw|
+        with-env { GI_CANVAS: "/elsewhere/canvas.md" } { $raw | gi check }
     }
     cd $orig
+
+    assert equal $outs []
 }
 
 @test
 def "check with no stdin treats the event as empty" [] {
     # Run by hand (`claude-nu gi check`) there is no piped event; the input is
     # nothing, not a string, and must not be refused at the signature.
-    # cd away from the test runner's repo: an empty payload falls back to PWD.
     let orig = $env.PWD
     cd $nu.temp-dir
-    let out = gi check
+    let out = with-env { GI_CANVAS: "/elsewhere/canvas.md" } { gi check }
     cd $orig
 
     assert equal $out null
 }
 
 @test
-def "check names the recorded doc in the block reason" [] {
+def "check names the bound canvas in the block reason" [] {
     let root = temp-root
-    gi enable gi/plan.md --hook --root $root | ignore
+    git init -qb canvas-work $root
     let prose = "Long prose without any link signal that must be blocked by the rule"
-    let named = block-decision { last_assistant_message: $prose, cwd: $root } | from json | get reason
+    let reason = block-decision { last_assistant_message: $prose, cwd: $root } --canvas ($root | path join "gi" "plan.md")
+    | from json
+    | get reason
     rm -rf $root
 
-    assert ($named | str contains "`gi/plan.md`")
+    # Shortened against the repo root: the agent reads this path in a message.
+    assert ($reason | str contains "`gi/plan.md`")
+}
+
+@test
+def "check shortens the canvas path from a subdirectory cwd" [] {
+    let root = temp-root
+    git init -qb canvas-work $root
+    mkdir ($root | path join "sub")
+    let prose = "Long prose without any link signal that must be blocked by the rule"
+    let reason = block-decision { last_assistant_message: $prose, cwd: ($root | path join "sub") } --canvas ($root | path join "gi" "plan.md")
+    | from json
+    | get reason
+    rm -rf $root
+
+    # The repo root comes from git, not from the event's cwd, so a session that
+    # drifted into a subdirectory still names the canvas the short way.
+    assert ($reason | str contains "`gi/plan.md`")
 }
 
 @test
 def "check blocks a protected branch even when the message is allowed" [] {
     let root = temp-root
     git init -qb master $root
-    gi enable --hook --root $root | ignore
     let out = block-decision { last_assistant_message: "done", cwd: $root }
     rm -rf $root
 
@@ -508,7 +431,6 @@ def "check blocks a protected branch even when the message is allowed" [] {
 def "check passes an allowed message on a work branch" [] {
     let root = temp-root
     git init -qb canvas-work $root
-    gi enable --hook --root $root | ignore
     let out = block-decision { last_assistant_message: "done", cwd: $root }
     rm -rf $root
 
@@ -521,121 +443,13 @@ def "check passes an allowed message on a work branch" [] {
 @test
 def "check converts internal errors into a block, not a crash" [] {
     let prose = "Long prose without any link signal that must be blocked by the rule"
-
-    let broken = temp-root
-    mkdir ($broken | path join ".claude")
-    "{ broken json" | save ($broken | path join ".claude" "settings.local.json")
-    # A hand-broken file can't be checked for our entry — that read itself
-    # must surface as a block, not a crash and not a silent stand-down.
-    let from_bad_json = block-decision { last_assistant_message: $prose, cwd: $broken }
-    rm -rf $broken
-
-    let misshapen = temp-root
-    gi enable --hook --root $misshapen | ignore
-    open ($misshapen | path join ".claude" "settings.local.json")
-    | upsert env "oops"
-    | save --force ($misshapen | path join ".claude" "settings.local.json")
-    let from_bad_shape = block-decision { last_assistant_message: $prose, cwd: $misshapen }
-    rm -rf $misshapen
-
-    let from_bad_knob = with-env { GI_HOOK_MAX_LEN: "abc" } {
+    let out = with-env { GI_HOOK_MAX_LEN: "abc" } {
         block-decision { last_assistant_message: $prose }
     }
 
-    for out in [$from_bad_json $from_bad_shape $from_bad_knob] {
-        let decision = $out | from json
-        assert equal $decision.decision "block"
-        assert ($decision.reason | str contains "failed internally")
-    }
-}
-
-@test
-def "check finds the settings from a subdirectory cwd" [] {
-    let root = temp-root
-    git init -qb canvas-work $root
-    mkdir ($root | path join "sub")
-    gi enable gi/plan.md --hook --root $root | ignore
-    let prose = "Long prose without any link signal that must be blocked by the rule"
-    let out = block-decision { last_assistant_message: $prose, cwd: ($root | path join "sub") }
-    rm -rf $root
-
-    assert ($out | from json | get reason | str contains "`gi/plan.md`")
-}
-
-@test
-def "check honors settings enabled at a monorepo subproject" [] {
-    let root = temp-root
-    let subproj = $root | path join "tools" "subproj"
-    git init -qb canvas-work $root
-    mkdir ($subproj | path join "deeper")
-    gi enable gi/plan.md --hook --root $subproj | ignore
-    let prose = "Long prose without any link signal that must be blocked by the rule"
-    let out = block-decision { last_assistant_message: $prose, cwd: ($subproj | path join "deeper") }
-    rm -rf $root
-
-    # The walk up from cwd stops at the subproject's settings, not the toplevel.
-    assert ($out | from json | get reason | str contains "`gi/plan.md`")
-}
-
-@test
-def "check falls back to generic wording when no doc is recorded" [] {
-    let root = temp-root
-    gi enable --hook --root $root | ignore
-    # A hand-edited file: the hook entry survives, the recorded doc is gone.
-    open (settings-of $root) | reject env.GI_HOOK_DOC | save --force (settings-of $root)
-    let prose = "Long prose without any link signal that must be blocked by the rule"
-    let generic = block-decision { last_assistant_message: $prose, cwd: $root } | from json | get reason
-    rm -rf $root
-
-    assert ($generic | str contains "the working document")
-}
-
-@test
-def "check binds to the per-session GI_CANVAS over the settings default" [] {
-    let root = temp-root
-    gi enable gi/default.md --hook --root $root | ignore
-    let prose = "Long prose without any link signal that must be blocked by the rule"
-    # gi resume sets GI_CANVAS per session; it must win over the repo default
-    # recorded in settings.env, so parallel canvases each get their own doc named.
-    let reason = with-env { GI_CANVAS: "gi/session-abc.md" } {
-        block-decision { last_assistant_message: $prose, cwd: $root }
-    } | from json | get reason
-    rm -rf $root
-
-    assert ($reason | str contains "`gi/session-abc.md`")
-    assert (not ($reason | str contains "default.md"))
-}
-
-@test
-def "check stands down where no live settings carry the hook" [] {
-    # The user's disable-then-check scenario: Claude Code snapshots hook
-    # config at session start, so a mid-session disable leaves the snapshotted
-    # hook firing — check must obey the live file and stop enforcing.
-    let root = temp-root
-    gi enable --hook --root $root | ignore
-    gi disable --root $root | ignore
-    let prose = "Long prose without any link signal that must be blocked by the rule"
-    let out = {cwd: $root, last_assistant_message: $prose} | to json | gi check
-    rm -rf $root
-
-    assert equal $out null
-}
-
-@test
-def "check skips a gi-less subproject settings and finds the hooked ancestor" [] {
-    let root = temp-root
-    let sub = $root | path join "sub"
-    git init -qb canvas-work $root
-    mkdir ($sub | path join ".claude")
-    # A subdirectory with local settings of its own (permissions etc.) must
-    # not shadow the gi-enabled toplevel.
-    { permissions: { allow: ["Bash(ls:*)"] } } | save (settings-of $sub)
-    gi enable gi/plan.md --hook --root $root | ignore
-    let prose = "Long prose without any link signal that must be blocked by the rule"
-    let out = block-decision { last_assistant_message: $prose, cwd: $sub }
-    rm -rf $root
-
-    assert ($out | from json | get reason | str contains "`gi/plan.md`")
+    let decision = $out | from json
+    assert equal $decision.decision "block"
+    assert ($decision.reason | str contains "failed internally")
 }
 
 # =============================================================================
@@ -673,7 +487,7 @@ def "allow-rule budget is tunable via GI_HOOK_MAX_LEN" [] {
 }
 
 # =============================================================================
-# enable --from-session — the live session's dialogue as the working doc
+# enable --from-session — the live session's dialogue as the canvas
 # =============================================================================
 
 const FIXTURE_SESSION = '99bf0e5b-212c-4891-abb2-6bc585af2ea0'
@@ -710,18 +524,17 @@ def "import text with the tools flag keeps one-line tool placeholders" [] {
 }
 
 @test
-def "enable from-session writes a session-keyed doc and records it" [] {
+def "enable from-session writes a session-keyed canvas" [] {
     let root = temp-root
     let home = temp-root
     stage-session $home
-    with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi enable --root $root --from-session | ignore
+    let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
+        gi enable --root $root --from-session
     }
-    let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
-    let body = open --raw ($root | path join $recorded)
+    let body = open --raw $status.doc
     rm -rf $root $home
 
-    assert equal $recorded $"gi/session-($FIXTURE_SESSION | str substring 0..7).md"
+    assert equal ($status.doc | path basename) $"session-($FIXTURE_SESSION | str substring 0..7).md"
     assert str contains $body "## User"
 }
 
@@ -755,14 +568,13 @@ def "the gitignore flag keeps the import out of git, beside the doc" [] {
     let root = temp-root
     let home = temp-root
     stage-session $home
-    with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi enable --root $root --from-session --gitignore | ignore
+    let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
+        gi enable --root $root --from-session --gitignore
     }
-    let recorded = open (settings-of $root) | get env.GI_HOOK_DOC
     let ignored = open --raw ($root | path join "gi" ".gitignore") | lines
     rm -rf $root $home
 
-    assert equal $ignored [($recorded | path basename)]
+    assert equal $ignored [($status.doc | path basename)]
 }
 
 @test
@@ -803,19 +615,18 @@ def "the tools flag without an import errors" [] {
 }
 
 # =============================================================================
-# gi resume — reopen a canvas from its frontmatter session
+# frontmatter — the session id a canvas carries for resume
 # =============================================================================
 
 @test
-def "resume reads the full session id from a from-session canvas frontmatter" [] {
+def "a from-session canvas carries the full session id in its frontmatter" [] {
     let root = temp-root
     let home = temp-root
     stage-session $home
-    with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi enable --root $root --from-session | ignore
+    let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
+        gi enable --root $root --from-session
     }
-    let doc = $root | path join "gi" $"session-($FIXTURE_SESSION | str substring 0..7).md"
-    let sid = gi-frontmatter-session $doc
+    let sid = gi-frontmatter-session $status.doc
     rm -rf $root $home
 
     # The 8-char key names the file; the frontmatter carries the full UUID resume needs.
@@ -830,26 +641,4 @@ def "frontmatter-session is null for a canvas without a session" [] {
     rm -rf $root
 
     assert equal $sid null
-}
-
-@test
-def "resume without a doc is rejected" [] {
-    let out = try { gi resume; null } catch {|e| $e.msg }
-    assert ($out | str contains "needs a canvas file")
-}
-
-@test
-def "resume on a canvas with no session errors before launching" [] {
-    let root = temp-root
-    gi enable gi/plain.md --root $root | ignore
-    let out = try { gi resume ($root | path join "gi" "plain.md"); null } catch {|e| $e.msg }
-    rm -rf $root
-
-    assert ($out | str contains "no `session:`")
-}
-
-@test
-def "a doc positional on a non-enable, non-resume action is rejected" [] {
-    let out = try { gi status some.md; null } catch {|e| $e.msg }
-    assert ($out | str contains "enable or resume")
 }

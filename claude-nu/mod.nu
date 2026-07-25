@@ -9,7 +9,7 @@
 #   save-markdown   # Write exported markdown to files
 #   commits         # Per-commit Claude-authorship table; --by-month for the monthly share
 #   code-authorship # Claude's share of the lines living in the tree now (git blame)
-#   gi              # Set up the gi protocol (Canvas style, skills, doc); --hook adds the Stop hook
+#   gi              # gi protocol: enable seeds a repo, open/resume launch a session bound to a canvas
 #
 # Usage:
 #   use claude-nu
