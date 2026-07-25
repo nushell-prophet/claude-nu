@@ -409,8 +409,8 @@ def gi-enable [
 
     # Seeding alone changes nothing about the session that ran it: the style and
     # the hook arrive with `gi open`/`gi resume`, so the next line is the whole
-    # instruction. An imported canvas continues its own session, hence resume.
-    let verb = if $from_session { "resume" } else { "open" }
+    # instruction.
+    let verb = gi-canvas-verb $doc_abs
     print $"gi seeded in ($root). Canvas: ($doc)"
     print $"open a bound session on it:  claude-nu gi ($verb) ($doc)"
     if $imported != null {
@@ -443,6 +443,15 @@ export def gi-frontmatter-session [file: path]: nothing -> any {
     let block = $raw | lines | skip 1 | take until {|l| $l == "---" }
     let meta = try { $block | str join "\n" | from yaml } catch { {} }
     $meta.session?
+}
+
+# Which launcher verb a canvas takes: `resume` once it names a session, `open`
+# while it does not. A named rule because the flags that produced the canvas
+# are not the answer — a canvas imported last week, or opened last week and
+# still sitting in the repo, names a session however this call was invoked, and
+# `gi open` refuses it. Exported for tests.
+export def gi-canvas-verb [doc: path]: nothing -> string {
+    if (gi-frontmatter-session $doc | is-empty) { "open" } else { "resume" }
 }
 
 # Write `session: <sid>` into a canvas's frontmatter, creating the block when

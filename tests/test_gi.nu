@@ -273,6 +273,23 @@ def "resume on a canvas with no session errors before launching" [] {
 }
 
 @test
+def "the canvas verb follows the file, not the flags that made it" [] {
+    let root = temp-root
+    gi enable gi/plain.md --root $root | ignore
+    let doc = $root | path join "gi" "plain.md"
+    let fresh = gi-canvas-verb $doc
+    gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
+    let bound = gi-canvas-verb $doc
+    rm -rf $root
+
+    # This is what `enable` prints as the next step. It used to be read off
+    # --from-session, so a plain `enable` on a canvas seeded days earlier sent
+    # the user to `gi open`, which then refused it.
+    assert equal $fresh "open"
+    assert equal $bound "resume"
+}
+
+@test
 def "open refuses a canvas already bound to a session" [] {
     let root = temp-root
     gi enable gi/plain.md --root $root | ignore
