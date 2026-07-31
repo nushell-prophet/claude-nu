@@ -223,8 +223,8 @@ export def gi-import-text [
     # Replace the H1 rather than prepend the header: export-session titles the
     # doc from the session summary, and two H1s in a committed doc is noise.
     # First match only (no --all) — later `# ` lines belong to the dialogue.
-    export-session --session $session_id --tools=$tools
-    | get markdown
+    {path: $file} | export-session --tools=$tools
+    | get 0.markdown
     | str replace --multiline --no-expand '^# .+' ([(open --raw $GI_HEADER_SRC) $note] | str join "\n")
 }
 

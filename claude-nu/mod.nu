@@ -1,64 +1,45 @@
 # claude-nu - Nushell utilities for Claude Code
 #
 # Public commands (see README.md for details):
-#   claude-nu -f    # Search this project's user messages (umbrella entry point)
 #   projects        # List Claude Code projects, most recent first
 #   sessions        # Parse sessions into a structured table
 #   messages        # Extract user messages from a session
-#   export-session  # Render a session's dialogue to markdown
-#   save-markdown   # Write exported markdown to files
+#   export-session  # Render a session's dialogue to markdown; --to writes it to files
 #   commits         # Per-commit Claude-authorship table; --by-month for the monthly share
 #   code-authorship # Claude's share of the lines living in the tree now (git blame)
 #   gi              # gi protocol: status on its own; gi enable seeds a repo, gi open launches a session bound to a canvas
 #
 # Usage:
 #   use claude-nu
-#   claude-nu -f 'regex'                # quick message search, current project
-#   claude-nu sessions | where parent_session_id == null | claude-nu messages 'regex'
+#   claude-nu messages 'regex'                     # search this project's messages
+#   claude-nu sessions --all-projects | claude-nu messages 'regex'
 
+# Why no umbrella search (the old `claude-nu -f 'regex'`): search was written
+# three ways that differed only in scope, and scope was the one thing the syntax
+# didn't show. Now it is always to the left of the pipe — `messages 'x'` for this
+# project, `sessions --all-projects | messages 'x'` for every project — and the
+# rg pre-filter that made `-f` fast moved into `messages`, where the scope is.
 export use sessions.nu [
-    projects messages main export-session save-markdown
+    projects messages main export-session
 ]
 # `gi check` is deliberately absent: it is the Stop hook's body, not a verb a
 # user types, and the hook imports it straight from gi.nu (see GI_COMMAND).
 export use gi.nu [ main "gi enable" "gi open" ]
 export use attribution.nu [ commits code-authorship ]
-use sessions.nu [ find-session-files ]
 
-# Umbrella entry point: search user messages for a regex and return every match
-# with its `session` column (a pipeline-safe selector — pipe it into
-# export-session/messages/sessions). Searches the current project by default;
-# --all-projects widens to every project. With no --find it points at the
-# subcommands. Mirrors `help -f`, which greps commands the same way.
-# Why: a shorthand for the documented `sessions | where parent_session_id == null
-# | messages 'regex'` idiom, so message search is one verb. Lives in mod.nu
-# because a directory module's `main` is only picked up when defined here, not
-# when re-exported from a submodule. Not built on `find` because: `find` marks
-# matches by injecting ansi codes into the cell values (which corrupt the
-# path/session selectors) and only sees columns already computed; this reads the
-# raw message text instead.
-# Why (speed): find-session-files uses rg to narrow to the files whose raw JSONL
-# can match before any JSON parsing, then `messages` parses and re-applies the
-# real regex only to those — so a wide --all-projects search no longer parses
-# every session in every project. It also skips `sessions` entirely: that pass
-# computed summary/user_messages columns `messages` then threw away.
-# Why (--no-rg): rg scans the raw, escaped JSON, so a pattern leaning on a line
-# anchor (^/$) or a JSON-escaped quote/backslash/newline can match the extracted
-# text yet not the raw bytes — rg would then skip a file it shouldn't. --no-rg
-# parses every session in nushell and matches against the extracted text, so the
-# regex behaves exactly; slower, but correct for those patterns.
-export def main [
-    --find (-f): string # Regex matched against user message text
-    --all-projects # Search every project under ~/.claude/projects, not just the current one
-    --no-rg # Skip the ripgrep pre-filter and match entirely in-engine (exact regex semantics, slower)
-]: nothing -> table {
-    if $find == null {
-        error make {
-            msg: "claude-nu needs a subcommand or a search term"
-            help: "search messages:  claude-nu -f 'regex'  (--all-projects to widen)\nsubcommands:  projects, sessions, messages, export-session, save-markdown, gi"
-        }
+# Why the module keeps a `main` at all: without one the bare name `claude-nu`
+# falls through to an external-command lookup and answers "command not found" —
+# one line after `claude-nu sessions` worked, which reads as "the module isn't
+# installed". It is a signpost and nothing else: it takes no search term, because
+# scope now lives left of the pipe (see the note above), so all it can do is name
+# the subcommands and the two search shapes.
+export def main []: nothing -> any {
+    error make --unspanned {
+        msg: "claude-nu needs a subcommand"
+        help: ([
+            "search this project:  claude-nu messages 'regex'"
+            "search every project: claude-nu sessions --all-projects | claude-nu messages 'regex'"
+            "subcommands: projects, sessions, messages, export-session, commits, code-authorship, gi"
+        ] | str join "\n")
     }
-    let files = find-session-files $find --all-projects=$all_projects --no-rg=$no_rg
-    if ($files | is-empty) { return [] }
-    $files | wrap path | messages $find
 }

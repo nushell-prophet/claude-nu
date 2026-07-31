@@ -3,8 +3,8 @@ use std/testing *
 
 # Import all functions from sessions.nu (including internals not re-exported via mod.nu)
 use ../claude-nu/sessions.nu *
-# Import the module entry point too, so its `main` is callable as `claude-nu` (the
-# `-f` search command lives there, not in sessions.nu — see mod.nu).
+# Import the module entry point too, so its `main` is callable as `claude-nu` —
+# the bare-name signpost lives in mod.nu, not in sessions.nu.
 use ../claude-nu
 
 # Vendored real-session fixtures covering Claude Code 2.1.x record shapes
@@ -52,7 +52,7 @@ def "messages drops every system/command wrapper prefix" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = messages --session $temp_file | get message
+    let result = {path: $temp_file} | messages | get message
 
     rm $temp_file
 
@@ -68,7 +68,7 @@ def "messages --include-system keeps the wrapper messages" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = messages --session $temp_file --include-system | get message
+    let result = {path: $temp_file} | messages --include-system | get message
 
     rm $temp_file
 
@@ -86,7 +86,7 @@ def "messages renders ! bash commands as user turns" [] {
         '{"type":"user","message":{"content":"<bash-stdout>+ added &lt;tag&gt;</bash-stdout><bash-stderr>warn: x</bash-stderr>"},"timestamp":"2024-01-15T10:00:01Z"}'
     ] | str join "\n" | save --force $f
 
-    let result = messages --session $f | get message
+    let result = {path: $f} | messages | get message
 
     rm $f
 
@@ -104,7 +104,7 @@ def "export-session merges a ! command and its output into one user turn" [] {
         '{"type":"user","message":{"content":"<bash-stdout>file.txt</bash-stdout><bash-stderr></bash-stderr>"},"timestamp":"2024-01-15T10:00:01Z"}'
     ] | str join "\n" | save --force $f
 
-    let md = export-session --session $f | get markdown
+    let md = {path: $f} | export-session | get 0.markdown
 
     rm $f
 
@@ -501,11 +501,11 @@ def "sessions rejects --columns combined with --all-columns" [] {
 }
 
 # =============================================================================
-# Tests for --session flag and session-file resolution
+# Tests for session-file resolution
 # =============================================================================
 
 @test
-def "messages command accepts full path via --session" [] {
+def "messages reads a session handed to it as a full path" [] {
     # Create temp session file
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
@@ -517,7 +517,7 @@ def "messages command accepts full path via --session" [] {
     $lines | str join "\n" | save --force $temp_file
 
     # Call messages with full path
-    let result = messages --session $temp_file
+    let result = {path: $temp_file} | messages
 
     rm $temp_file
 
@@ -532,7 +532,7 @@ def "messages always includes session column" [] {
     '{"type":"user","message":{"content":"Self-describing row"},"timestamp":"2024-01-15T10:00:00Z"}'
     | save --force $temp_file
 
-    let result = messages --session $temp_file
+    let result = {path: $temp_file} | messages
 
     rm $temp_file
 
@@ -599,7 +599,10 @@ def "sessions --all-projects piped into messages covers every session" [] {
 }
 
 @test
-def "claude-nu -f searches the current project user messages" [] {
+def "messages with no input reads every session of the current project" [] {
+    # Why: empty input means the current project, not its newest session — the
+    # rule `sessions`/`projects` already follow. A search then needs no scope
+    # flag: `messages 'regex'` is the project-wide search.
     # A real proj dir + cd so get-sessions-dir resolves to the fixture dir.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
@@ -613,21 +616,86 @@ def "claude-nu -f searches the current project user messages" [] {
     '{"type":"user","message":{"content":"only hay in this one"},"timestamp":"2024-01-15T10:00:00Z"}'
         | save --force ($sessions_dir | path join "22222222-2222-2222-2222-222222222222.jsonl")
 
+    let all = with-env {HOME: $fake_home} { do { cd $proj_dir; messages } }
+    let found = with-env {HOME: $fake_home} { do { cd $proj_dir; messages 'needle' } }
+
+    rm -rf $fake_home $proj_dir
+
+    # Both sessions with no argument — the older one is not dropped.
+    assert equal ($all | length) 2
+    # Only the matching message with one, tagged with its session — a selector
+    # callers can pipe straight back into export-session/messages.
+    assert equal ($found | length) 1
+    assert ($found.0.message | str contains "needle")
+    assert equal $found.0.session "11111111-1111-1111-1111-111111111111"
+}
+
+@test
+def "messages errors when the current project has no sessions" [] {
+    # Why fail fast: an empty table would read as "this project said nothing",
+    # hiding a wrong cwd or a missing HOME.
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+    mkdir $proj_dir $fake_home
+
     let result = with-env {HOME: $fake_home} {
-        do { cd $proj_dir; claude-nu -f 'needle' }
+        do { cd $proj_dir; try { messages; "no error" } catch {|e| $e.msg } }
     }
 
     rm -rf $fake_home $proj_dir
 
-    # Only the matching message returns, tagged with its session — a selector
-    # callers can pipe straight back into export-session/messages.
-    assert equal ($result | length) 1
-    assert ($result.0.message | str contains "needle")
-    assert equal $result.0.session "11111111-1111-1111-1111-111111111111"
+    assert ($result | str contains "No session files found")
 }
 
 @test
-def "claude-nu -f --all-projects searches every project" [] {
+def "a search matching nothing is an empty result that still pipes on" [] {
+    # Why: "no sessions here" (above) is a broken scope and errors; "nothing
+    # matched" is an answer. It has to survive the next pipe too — an empty
+    # selection is not input missing its path/session column.
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+    mkdir $proj_dir
+    let encoded = $proj_dir | path expand | str replace --all '/' '-'
+    let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+    mkdir $sessions_dir
+
+    '{"type":"user","message":{"content":"only hay here"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($sessions_dir | path join "11111111-1111-1111-1111-111111111111.jsonl")
+
+    let result = with-env {HOME: $fake_home} {
+        do {
+            cd $proj_dir
+            {
+                empty: (messages 'no-such-thing')
+                chained: (messages 'no-such-thing' | export-session)
+                narrowed: (sessions | where false | messages)
+            }
+        }
+    }
+
+    rm -rf $fake_home $proj_dir
+
+    assert equal $result.empty []
+    assert equal $result.chained []
+    assert equal $result.narrowed []
+}
+
+@test
+def "messages names a missing session file before rg ever sees it" [] {
+    # Why: with a regex the rg pre-filter touches the paths first, and its own
+    # "No such file" (exit 2) would mask the domain error and discard the
+    # matches it did find. Both forms must report the same thing.
+    let gone = $nu.temp-dir | path join $"gone-(random uuid).jsonl"
+
+    let plain = try { [{path: $gone}] | messages; "no error" } catch {|e| $e.msg }
+    let searched = try { [{path: $gone}] | messages 'needle'; "no error" } catch {|e| $e.msg }
+
+    assert ($plain | str contains "Session file not found")
+    assert ($searched | str contains "Session file not found")
+}
+
+@test
+def "sessions --all-projects piped into messages searches every project" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let projects_dir = $fake_home | path join ".claude" "projects"
     let proj_a = $projects_dir | path join "-proj-a"
@@ -642,7 +710,7 @@ def "claude-nu -f --all-projects searches every project" [] {
         | save --force ($proj_b | path join "33333333-3333-3333-3333-333333333333.jsonl")
 
     let result = with-env {HOME: $fake_home} {
-        claude-nu -f 'needle' --all-projects
+        sessions --all-projects | messages 'needle'
     }
 
     rm -rf $fake_home
@@ -656,9 +724,10 @@ def "claude-nu -f --all-projects searches every project" [] {
 }
 
 @test
-def "claude-nu -f skips subagent transcripts" [] {
-    # Why: subagents carry no human-typed messages, so `-f` searches only
-    # top-level sessions (parent_session_id == null).
+def "messages with no input skips subagent transcripts" [] {
+    # Why: subagents carry no human-typed messages, so the default scope is
+    # top-level sessions only (parent_session_id == null); `sessions --subagents
+    # | messages` is how you ask for them.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
     mkdir $proj_dir
@@ -673,7 +742,7 @@ def "claude-nu -f skips subagent transcripts" [] {
         | save --force ($sub | path join "agent-abc123.jsonl")
 
     let result = with-env {HOME: $fake_home} {
-        do { cd $proj_dir; claude-nu -f 'needle' }
+        do { cd $proj_dir; messages 'needle' }
     }
 
     rm -rf $fake_home $proj_dir
@@ -683,7 +752,7 @@ def "claude-nu -f skips subagent transcripts" [] {
 }
 
 @test
-def "claude-nu -f matches a regex, not just a literal" [] {
+def "messages matches a regex, not just a literal" [] {
     # Why: rg pre-filters the files, then `messages` re-applies the regex to the
     # extracted text — both use Rust's regex engine, so an actual pattern
     # (alternation here) must survive the round-trip and a non-match must drop.
@@ -702,7 +771,7 @@ def "claude-nu -f matches a regex, not just a literal" [] {
         | save --force ($sessions_dir | path join "33333333-3333-3333-3333-333333333333.jsonl")
 
     let result = with-env {HOME: $fake_home} {
-        do { cd $proj_dir; claude-nu -f 'staging|prod' }
+        do { cd $proj_dir; messages 'staging|prod' }
     }
 
     rm -rf $fake_home $proj_dir
@@ -714,7 +783,38 @@ def "claude-nu -f matches a regex, not just a literal" [] {
 }
 
 @test
-def "claude-nu -f --no-rg matches an anchored pattern the rg pre-filter misses" [] {
+def "messages ignores a ripgrep rc file in the pre-filter" [] {
+    # Why: the pre-filter is a narrowing step the caller never asked for, so a
+    # user's rc must not decide what it can see. With this rc honoured, rg would
+    # take `staging|prod` as a literal string, match no file, and the search
+    # would come back empty — a file dropped that way reads as "you never said
+    # that". Same class as --max-filesize or --type in someone's rc.
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+    mkdir $proj_dir
+    let encoded = $proj_dir | path expand | str replace --all '/' '-'
+    let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+    mkdir $sessions_dir
+
+    '{"type":"user","message":{"content":"deploy to staging now"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($sessions_dir | path join "11111111-1111-1111-1111-111111111111.jsonl")
+    '{"type":"user","message":{"content":"deploy to prod later"},"timestamp":"2024-01-15T10:00:01Z"}'
+        | save --force ($sessions_dir | path join "22222222-2222-2222-2222-222222222222.jsonl")
+
+    let rc = $fake_home | path join "ripgreprc"
+    "--fixed-strings\n" | save --force $rc
+
+    let result = with-env {HOME: $fake_home RIPGREP_CONFIG_PATH: $rc} {
+        do { cd $proj_dir; messages 'staging|prod' }
+    }
+
+    rm -rf $fake_home $proj_dir
+
+    assert equal ($result | length) 2
+}
+
+@test
+def "messages --no-rg matches an anchored pattern the rg pre-filter misses" [] {
     # Why: rg scans the raw JSONL, whose every record line starts with `{`, so
     # `^deploy` never matches there — the default path under-matches. --no-rg
     # parses in-engine and applies `^` to the extracted text, so it finds the
@@ -731,8 +831,8 @@ def "claude-nu -f --no-rg matches an anchored pattern the rg pre-filter misses" 
     '{"type":"user","message":{"content":"please deploy now"},"timestamp":"2024-01-15T10:00:01Z"}'
         | save --force ($sessions_dir | path join "22222222-2222-2222-2222-222222222222.jsonl")
 
-    let default = with-env {HOME: $fake_home} { do { cd $proj_dir; claude-nu -f '^deploy' } }
-    let no_rg = with-env {HOME: $fake_home} { do { cd $proj_dir; claude-nu -f '^deploy' --no-rg } }
+    let default = with-env {HOME: $fake_home} { do { cd $proj_dir; messages '^deploy' } }
+    let no_rg = with-env {HOME: $fake_home} { do { cd $proj_dir; messages '^deploy' --no-rg } }
 
     rm -rf $fake_home $proj_dir
 
@@ -744,17 +844,23 @@ def "claude-nu -f --no-rg matches an anchored pattern the rg pre-filter misses" 
 }
 
 @test
-def "claude-nu without a search term errors with guidance" [] {
-    let result = try { claude-nu; "no error" } catch {|e| $e.msg }
-    assert ($result | str contains "search term")
+def "bare claude-nu answers with guidance, not command not found" [] {
+    # Why: a directory module with no `main` makes the bare name fall through to
+    # an external-command lookup — "command not found" one line after `claude-nu
+    # sessions` worked. The signpost takes no search term (scope lives left of
+    # the pipe now), so it can only name the two search shapes and the subcommands.
+    let err = try { claude-nu; null } catch {|e| $e }
+    assert equal $err.msg "claude-nu needs a subcommand"
+    assert ($err.details.help | str contains "claude-nu messages 'regex'")
+    assert ($err.details.help | str contains "claude-nu sessions --all-projects | claude-nu messages 'regex'")
 }
 
 @test
 def "messages keys subagent rows by real project, not the subagents folder" [] {
     # Why: subagent transcripts live at <proj>/<uuid>/subagents/agent-*.jsonl, so
-    # `path dirname` labelled them "subagents" and falsely tripped multi-project
-    # tagging inside one project. project-dir-name resolves both layouts to the
-    # same project, so a single-project scope adds no project column.
+    # `path dirname` labelled them "subagents". project-dir-name resolves both
+    # layouts to the same project, so rows from a session and from its subagent
+    # carry the same project name.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj = $fake_home | path join ".claude" "projects" "-proj-a"
     let sub = $proj | path join "11111111-1111-1111-1111-111111111111" "subagents"
@@ -771,21 +877,10 @@ def "messages keys subagent rows by real project, not the subagents folder" [] {
 
     rm -rf $fake_home
 
-    assert equal ("project" in ($result | columns)) false
+    assert equal ($result.project | uniq) ["-proj-a"]
     let all = $result | get message
     assert ("top-level msg" in $all)
     assert ("subagent msg" in $all)
-}
-
-@test
-def "save-markdown fails fast on messages-shaped input" [] {
-    let err = try {
-        [{role: "user" message: "hi" timestamp: "2024-01-15T10:00:00Z" session: "abc"}] | save-markdown
-        null
-    } catch {|e| $e.msg }
-
-    assert ($err != null)
-    assert ($err =~ "missing columns: date, topic, markdown")
 }
 
 # =============================================================================
@@ -1923,7 +2018,7 @@ def "extract-token-usage zeros when usage absent" [] {
 @test
 def "export-session default omits tool blocks" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
-    let md = export-session --session $p | get markdown
+    let md = {path: $p} | export-session | get 0.markdown
 
     # No blockquote placeholders should leak when --tools is absent
     assert not ($md | str contains "> [")
@@ -1936,7 +2031,7 @@ def "export-session default omits tool blocks" [] {
 @test
 def "export-session --tools renders tool_use as one-line blockquote" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
-    let md = export-session --session $p --tools | get markdown
+    let md = {path: $p} | export-session --tools | get 0.markdown
 
     # Real fixture has Bash and Read tool calls
     assert ($md | str contains "> [Bash:")
@@ -1946,7 +2041,7 @@ def "export-session --tools renders tool_use as one-line blockquote" [] {
 @test
 def "export-session --tools renders tool_result placeholder with char count" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
-    let md = export-session --session $p --tools | get markdown
+    let md = {path: $p} | export-session --tools | get 0.markdown
 
     assert ($md =~ '> \[result(?: error)?: \d+ chars\]')
 }
@@ -1961,7 +2056,7 @@ def "export-session --tools truncates long tool inputs to ~120 chars" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let md = export-session --session $temp_file --tools | get markdown
+    let md = {path: $temp_file} | export-session --tools | get 0.markdown
     rm $temp_file
 
     # The placeholder line shouldn't blow past ~130 chars including marker
@@ -1980,7 +2075,7 @@ def "export-session --tools renders tool_result error marker" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let md = export-session --session $temp_file --tools | get markdown
+    let md = {path: $temp_file} | export-session --tools | get 0.markdown
     rm $temp_file
 
     assert ($md =~ '> \[result error: \d+ chars\]')
@@ -1995,7 +2090,7 @@ def "export-session --tools picks file_path for Read tool placeholder" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let md = export-session --session $temp_file --tools | get markdown
+    let md = {path: $temp_file} | export-session --tools | get 0.markdown
     rm $temp_file
 
     assert ($md | str contains "> [Read: /src/main.rs]")
@@ -2008,7 +2103,7 @@ def "export-session --tools picks file_path for Read tool placeholder" [] {
 @test
 def "messages default drops thinking-only assistant turns" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST
-    let result = messages --session $p --include-responses
+    let result = {path: $p} | messages --include-responses
 
     # No [thinking] prefix should leak when --include-thinking is absent
     assert not ($result | get message | any { $in | str contains "[thinking]" })
@@ -2017,8 +2112,8 @@ def "messages default drops thinking-only assistant turns" [] {
 @test
 def "messages --include-thinking surfaces thinking-only assistant turns" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST
-    let default = messages --session $p --include-responses | where role == "assistant" | length
-    let with_thinking = messages --session $p --include-responses --include-thinking | where role == "assistant" | length
+    let default = {path: $p} | messages --include-responses | where role == "assistant" | length
+    let with_thinking = {path: $p} | messages --include-responses --include-thinking | where role == "assistant" | length
 
     # Fixture has 38 thinking-only turns; flag must surface at least some
     assert ($with_thinking > $default)
@@ -2033,7 +2128,7 @@ def "messages --include-thinking prefixes thinking blocks" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let result = messages --session $temp_file --include-responses --include-thinking
+    let result = {path: $temp_file} | messages --include-responses --include-thinking
     rm $temp_file
 
     let assistant_msg = $result | where role == "assistant" | first | get message
@@ -2160,7 +2255,7 @@ def "messages --raw returns raw records without the rendered text column" [] {
         '{"type":"user","message":{"content":"<command-name>noise</command-name>"},"timestamp":"2024-01-15T10:00:01Z"}'
     ] | str join "\n" | save --force $f
 
-    let raw = messages --session $f --raw
+    let raw = {path: $f} | messages --raw
 
     rm $f
 
@@ -2179,7 +2274,7 @@ def "messages regex argument filters by rendered text" [] {
         '{"type":"user","message":{"content":"write the tests"},"timestamp":"2024-01-15T10:00:01Z"}'
     ] | str join "\n" | save --force $f
 
-    let result = messages --session $f "deploy" | get message
+    let result = {path: $f} | messages "deploy" | get message
 
     rm $f
 
@@ -2187,39 +2282,63 @@ def "messages regex argument filters by rendered text" [] {
 }
 
 # =============================================================================
-# Tests for save-markdown file output and collisions
+# Tests for export-session --to file output and collisions
 # =============================================================================
 
 @test
-def "save-markdown writes a file and returns its path for a record" [] {
+def "export-session --to writes the markdown and returns session and filepath" [] {
+    let dir = $nu.temp-dir | path join $"md-in-(random uuid)"
+    mkdir $dir
+    let f = $dir | path join "11111111-1111-1111-1111-111111111111.jsonl"
+    [
+        '{"type":"summary","summary":"my topic"}'
+        '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ] | str join "\n" | save --force $f
+
     let out = $nu.temp-dir | path join $"md-out-(random uuid)"
-    let row = {session: "11111111-1111-1111-1111-111111111111" date: "20240115" topic: "my-topic" markdown: "# Hello\n\nbody"}
+    let result = {path: $f} | export-session --to $out
 
-    let filepath = $row | save-markdown --output-dir $out
+    let written = open --raw $result.0.filepath
+    let basename = $result.0.filepath | path basename
+    rm -rf $dir $out
 
-    let written = open --raw $filepath
-    let basename = $filepath | path basename
-    rm -rf $out
-
-    # Record input -> a single filepath string back
-    assert equal ($filepath | describe) "string"
+    assert equal ($result | columns) [session filepath]
     assert equal $basename "20240115-my-topic.md"
-    assert equal $written "# Hello\n\nbody"
+    assert ($written | str contains "# My Topic")
 }
 
 @test
-def "save-markdown disambiguates colliding filenames with the session id" [] {
+def "export-session --to writes nothing, not even the directory, for an empty selection" [] {
+    # Why: naming the directory is what asks for the write, so a search that
+    # matched nothing must leave no trace — an empty `out/` reads as "something
+    # was exported here" to whoever finds it next.
+    let out = $nu.temp-dir | path join $"md-out-(random uuid)"
+    let result = [] | export-session --to $out
+
+    assert equal $result []
+    assert not ($out | path exists)
+}
+
+@test
+def "export-session --to disambiguates colliding filenames with the session id" [] {
     # Why: two sessions sharing a date+topic would clobber one file; the writer
     # appends a session-id prefix so both survive.
-    let out = $nu.temp-dir | path join $"md-out-(random uuid)"
-    let rows = [
-        {session: "aaaa1111-1111-1111-1111-111111111111" date: "20240115" topic: "topic-x" markdown: "# A"}
-        {session: "bbbb2222-2222-2222-2222-222222222222" date: "20240115" topic: "topic-x" markdown: "# B"}
-    ]
+    let dir = $nu.temp-dir | path join $"md-in-(random uuid)"
+    mkdir $dir
+    let files = ["aaaa1111-1111-1111-1111-111111111111" "bbbb2222-2222-2222-2222-222222222222"]
+        | each {|id|
+            let f = $dir | path join $"($id).jsonl"
+            [
+                '{"type":"summary","summary":"topic x"}'
+                '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+            ] | str join "\n" | save --force $f
+            {path: $f}
+        }
 
-    let result = $rows | save-markdown --output-dir $out
+    let out = $nu.temp-dir | path join $"md-out-(random uuid)"
+    let result = $files | export-session --to $out
     let names = ls $out | get name | path basename | sort
-    rm -rf $out
+    rm -rf $dir $out
 
     assert equal ($result | length) 2
     assert equal $names ["20240115-topic-x-aaaa11.md" "20240115-topic-x-bbbb22.md"]
@@ -2240,7 +2359,7 @@ def "export-session merges consecutive same-role turns" [] {
         '{"type":"assistant","message":{"content":[{"type":"text","text":"reply"}]},"timestamp":"2024-01-15T10:00:02Z"}'
     ] | str join "\n" | save --force $f
 
-    let md = export-session --session $f | get markdown
+    let md = {path: $f} | export-session | get 0.markdown
 
     rm $f
 

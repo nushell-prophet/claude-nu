@@ -55,20 +55,20 @@ use /path/to/completions/claude.nu *
 use /path/to/completions/nu.nu *
 
 # Core commands
-claude-nu -f 'regex'                   # Search this project's user messages (shorthand for the sessions|where|messages idiom below)
-claude-nu -f 'regex' --all-projects    # Same search across every project
 claude-nu projects                     # Projects by recency (name, path, count, modified)
 claude-nu projects | where name =~ nu | claude-nu sessions | claude-nu messages # pipe chain scoping
-claude-nu messages                     # User messages from current session
-claude-nu sessions | claude-nu messages 'regex' # search all sessions in project
+claude-nu messages                     # Every user message of the current project (empty input = current project)
+claude-nu messages 'regex'             # Search this project's user messages (rg pre-scan; --no-rg for exact regex semantics)
+claude-nu sessions --last | claude-nu messages # Just the current session
+claude-nu sessions --session <uuid> | claude-nu messages # One named session — `sessions` is the only place selection lives
 claude-nu sessions --all-projects | claude-nu messages 'regex' # search across all projects
 claude-nu sessions | claude-nu messages 'regex' | claude-nu messages --include-responses # full dialogues of matched sessions
-claude-nu sessions | claude-nu messages 'regex' | claude-nu export-session | claude-nu save-markdown # export matched sessions to markdown
+claude-nu sessions | claude-nu messages 'regex' | claude-nu export-session --to docs/sessions # export matched sessions to markdown files ({session, filepath} out; no --to = markdown in the pipeline)
 claude-nu sessions                     # Top-level (human) sessions with summaries and stats
 claude-nu sessions --subagents         # Also include subagent transcripts (parent_session_id set)
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, thinking level...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
-claude-nu export-session               # Export to markdown with YAML frontmatter
+claude-nu export-session               # Export to markdown with YAML frontmatter; --to <dir> writes the files (save-markdown folded in)
 claude-nu commits                      # Per-commit table (sha, date, email, is_claude) for the repo at cwd
 claude-nu commits --by-month           # Claude's share of commits per month: { month, total, claude, pct }
 claude-nu commits | where is_claude | length # any other cut is a pipeline on the base table

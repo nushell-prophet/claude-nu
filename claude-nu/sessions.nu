@@ -133,39 +133,60 @@ export def "nu-complete claude sessions" []: nothing -> record {
 }
 
 # Extract user messages from Claude Code session files.
-# Scope by piping session rows in — `sessions | messages` for one project,
-# `sessions --all-projects | messages` for every project. `sessions` lists only
-# top-level human sessions by default, so these carry no agent turns; add
-# `sessions --subagents` if you deliberately want subagent transcripts too. With
-# no input it reads the current project's most recent session.
-# Why: selection lives in one place (`sessions`); messages just reads what it's
-# handed. This also kills the old `--all-projects` take-1 footgun (see
-# todo/20260618-225035) — "all" now means all, because the caller controls it.
+# With no input it reads every top-level session of the current project; scope it
+# by piping session rows in — `sessions --last | messages` for the most recent
+# one, `sessions --session <uuid> | messages` for a named one, `sessions
+# --all-projects | messages` for every project. `sessions` lists only top-level
+# human sessions by default, so these carry no agent turns; add `sessions
+# --subagents` if you deliberately want subagent transcripts too.
+# Rows come session by session — newest session first, chronological inside each
+# — not as one merged timeline; `sort-by timestamp` if that is what you want.
+# Why (no input = the whole project): a command handed nothing returns everything
+# at its own level inside the current project — `projects` all projects,
+# `sessions` the project's sessions, `messages` its messages. Reading the most
+# recent session instead was a selection, and selection lives in one place
+# (`sessions`); messages just reads what it's handed. That also kills the old
+# `--all-projects` take-1 footgun (see todo/20260618-225035) — "all" now means
+# all, because the caller controls it.
+# Not a `--session` shortcut here because: the rule then held in three places at
+# once, each with its own completer and its own "piped input conflicts with
+# --session" guard, and a reader could not tell from the command shapes where
+# selection actually lives.
+# Why the regex is an argument, not a downstream `where`: given one, the raw
+# JSONL pre-scan that already narrows lines to user turns can narrow whole files
+# first (rg over the bytes), so a project- or all-projects-wide search parses
+# only the sessions that can match. The real regex is re-applied to the extracted
+# text either way, so the pre-scan can only cost recall, never add a wrong hit —
+# and --no-rg turns it off for a pattern rg's raw scan would under-match (a line
+# anchor, a JSON-escaped quote or backslash).
 export def messages [
     regex?: string # Filter messages by regex pattern
-    --session: string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
     --include-system # Include system/meta messages (not just user-typed)
     --include-thinking # Include assistant thinking blocks (prefixed with [thinking])
     --raw # Return raw message records instead of just content
     --include-responses # Include assistant responses (text only, interleaved)
+    --no-rg # Skip the ripgrep file pre-filter and match entirely in-engine (exact regex semantics, slower)
 ]: [nothing -> table record -> table table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
 
-    if $piped_files != null and $session != null {
-        error make "Piped input conflicts with --session"
-    }
-
-    let session_files = if $piped_files != null {
+    let scoped_files = if $piped_files != null {
         $piped_files
     } else {
-        [(resolve-session-file $session)]
+        top-level-session-files
+        | if ($in | is-empty) { error make "No session files found for the current project" } else { }
     }
 
-    # Why: when the piped sessions span more than one project, tag each row with
-    # its project so cross-project search stays traceable; a single-project
-    # scope keeps the lean output.
-    let multi_project = ($session_files | each { project-dir-name } | uniq | length) > 1
+    # Why here, before the pre-filter and the read loop: rg touches these paths
+    # first, and its own "No such file" (exit 2) would mask this error and throw
+    # away the matches it did find. One check, at the one point they enter.
+    let missing = $scoped_files | where not ($it | path exists)
+    if ($missing | is-not-empty) {
+        error make $"Session file not found: ($missing | str join ', ')"
+    }
+
+    let session_files = $scoped_files
+        | if $regex == null or $no_rg { } else { rg-filter-session-files $regex }
 
     # Why: --include-thinking surfaces thinking-only assistant turns
     # (otherwise dropped by the empty-text filter). User text always goes
@@ -180,10 +201,6 @@ export def messages [
 
     $session_files
     | each {|session_file|
-        if not ($session_file | path exists) {
-            error make $"Session file not found: ($session_file)"
-        }
-
         let session_uuid = $session_file | session-id-from-path
 
         # Why (speed): the default keeps only user turns, so pre-screen the raw
@@ -215,10 +232,11 @@ export def messages [
         # Why: rows are self-describing — the session column makes messages
         # output a valid session selector for resolve-piped-sessions, so it
         # can pipe back into messages/export-session/sessions.
+        # Not "project only when the scope spans several projects" because: the
+        # output schema would then depend on the data, and a script with
+        # `| get project` would work on a wide search and fail on a narrow one.
         | each { insert session $session_uuid }
-        | if $multi_project {
-            insert project ($session_file | project-dir-name)
-        } else { }
+        | insert project ($session_file | project-dir-name)
     }
     | flatten
 }
@@ -363,6 +381,11 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
     # Why: a record is a 1-row table (e.g. `sessions | first`); widen it here so
     # every piped command accepts a single row without the caller re-wrapping it.
     let input = if ($input | is-record) { [$input] } else { $input }
+    # Why an empty table is an empty selection, not a broken contract: a search
+    # that matched nothing must flow on (`messages 'nomatch' | export-session`
+    # yields nothing) instead of erroring about columns the caller never chose.
+    # Only a non-empty table can be missing them.
+    if ($input | is-empty) { return [] }
     let cols = $input | columns
     # Why: `find` is handy for searching every column at once (it recurses into
     # nested cells like user_messages), but it marks matches by injecting ansi
@@ -471,11 +494,16 @@ export def main [
             error make "No projects directory found"
         }
         ls $projects_dir | where type == dir | get name | expand-session-paths
+    } else if $piped_files != null {
+        # Why the early return: an empty piped selection is an empty answer, so
+        # `sessions | where false | sessions` yields nothing — it must not fall
+        # through to the default scope and silently widen back to the project.
+        if ($piped_files | is-empty) { return [] }
+        $piped_files | expand-session-paths
     } else {
         # Why: piped rows and positional paths mean the same thing (`projects |
         # sessions` pipes project dirs), so they share one expansion.
-        $piped_files
-        | default $paths
+        $paths
         | if ($in | is-empty) { [($piped_path | default (get-sessions-dir))] } else { }
         | expand-session-paths
     }
@@ -536,18 +564,22 @@ export def sanitize-topic []: string -> string {
     | str substring 0..<50
 }
 
-# Export session dialogue to structured data with markdown
+# Export session dialogue to structured data with markdown.
+# Scope by piping session rows in — `sessions --session <uuid> | export-session`
+# for one, `sessions | export-session` for the whole project. With no input it
+# reads the current project's most recent session.
+# Why no `--session` here: selection lives in `sessions` alone (see the note on
+# `messages`).
 export def export-session [
     topic?: string # Topic for filename (default: session summary)
-    --session: string@"nu-complete claude sessions" # Session UUID (uses most recent if not specified)
     --tools # Render tool_use/tool_result blocks as one-line blockquote placeholders (default: drop)
+    --to: path # Write each session to <dir>/<date>-<topic>.md; returns {session, filepath}
 ]: [nothing -> record record -> table table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
 
-    if $piped_files != null {
-        if $session != null { error make "Piped input conflicts with --session" }
-        if $topic != null { error make "Piped input conflicts with topic argument" }
+    if $piped_files != null and $topic != null {
+        error make "Piped input conflicts with topic argument"
     }
 
     let export_one = {|session_file|
@@ -616,31 +648,29 @@ export def export-session [
         }
     }
 
-    if $piped_files != null {
+    let exported = if $piped_files != null {
         $piped_files | each {|f| do $export_one $f }
     } else {
-        do $export_one (resolve-session-file $session)
+        do $export_one (resolve-session-file)
     }
+
+    $exported | if $to != null { write-markdown $to } else { }
 }
 
-# Save exported session markdown to files
-export def save-markdown [
-    --output-dir: path # Output directory (default: docs/sessions)
-]: [record -> string table -> table] {
+# Write exported rows to <dir>/<date>-<topic>.md.
+# Why private, not the old public `save-markdown`: it only ever accepted
+# export-session's own output and checked for it at runtime — a pair the user
+# had to spell out and that could only be typed one way. As `--to` the check is
+# gone with the seam.
+# Keeps export-session's own shape (record in -> record out): `--to` chooses
+# what is returned, not how many rows.
+def write-markdown [dir: path]: [record -> record table -> table] {
     let input = $in
-    let out_dir = $output_dir | default "docs/sessions"
-    let was_record = $input | is-record
-
-    # Normalize to table
-    let rows = if $was_record { [$input] } else { $input }
-
-    let missing = [session date topic markdown] | difference ($rows | columns)
-    if ($rows | is-not-empty) and ($missing | is-not-empty) {
-        error make --unspanned {
-            msg: $"input is missing columns: ($missing | str join ', ')"
-            help: "save-markdown takes export-session output — pipe through it first: ... | claude-nu export-session | claude-nu save-markdown"
-        }
-    }
+    # Why before mkdir: a selection that matched nothing wrote nothing, yet still
+    # left the named directory behind. Naming the directory is what asks for the
+    # write — with nothing to write there is nothing to ask for.
+    if ($input | is-empty) { return $input }
+    let rows = if ($input | is-record) { [$input] } else { $input }
 
     let rows = $rows
         | insert filename {|r| $"($r.date)-($r.topic).md" }
@@ -658,18 +688,13 @@ export def save-markdown [
             } else { }
         }
 
-    mkdir $out_dir
+    mkdir $dir
 
-    let results = $rows
-        | each {|r|
-            let filepath = $out_dir | path join $r.filename
-            $r.markdown | save --force $filepath
-            {session: $r.session filepath: $filepath}
-        }
-
-    if $was_record {
-        $results | first | get filepath
-    } else {
-        $results
+    $rows
+    | each {|r|
+        let filepath = $dir | path join $r.filename
+        $r.markdown | save --force $filepath
+        {session: $r.session filepath: $filepath}
     }
+    | if ($input | is-record) { first } else { }
 }

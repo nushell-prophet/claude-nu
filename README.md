@@ -31,35 +31,36 @@ use claude-nu
 
 ## Commands
 
-### `claude-nu -f` (search)
+### `claude-nu messages` (search)
 
-The umbrella entry point. Searches user messages for a regex and returns every match with its `session` column — a pipeline-safe selector you can drill into. Mirrors `help -f`.
-
-```nushell no-run
-claude-nu -f 'regex'                # search this project's user messages
-claude-nu -f 'regex' --all-projects # search every project under ~/.claude/projects
-claude-nu -f 'regex' | claude-nu export-session  # drill matched sessions into markdown
-```
-
-It is a shorthand for `sessions | where parent_session_id == null | messages 'regex'`. Use `find` for filtering a `sessions` table you already have on screen, and `-f` for content search from scratch.
-
-### `claude-nu messages`
-
-Extract user messages from Claude Code session files.
+Extract user messages from Claude Code session files — and search them: with a regex, every match comes back with its `session` column, a pipeline-safe selector you can drill into.
 
 ```nushell no-run
-claude-nu messages              # Messages from current session
-claude-nu messages 'pattern'    # Filter by regex
+claude-nu messages              # Every message of the current project
+claude-nu messages 'pattern'    # ...matching a regex — the project-wide search
+claude-nu sessions --all-projects | claude-nu messages 'pattern' # ...across every project
+claude-nu sessions --last | claude-nu messages # Just the current session
+claude-nu sessions --session <uuid> | claude-nu messages # A named one (tab-completable)
+claude-nu messages 'pattern' | claude-nu export-session # Drill matched sessions into markdown
 claude-nu messages --include-system # Include system/meta messages
 claude-nu messages --raw        # Get raw JSONL records
-claude-nu messages --session <uuid> # Specific session (tab-completable)
 ```
+
+A command handed nothing returns everything at its own level of the current project: `projects` all projects, `sessions` the project's sessions, `messages` its messages. Narrowing is a scope to the left of the pipe, and selection lives in `sessions` alone — so one session, a whole project, or every project is the same command with a different scope in front of it.
+
+Given a regex, `messages` pre-scans the raw JSONL with ripgrep and only parses the sessions that can match; the real regex is then applied to the extracted text. A pattern that leans on a line anchor or a JSON-escaped character can hide from that raw scan — `--no-rg` skips it and matches everything in-engine. Use `find` for filtering a `sessions` table you already have on screen.
+
+Rows come session by session — newest session first, chronological inside each — not as one merged timeline.
 
 **Output:**
 | Column | Description |
 |--------|-------------|
 | `message` | User message content |
 | `timestamp` | When message was sent |
+| `session` | Session UUID — the selector to pipe onward |
+| `project` | Project directory the session belongs to |
+
+`--include-responses` adds `role`; `--raw` replaces `message` with the raw record's `type` and fields.
 
 ### `claude-nu sessions`
 
@@ -122,12 +123,12 @@ Export session dialogue to a markdown file for git tracking.
 ```nushell no-run
 claude-nu export-session                    # Uses session summary as topic
 claude-nu export-session "auth-refactor"    # Custom topic
-claude-nu export-session --session <uuid>   # Specific session
-claude-nu export-session | claude-nu save-markdown          # Write to docs/sessions/
-claude-nu export-session | claude-nu save-markdown --output-dir ./tmp # Custom output directory
+claude-nu sessions --session <uuid> | claude-nu export-session # Specific session
+claude-nu export-session --to docs/sessions # Write the markdown to files instead of returning it
+claude-nu sessions | claude-nu export-session --to ./tmp # One file per session of the project
 ```
 
-**Output format:** `docs/sessions/yyyymmdd-topic.md`
+Without `--to` the command returns `{session, date, topic, markdown}` — pipe it into `get markdown` to read the text before anything touches the disk. With `--to` it writes `<dir>/yyyymmdd-topic.md` and returns `{session, filepath}`; two sessions that would share a filename get the first characters of their session id appended. The directory has no default: naming it is what asks for the write.
 
 Filters out system-generated messages, keeping only user prompts and assistant responses.
 
