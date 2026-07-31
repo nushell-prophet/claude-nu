@@ -171,6 +171,7 @@ claude-nu gi open              # new canvas + a session bound to it
 claude-nu gi open gi/plan.md   # ...a named one: created from the template if new, resumed if it already holds a session
 claude-nu gi open gi/plan.md --no-hook # style only, without the Stop-hook floor
 claude-nu gi open gi/plan.md --new-session # start over on it: mint a fresh id, overwrite the recorded one
+claude-nu gi open gi/plan.md --dangerously-skip-permissions --model opus # ...any other flag goes straight to `claude`
 claude-nu gi                   # { canvas, style, skills, stale }
 ```
 
@@ -179,6 +180,8 @@ claude-nu gi                   # { canvas, style, skills, stale }
 **Why activation lives at launch.** `gi open` passes the style and the hook to `claude --settings` (which takes inline JSON, merges with the project's settings rather than replacing them) and set `$env.GI_CANVAS` in the launch environment, which the hook inherits as a child process. So gi writes to no settings file at all, and there is nothing to switch off afterwards: a plain `claude` in a seeded repo is a plain session, always. The earlier design put `outputStyle`, the hook, and the canvas path into `.claude/settings.local.json` — repo-wide keys that loaded into *every* session opened there, so a canvas from last week kept shaping unrelated work until you remembered to disable it. `$env.GI_CANVAS` is also the hook's on/off switch: with no canvas bound it has nothing to enforce and stands down.
 
 A repo can hold as many canvases as you like — each `gi open` binds one session to one file, so parallel canvases never collide.
+
+**Your own `claude` flags.** `gi open` is `--wrapped`: anything it does not define is forwarded to `claude` untouched, so `--dangerously-skip-permissions`, `--model`, `--append-system-prompt` and the rest work as usual. Two rules keep the binding honest. Flags gi sets itself — `--settings`, `--session-id`, `--resume`, `--continue`, `--fork-session`, `--name` — are refused, because a second `--settings` wins over gi's and would carry off the style and the Stop hook, leaving gi silently half on. And a flag typed where the canvas goes (`gi open --model opus`) is refused too: nushell hands an undeclared leading flag to the positional, so it would otherwise create a canvas named `--model`. `--dangerously-skip-permissions` is in the signature for that reason — it is the flag most often typed with no canvas named, and being declared it parses in either position.
 
 **One canvas, one session, for life.** On a canvas with no `session:` in its frontmatter, `gi open` mints the session id itself (`claude --session-id`) and writes it in; on one that already has it, the same command resumes that session (`claude --resume`). So the same file reopens into the same conversation days later — a canvas is a working document, not a one-sitting scratchpad — and there is no second verb to pick, because the file already says which case it is. `--new-session` is the way out when that session is gone — deleted, expired, or simply not worth continuing: it mints a fresh id and overwrites the one the canvas records, naming the id it drops as it goes. The launch also passes `--name <canvas>`, which puts the canvas in the prompt box, the `/resume` picker, and the terminal title, so a window says which canvas it belongs to.
 

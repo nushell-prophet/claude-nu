@@ -81,7 +81,7 @@ claude-nu gi enable --from-session     # ...and start a canvas from this session
 claude-nu gi enable notes/plan.md --from-session # ...at a chosen path
 claude-nu gi enable --from-session --tools     # ...keeping tool calls as one-line placeholders
 claude-nu gi enable --from-session --commit    # ...and commit it; --gitignore keeps it out of git instead
-claude-nu gi open gi/plan.md           # Launch a session bound to that canvas: style + Stop hook via `claude --settings`, $env.GI_CANVAS set. A canvas with no `session:` gets one minted and written in; one that has it is resumed. Created from the template if new; --no-hook drops the floor; --new-session overwrites the recorded id when that session is gone; parallel canvases per repo
+claude-nu gi open gi/plan.md           # Launch a session bound to that canvas: style + Stop hook via `claude --settings`, $env.GI_CANVAS set. A canvas with no `session:` gets one minted and written in; one that has it is resumed. Created from the template if new; --no-hook drops the floor; --new-session overwrites the recorded id when that session is gone; parallel canvases per repo. `--wrapped`: unknown flags (`--dangerously-skip-permissions`, `--model`, ...) go straight to `claude`, except the ones gi sets itself (`--settings`, `--session-id`, `--resume`, `--continue`, `--fork-session`, `--name`), and a flag in the doc's place is an error rather than a canvas named `--model`
 claude-nu gi                           # { canvas, style, skills, stale } — canvas comes from $env.GI_CANVAS, i.e. the asking session
 ```
 

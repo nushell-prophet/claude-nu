@@ -257,13 +257,33 @@ export def main [
 # Open a canvas: launch a session bound to it, creating the canvas from the
 # template when it does not exist and continuing the session it already records
 # when it has one.
-export def "gi open" [
+export def --wrapped "gi open" [
     doc?: path # The canvas (default: gi/canvas-<timestamp>.md)
     --root: path # Repo root (default: git top-level)
     --no-hook # Launch with the Canvas style but without the Stop-hook floor
     --new-session # Start a fresh session on this canvas, overwriting the id it records
+    --dangerously-skip-permissions # Pass claude's flag of the same name through
+    ...rest: string # Any other flags go straight to `claude`
 ]: nothing -> nothing {
-    gi-launch --root $root --doc $doc --hook=(not $no_hook) --new-session=$new_session
+    # Why --dangerously-skip-permissions is declared when --wrapped would forward
+    # it anyway: under --wrapped an unknown flag typed BEFORE the doc is taken as
+    # the doc (`gi open --dangerously-skip-permissions` would name a canvas that),
+    # and this is the flag most often typed with no canvas named. Declared, it
+    # parses in either position. It is also the one pass-through worth showing in
+    # `help gi open`.
+    let extra = if $dangerously_skip_permissions { ["--dangerously-skip-permissions"] } else { [] }
+    | append $rest
+    # The other half of the same parsing rule: an undeclared flag typed before
+    # the doc lands in the doc. A canvas path never starts with a dash, so say
+    # so here — otherwise a typo silently creates a canvas named `--modle`, and
+    # the pass-through rule below never sees the flag it was meant to catch.
+    if ($doc | default "" | str starts-with "-") {
+        error make {
+            msg: $"($doc) is not a canvas path"
+            label: {text: "flags for `claude` go after the canvas: gi open <doc> <flags>" span: (metadata $doc).span}
+        }
+    }
+    gi-launch --root $root --doc $doc --hook=(not $no_hook) --new-session=$new_session --extra $extra
 }
 
 # Seed the gi protocol into this repo: the Canvas style and the gi skills.
@@ -464,15 +484,40 @@ export def gi-session-plan [recorded: any, --new-session]: nothing -> record {
     }
 }
 
+# The `claude` flags a canvas launch owns: the session it binds and the settings
+# that carry the style and the hook. Short forms included — `-c` and `-r` pick a
+# session as surely as their long spellings.
+const GI_OWNED_FLAGS = ["--settings" "--session-id" "--resume" "-r" "--continue" "-c" "--fork-session" "--name"]
+
+# The pass-through's one rule: it may not carry a flag gi sets itself. Why it has
+# to fail and not just lose: `claude` takes the LAST --settings, so a forwarded
+# one wins and takes the style and the Stop hook with it — gi half on, the same
+# state the style-exists check in gi-launch refuses to allow, only silent. A
+# forwarded --resume/--session-id likewise unbinds the launch from the canvas
+# that named it. `=` split so `--settings={...}` is caught too. Called once, at
+# the top of gi-launch, before the canvas is written.
+export def gi-reject-owned-flags [extra: list<string>]: nothing -> nothing {
+    let owned = $extra | where ($it | split row "=" | first) in $GI_OWNED_FLAGS
+    if ($owned | is-not-empty) {
+        error make --unspanned {
+            msg: $"gi sets ($owned | str join ', ') itself — a canvas launch cannot pass it through"
+            help: "the canvas binds the session (--session-id/--resume/--name) and carries the style and the hook (--settings); to work in another session, open another canvas"
+        }
+    }
+}
+
 # The `claude` flags that bind a launch to a canvas's session. Split out of
 # gi-launch because that command ends in an exec and can't be tested; this is
 # the part worth pinning. --session-id declares an id gi just minted (the canvas
 # records it, so the canvas can be reopened); --resume returns to one the canvas
 # already carried. --name puts the canvas in the prompt box, the /resume picker,
 # and the terminal title, so the session says which canvas it belongs to.
-export def gi-launch-args [sid: string, doc: string, --resume]: nothing -> list<string> {
+# `extra` is the caller's own `claude` flags, appended last and untouched — gi
+# has no opinion on them beyond the one rule gi-reject-owned-flags states.
+export def gi-launch-args [sid: string, doc: string, --resume, ...extra: string]: nothing -> list<string> {
     if $resume { ["--resume" $sid] } else { ["--session-id" $sid] }
     | append ["--name" $doc]
+    | append $extra
 }
 
 # Launch Claude Code bound to one canvas — the only thing that turns gi on.
@@ -489,7 +534,9 @@ def gi-launch [
     --root: path # Repo root (default: git top-level)
     --hook # Carry the Stop-hook floor into the session
     --new-session # Mint a fresh session id, overwriting the one the canvas records
+    --extra: list<string> = [] # Flags forwarded to `claude` untouched
 ]: nothing -> nothing {
+    gi-reject-owned-flags $extra
     let root = $root | default (gi-repo-root) | path expand
     let doc = $doc | default (gi-default-doc)
     let paths_doc = gi-doc-path $root $doc
@@ -529,7 +576,7 @@ def gi-launch [
     if $hook and ($branch in $GI_PROTECTED_BRANCHES) {
         print $"note: this repo is on ($branch) — gi commits belong on a work branch; the Stop hook will block turns until you switch."
     }
-    let args = gi-launch-args $plan.sid $doc_rel --resume=$plan.resume
+    let args = gi-launch-args $plan.sid $doc_rel --resume=$plan.resume ...$extra
     print $"canvas ($doc_rel), session (gi-session-key $plan.sid)(if $hook { '' } else { ', no Stop hook' })"
     # cd so claude resolves the session under this project and so outputStyle
     # finds .claude/output-styles here.

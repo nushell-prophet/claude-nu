@@ -243,6 +243,37 @@ def "launch args bind the canvas session and name the session after it" [] {
     # is returned to with --resume. One verb, and the canvas decides which.
     assert equal (gi-launch-args $sid "gi/plan.md") ["--session-id" $sid "--name" "gi/plan.md"]
     assert equal (gi-launch-args $sid "gi/plan.md" --resume) ["--resume" $sid "--name" "gi/plan.md"]
+
+    # The caller's own claude flags ride along last, untouched.
+    assert equal (
+        gi-launch-args $sid "gi/plan.md" "--dangerously-skip-permissions" "--model" "opus"
+    ) ["--session-id" $sid "--name" "gi/plan.md" "--dangerously-skip-permissions" "--model" "opus"]
+}
+
+@test
+def "a flag typed where the canvas goes is not taken as the canvas" [] {
+    # --wrapped hands an undeclared flag before the doc to the positional, so
+    # without this a typo would create a canvas named after the flag.
+    let out = try { gi open --model opus; null } catch {|e| $e.msg }
+    assert ($out | str contains "not a canvas path")
+
+    # Declared flags parse in either position — which is why the one flag most
+    # often typed with no canvas named is in the signature.
+    let named = try { gi open --dangerously-skip-permissions --root (temp-root); null } catch {|e| $e.msg }
+    assert ($named | str contains "not seeded")
+}
+
+@test
+def "the pass-through refuses the flags a canvas launch sets itself" [] {
+    # A second --settings would win over gi's and take the style and the hook
+    # with it; a forwarded session flag would unbind the launch from the canvas.
+    for flag in ["--settings" "--settings={}" "--resume" "-c" "--name"] {
+        let out = try { gi-reject-owned-flags ["--model" $flag]; "" } catch {|e| $e.msg }
+        assert ($out | str contains "gi sets") $"($flag) should be refused"
+    }
+
+    # Everything else is the caller's business.
+    assert equal (gi-reject-owned-flags ["--dangerously-skip-permissions" "--model" "opus"]) null
 }
 
 @test
