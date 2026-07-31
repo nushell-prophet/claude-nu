@@ -10,6 +10,7 @@ Nushell utilities for working with [Claude Code](https://claude.ai/code) session
 - **Session analytics** — See what Claude actually did: files touched, tools called, agents spawned, errors hit
 - **Smart session picker** — `claude --resume <TAB>` shows age, size, and summary instead of raw UUIDs
 - **Export to markdown** — Keep session history in git with YAML frontmatter
+- **Move a project** — `project-move <old> <new>` retargets sessions, permissions and prompt history after you move a directory
 - **Dynamic script completions** — `nu` completions that parse any .nu script's subcommands at tab-time
 - **Claude Code skills** — Opinionated Nushell style guide and completions guide, distributed via [plugin marketplace](https://github.com/nushell-prophet/nushell-skills)
 
@@ -131,6 +132,27 @@ claude-nu sessions | claude-nu export-session --to ./tmp # One file per session 
 Without `--to` the command returns `{session, date, topic, markdown}` — pipe it into `get markdown` to read the text before anything touches the disk. With `--to` it writes `<dir>/yyyymmdd-topic.md` and returns `{session, filepath}`; two sessions that would share a filename get the first characters of their session id appended. The directory has no default: naming it is what asks for the write.
 
 Filters out system-generated messages, keeping only user prompts and assistant responses.
+
+### `claude-nu project-move`
+
+Point Claude Code's stored state at a project's new location. Claude keys everything by the absolute project path, so a directory you moved with `mv` leaves its sessions, its permissions and its prompt history stranded under the old name — `claude --resume` in the new place finds nothing. Both arguments are real paths on disk, not encoded directory names.
+
+```nushell no-run
+claude-nu project-move ~/old/proj ~/new/proj --dry-run # report what would change, write nothing
+claude-nu project-move ~/old/proj ~/new/proj           # do it
+```
+
+It rewrites the four places the path is written, and only those: the sessions directory name under `~/.claude/projects`, the `cwd` field in every session record (subagent transcripts included), every mention of the path as a whole quoted string in `~/.claude.json` — its `projects` key and its `githubRepoPaths` entry — and the `project` field in `~/.claude/history.jsonl`. One row per artifact touched comes back, with the number of occurrences replaced; `--dry-run` returns the same rows.
+
+It refuses to merge two projects into one: if Claude already has a sessions directory for the new path, or `~/.claude.json` carries the old path and the new one at once, the move stops. The config check is not cosmetic — the swap is textual, so rewriting the old key when the new one is already there would leave `projects` holding the same key twice, JSON a parser still reads while one project's permissions quietly win. Only the old path and the new one *together* mean a merge: the new path alone is what a run leaves behind when it dies after the config swap, and a rerun has to finish that move rather than call it a collision.
+
+It also refuses to rename a sessions directory that two projects share. The encoded name is lossy — `/work/demo` and `/work-demo` both become `-work-demo` — and the rename takes the whole directory, so the other project's transcripts would land under the new name while everything that points at them still says the old path. When a transcript under the source directory records some other path, the move stops and names the file and the path it found. A transcript recording the new path is a half-finished rerun, and one recording no path at all is a session that died before its first turn — neither is a second project, and neither stops the move.
+
+**What it does not touch.** The project directory itself — move that yourself, this command only fixes what Claude wrote about it. And the old path where it appears inside message texts and tool arguments: those record what happened at the old location, and rewriting them would falsify the transcript. Projects nested under the old path (git worktrees, for instance) are separate projects with their own state; move each one.
+
+**Why a literal substring swap and not a JSON round trip.** A session record is a line of JSON we did not author. Parsing and re-emitting it rewrites every byte of every record — escaping, key order, how numbers are spelled — in order to change one field. Swapping the exact fragment `"cwd":"<old>"` touches only the bytes that encode the path. Measured on one real 62-line session: the path occurs 65 times, 45 of them as that fragment.
+
+**Failure behaviour.** Each file is written through a temp file beside it — seeded by copying the target, so a 0600 `~/.claude.json` does not come back 0644 through the umask — and the rename of the sessions directory comes last. A run that dies partway therefore leaves the sessions under the old name with some `cwd`s already rewritten, and running the same command again finishes exactly what is left: a file already done reports no occurrences and drops out of the next plan. That holds at every point of the run, including after the config swap — the last write before the rename — which is why a `~/.claude.json` carrying only the new path is read as unfinished work and not as a second project to merge. Because `~/.claude.json` is rewritten whole by every running `claude`, its mtime is checked between read and write, turning a lost concurrent save into an error instead of silence. A session file whose bytes are not valid UTF-8 stops the move before anything is written, rather than being skipped in silence.
 
 ### `claude-nu gi`
 

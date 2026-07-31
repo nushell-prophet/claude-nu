@@ -14,9 +14,18 @@ export def projects-root []: nothing -> path {
     $env.HOME | path join ".claude" "projects"
 }
 
+# The directory name Claude Code gives a project under ~/.claude/projects: its
+# absolute path with every `/` turned into `-`. Lossy on purpose — a `-` already
+# in the path is indistinguishable from a separator — so the name identifies a
+# directory, never a project. Recovering the real path means reading a session's
+# `cwd` (see `projects`).
+export def encode-project-dir []: path -> string {
+    str replace --all '/' '-'
+}
+
 # Sessions directory for the current project: ~/.claude/projects/<encoded-pwd>
 export def get-sessions-dir []: nothing -> path {
-    projects-root | path join ($env.PWD | path expand | str replace --all '/' '-')
+    projects-root | path join ($env.PWD | path expand | encode-project-dir)
 }
 
 # Project directory name a session file belongs to — the first path segment

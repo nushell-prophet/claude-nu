@@ -23,6 +23,7 @@ claude-nu/
 │   ├── extract.nu       # Session records -> text, dialogue, metrics
 │   ├── render.nu        # Record content -> markdown text
 │   ├── gi.nu            # gi protocol, as real subcommands (`gi enable`, `gi open`, bare `gi` for status): enable seeds the repo, open launches a session bound to one canvas (style + Stop hook travel with the launch)
+│   ├── project-move.nu  # Retarget stored state from a project's old path to its new one
 │   ├── gi-hook.nu       # Stop-hook entry point — `nu --stdin` runs this file; it imports `gi check` from gi.nu, which mod.nu deliberately does not re-export
 │   └── attribution.nu   # Claude-authorship of git history: commits (--by-month) and code-authorship (blame)
 ├── completions/         # External command completions
@@ -69,6 +70,7 @@ claude-nu sessions --subagents         # Also include subagent transcripts (pare
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, thinking level...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
 claude-nu export-session               # Export to markdown with YAML frontmatter; --to <dir> writes the files (save-markdown folded in)
+claude-nu project-move ~/old ~/new     # Retarget Claude's state after a project directory moved: sessions dir name, `cwd` in every record, ~/.claude.json (`projects` + `githubRepoPaths`), history.jsonl. `--dry-run` reports the same rows without writing. Literal substring swap, never a JSON round trip
 claude-nu commits                      # Per-commit table (sha, date, email, is_claude) for the repo at cwd
 claude-nu commits --by-month           # Claude's share of commits per month: { month, total, claude, pct }
 claude-nu commits | where is_claude | length # any other cut is a pipeline on the base table
