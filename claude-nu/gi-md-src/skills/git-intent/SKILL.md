@@ -1,11 +1,11 @@
 ---
 name: git-intent
-description: Process commits as instructions — execute `!!` inline markers and `gi: <text>` commit-subject instructions, propagate user-committed choices through the codebase. Use when the user says "git-intent", "process commits", "apply intent", or pastes a `git log` containing `!!` markers or `gi:` subjects.
+description: Process commits as instructions — execute the user's inline markers (`!!`, `??`, `%%`) and `gi: <text>` commit-subject instructions, propagate user-committed choices through the codebase. Use when the user says "git-intent", "process commits", "apply intent", or pastes a `git log` containing markers or `gi:` subjects.
 argument-hint: <N>
 allowed-tools: Bash(git *), Read, Edit, Write, Grep, Glob
 ---
 
-Git is the instruction interface between human and agent. The human delivers intent through commit messages and inline `!!` markers in any file type. The agent reads the diff, executes the instructions, and commits the results. Every change is reviewable in git history.
+Git is the instruction interface between human and agent. The human delivers intent through commit messages and inline markers in any file type. The agent reads the diff, executes the instructions, and commits the results. Every change is reviewable in git history.
 
 ## Why
 
@@ -17,7 +17,7 @@ It's a REPL cycle: user instructs, sees the diff, judges, instructs again. Git a
 
 Three channels carry user intent into a commit:
 
-- **`!!` markers** in any file — pinpoint instructions next to the target.
+- **User markers** in any file — pinpoint instructions next to the target: `!!` do this, `??` a question, `%%` a remark.
 - **Commit message** — explanation/context for the committed edit, optionally prefixed `gi:` (git intent). If the message reads as an imperative ("rename foo to bar", "expand this section"), treat it as actionable.
 - **Direct edit** — the user's edit itself, with no marker and no commit-message text, is also an instruction. The edit *is* the decision; the agent's job is to honor and propagate it.
 
@@ -25,16 +25,17 @@ N = `$ARGUMENTS` — when that is empty or not a positive integer, use `1`.
 
 ## Commit patterns
 
-A commit message — with or without the `gi:` prefix — defaults to **explanation** of what the user already committed; the edit itself is the decision, and the agent honors and propagates it without re-executing the text. If the message reads as an **imperative**, treat it as actionable and apply it to the commit's files. When the role is unclear, ask. The pipeline is uniform: apply any `!!` markers, apply any imperative commit message, propagate the resulting decision to stale references elsewhere. Empty steps are no-ops.
+A commit message — with or without the `gi:` prefix — defaults to **explanation** of what the user already committed; the edit itself is the decision, and the agent honors and propagates it without re-executing the text. If the message reads as an **imperative**, treat it as actionable and apply it to the commit's files. When the role is unclear, ask. The pipeline is uniform: apply any user markers, apply any imperative commit message, propagate the resulting decision to stale references elsewhere. Empty steps are no-ops.
 
-The subject prefix is `gi:` (quiet — the commit *is* the unit, no surrounding noise to fight) while inline markers are `!!` (loud — they must stand out against surrounding code).
+The subject prefix is `gi:` (quiet — the commit *is* the unit, no surrounding noise to fight) while inline markers are `!!` / `??` / `%%` (loud — they must stand out against surrounding code).
 
 ## Markers
 
-- Native single-line comment of the file, prefixed with `!!`. Examples: `# !! ...` (Python/Nu/Shell/YAML), `// !! ...` (JS/Rust/Go/C), `-- !! ...` (SQL), `/* !! ... */` (CSS), `<!-- !! ... -->` (HTML/Markdown).
+- Native single-line comment of the file, prefixed with the marker. Examples: `# !! ...` (Python/Nu/Shell/YAML), `// ?? ...` (JS/Rust/Go/C), `-- %% ...` (SQL), `/* !! ... */` (CSS), `<!-- !! ... -->` (HTML/Markdown). In Markdown prose the marker starts its own line, so `rg '^(!!|\?\?|%%)'` lists every open one.
 - Place on the line above or beside the target code
-- Removed after processing — remove the whole comment including any closing delimiters (`*/`, `-->`), not just the `!!` token
-- Comments without `!!` are persistent context — leave alone
+- **Marker length says who wrote it: two characters — the user, you act; three — you, the user acts.** So `!!` do it, `??` answer it, `%%` a remark to take into account — "nothing to change" is a valid outcome. Leave your own `!!!` / `???` / `%%%` standing until the user clears them.
+- Removed after processing — fold the result into the surrounding text and remove the whole comment, including any closing delimiters (`*/`, `-->`), not just the marker token. When answering a `??` needs the user back, leave a `???` in its place instead.
+- Comments with no marker are persistent context — leave alone
 
 ## Reading user edits
 
@@ -51,7 +52,7 @@ The subject prefix is `gi:` (quiet — the commit *is* the unit, no surrounding 
 3. **Read files in scope** in full. Skip files you've already read or edited in this session, and skip binary files.
 
 4. **For each commit, run the pipeline:**
-   - **Apply markers** — for each `!!` marker added in the diff, read the instruction text, apply it to the target code/text, remove the whole marker comment (including any closing delimiters like `*/` or `-->`).
+   - **Apply markers** — for each user marker (`!!`, `??`, `%%`) added in the diff, read the text, act on it per *Markers* above, remove the whole marker comment (including any closing delimiters like `*/` or `-->`).
    - **Apply imperative commit message** — if the message (with or without `gi:`) reads as a command, apply it to the commit's files. If it reads as explanation, skip — the edit itself is the decision.
    - **Propagate the decision** — scan each file in the commit scope for references that contradict the resulting state (stale branches, removed APIs, old behavior descriptions, obsolete rationale). If the decision names a symbol, path, API, or config key, also `grep` the broader repo. Clean up broken surroundings left by user edits, per *Reading user edits* above.
 
