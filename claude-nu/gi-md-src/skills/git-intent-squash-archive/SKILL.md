@@ -26,3 +26,4 @@ Archive and squash all commits on the current branch:
 ## Related
 
 - `/git-intent` — process commits as instructions and propagate choices before squashing
+- `/land-branch` — the general-development counterpart: same squash-and-archive, but it also merges to the trunk and drops `todo/`/`gi/`. Use it when the branch is not gi working material.
