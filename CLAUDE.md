@@ -102,6 +102,14 @@ nu toolkit.nu check claude-nu/gi.nu    # ...or of one file; rows carry file, lin
 nu toolkit.nu vendor-sessions         # Obfuscate real sessions for safe sharing
 ```
 
+## Commit messages
+
+**English, subject and body — including when the canvas session ran in Russian.** 19 of the 179 commits made since June are Russian and the rest English, so `git log --grep` in either language silently misses part of the history, and the README and this file are English anyway. Translating the reasoning at commit time is the cost; keeping one searchable history is what it buys.
+
+The prefix is the command or subsystem the change is about: `gi:`, `gi-hook:`, `gi-md-src:`, `sessions:`, `messages:`, `ask:`, `export-session:`, `completions:`, `canvas:`, `toolkit:`. Use a conventional type — `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `perf:`, `chore:` — when no single command owns the change.
+
+`gi:` commits that answer a canvas marker keep the canvas's own vocabulary in the body: a `Decision:` line for what was settled, `Why:` for the reasoning, `Propagation:` for what else had to move. That is what makes a canvas answer readable from the log without opening the canvas.
+
 ## Code Style
 
 Follow the nushell-style skill (install via `/plugin install nushell-style@nushell-skills`). Key patterns:
