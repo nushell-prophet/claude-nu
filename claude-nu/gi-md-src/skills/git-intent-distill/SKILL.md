@@ -20,6 +20,7 @@ This is the skill; the mechanics below are secondary. Distill is **not** "delete
 **Cut — dead process material:**
 
 - Resolved `!!` / `!!!`, `??` / `???`, `%%` / `%%%` markers and the scaffolding around them.
+- A `## Readback` section (from `/git-intent-readback`) once the work it confirmed has started — its job ended at the confirmation.
 - Working-list numbering gaps and half-formed notes the final state superseded.
 - Deliberation a later decision made moot — the settled outcome stays, the weighing goes.
 - A rejected path whose only value was recording *that* it was rejected — the deletion commit body carries that.

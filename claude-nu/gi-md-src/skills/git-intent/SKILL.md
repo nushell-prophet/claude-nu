@@ -79,4 +79,5 @@ The subject prefix is `gi:` (quiet — the commit *is* the unit, no surrounding 
 
 ## Related
 
+- `/git-intent-readback` — when the commits to process are the user's answers to your questions, run this first: restate them and stop, instead of executing a reading nobody confirmed
 - `/git-intent-squash-archive` — when done iterating, squash the branch into one clean commit preserved as a git tag
