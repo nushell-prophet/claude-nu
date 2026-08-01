@@ -13,6 +13,25 @@ def settings-of [root: path]: nothing -> path {
     $root | path join ".claude" "settings.local.json"
 }
 
+# A directory holding a `claude` that records its arguments instead of starting
+# a session, for the tests that run a launch to the end. Returns the directory,
+# to be prepended to PATH for that call only.
+# The `which` assertion is the guard that matters: PATH lookup silently skips a
+# file it cannot execute, so a temp dir mounted noexec (or a chmod that did not
+# take) would hand the launch to the REAL claude, which then blocks on a TTY —
+# a hang, not a failure.
+def stub-claude [root: path]: nothing -> path {
+    let dir = $root | path join "stub-bin"
+    mkdir $dir
+    let bin = $dir | path join "claude"
+    $"#!/bin/sh\necho \"$@\" > ($root | path join 'claude-args')\n" | save --force $bin
+    ^chmod +x $bin
+    with-env {PATH: ([$dir] | append $env.PATH)} {
+        assert equal (which claude | get path.0? ) $bin "the stub claude is not the one PATH resolves"
+    }
+    $dir
+}
+
 # An unbound canvas, the way `gi open` leaves one before a session is stamped
 # in. enable does not make canvases, so tests that need one write it directly.
 def plain-canvas [root: path, rel: string]: nothing -> path {
@@ -147,6 +166,100 @@ def "enable --force never touches a canvas" [] {
     assert equal $body "my work"
 }
 
+@test
+def "enable writes an ignore file naming every seed, and not itself" [] {
+    let root = temp-root
+    gi enable --root $root | ignore
+    let lines = open --raw ($root | path join ".claude" ".gitignore") | lines | where $it !~ '^#'
+    rm -rf $root
+
+    # Exact paths only: gi seeds into .claude/ but does not own it, and a `*` or
+    # a bare `skills/` would hide a skill the user wrote by hand.
+    assert equal ($lines | where $it =~ '\*' | length) 0
+    assert ("output-styles/canvas.md" in $lines)
+    assert ("skills/gi-canvas/SKILL.md" in $lines)
+    # Not itself: that one visible file is what keeps `.claude/` in `git status`
+    # as a single line instead of vanishing.
+    assert equal ($lines | where $it =~ 'gitignore' | length) 0
+}
+
+@test
+def "the ignore block is regenerated and lines outside it are kept" [] {
+    let root = temp-root
+    mkdir ($root | path join ".claude")
+    "settings.local.json\n" | save --force ($root | path join ".claude" ".gitignore")
+    gi enable --root $root | ignore
+    let first = open --raw ($root | path join ".claude" ".gitignore")
+    # Somebody else's line arriving after gi's block, and a stale entry inside it.
+    $first | str replace "output-styles/canvas.md" "gone/from/the/module.md" | $"($in)mine/\n"
+    | save --force ($root | path join ".claude" ".gitignore")
+    gi enable --root $root | ignore
+    let second = open --raw ($root | path join ".claude" ".gitignore")
+    rm -rf $root
+
+    # gi rewrites what is between its markers — that is what answers the "second
+    # copy of the seed list" objection, since a skill added to gi-md-src cannot
+    # be left unignored.
+    assert ($second | str contains "output-styles/canvas.md")
+    assert (not ($second | str contains "gone/from/the/module.md"))
+    # And touches nothing outside them: `.claude/` is a shared folder, so a line
+    # gi did not write is not gi's to delete.
+    assert ($second | str contains "settings.local.json")
+    assert ($second | str contains "mine/")
+    # One block, not one per run.
+    assert equal ($second | lines | where $it =~ '^# end gi seeds$' | length) 1
+}
+
+@test
+def "an unclosed gi block is an error, not a second block" [] {
+    let root = temp-root
+    gi enable --root $root | ignore
+    let mangled = open --raw ($root | path join ".claude" ".gitignore")
+    | lines | where $it !~ '^# end gi seeds$' | str join "\n"
+    $mangled | save --force ($root | path join ".claude" ".gitignore")
+    let out = try { gi enable --root $root | ignore; "" } catch {|e| $e.msg }
+    rm -rf $root
+
+    # Without the closing line gi cannot tell where its own entries stop, and
+    # guessing would either swallow the rest of the file or stack blocks.
+    assert ($out | str contains "no closing line")
+}
+
+@test
+def "enable --no-gitignore leaves the seeds visible to git" [] {
+    let root = temp-root
+    gi enable --root $root --no-gitignore | ignore
+    let wrote = $root | path join ".claude" ".gitignore" | path exists
+    let seeded = $root | path join ".claude" "output-styles" "canvas.md" | path exists
+    rm -rf $root
+
+    # For the repo that wants the seeds committed so a teammate gets gi on
+    # clone. Only this verb can decline: `gi open` always writes the file, or a
+    # repo that never ran `enable` would get the noise back.
+    assert (not $wrote)
+    assert $seeded
+}
+
+@test
+def "a seeded repo reports one untracked line for .claude" [] {
+    let root = temp-root
+    mkdir $root
+    ^git -C $root init --quiet
+    gi enable --root $root | ignore
+    # core.excludesFile is neutralised: a developer with a global ignore entry
+    # for .claude would otherwise see this pass or fail for reasons that have
+    # nothing to do with the file gi writes.
+    let git = ["-C" $root "-c" "core.excludesFile=/dev/null"]
+    let status = ^git ...$git status --porcelain | lines
+    let named = ^git ...$git status --porcelain --untracked-files=all | lines
+    rm -rf $root
+
+    # The whole point of the file, measured rather than argued: the folder still
+    # announces that gi wrote there, and the seeds inside it are quiet.
+    assert equal $status ["?? .claude/"]
+    assert equal $named ["?? .claude/.gitignore"]
+}
+
 # =============================================================================
 # status — what is seeded here, and what this session is bound to
 # =============================================================================
@@ -219,15 +332,31 @@ def "launch settings carry the Canvas style and the Stop hook" [] {
 }
 
 @test
-def "open refuses to launch before the repo is seeded" [] {
+def "open seeds an unseeded repo instead of refusing" [] {
     let root = temp-root
     mkdir $root
-    let out = try { gi open gi/plan.md --root $root; null } catch {|e| $e.msg }
+    ^git -C $root init --quiet
+    let launched = with-env {PATH: (stub-claude $root | append $env.PATH)} {
+        gi open gi/plan.md --root $root | ignore
+        # Read inside the try, so a launch that wrote nothing fails on the
+        # assertion below rather than here — where it would skip the cleanup.
+        try { open --raw ($root | path join "claude-args") } catch { "" }
+    }
+    let seeded = $root | path join ".claude" "output-styles" "canvas.md" | path exists
+    let ignored = $root | path join ".claude" ".gitignore" | path exists
+    let canvas = $root | path join "gi" "plan.md" | path exists
     rm -rf $root
 
-    # outputStyle names a file that must exist here, or the session would start
-    # with no style and gi would be half on.
-    assert ($out | str contains "not seeded")
+    # outputStyle names a file that must exist here, or the session starts with
+    # no style and gi is half on. Refusing was the old answer; seeding is the
+    # new one, and it is what keeps a launch from dying after it has already
+    # copied a fork.
+    assert $seeded
+    assert $canvas
+    assert ($launched | str contains "--name gi/plan.md")
+    # `open` cannot decline the ignore file — this is the repo that never ran
+    # `enable`, and it is the one that would otherwise get the noise back.
+    assert $ignored
 }
 
 @test
@@ -247,15 +376,21 @@ def "launch args bind the canvas session and name the session after it" [] {
 
 @test
 def "a flag typed where the canvas goes is not taken as the canvas" [] {
+    # --root points at a directory that does not exist, so a guard-order
+    # regression cannot reach the launcher and seed the developer's own checkout.
+    let root = temp-root
     # --wrapped hands an undeclared flag before the doc to the positional, so
     # without this a typo would create a canvas named after the flag.
-    let out = try { gi open --model opus; null } catch {|e| $e.msg }
+    let out = try { gi open --model opus --root $root; null } catch {|e| $e.msg }
     assert ($out | str contains "not a canvas path")
 
     # Declared flags parse in either position — which is why the one flag most
-    # often typed with no canvas named is in the signature.
-    let named = try { gi open --dangerously-skip-permissions --root (temp-root); null } catch {|e| $e.msg }
-    assert ($named | str contains "not seeded")
+    # often typed with no canvas named is in the signature. Proof: with two
+    # flags and no canvas, the one that lands in the doc slot is the *second*,
+    # so the first was consumed as the flag it is.
+    let named = try { gi open --dangerously-skip-permissions --model opus --root $root; null } catch {|e| $e.msg }
+    assert ($named | str contains "--model is not a canvas path")
+    assert (not ($root | path exists))
 }
 
 @test
@@ -307,6 +442,115 @@ def "the plan reports no drop when --new-session hits an unbound canvas" [] {
     # already is. There is just no dropped id to name.
     assert equal $plan.resume false
     assert equal $plan.replaced null
+}
+
+@test
+def "a fork takes the next number in a flat series" [] {
+    # Plain case, and numbering continues past the whole series.
+    assert equal (gi-fork-name "plan.md" ["plan.md"]) "plan_1.md"
+    assert equal (gi-fork-name "plan.md" ["plan.md" "plan_1.md" "plan_2.md"]) "plan_3.md"
+
+    # A fork of a fork joins the same series instead of nesting into
+    # `plan_1_1.md`: every canvas grown from one document sorts next to it.
+    assert equal (gi-fork-name "plan_1.md" ["plan.md" "plan_1.md" "plan_3.md"]) "plan_4.md"
+
+    # Max+1, never the first gap: `plan_2.md` was named somewhere outside the
+    # repo before it was deleted, and must not be handed to another canvas.
+    assert equal (gi-fork-name "plan.md" ["plan.md" "plan_1.md" "plan_3.md"]) "plan_4.md"
+
+    # Only siblings of the same stem and extension are part of the series.
+    assert equal (gi-fork-name "plan.md" ["plan.md" "plan_7.txt" "other_9.md"]) "plan_1.md"
+}
+
+@test
+def "forking copies the canvas and leaves the source bound as it was" [] {
+    let root = temp-root
+    let src = plain-canvas $root "gi/plan.md"
+    let sid = "11111111-2222-3333-4444-555555555555"
+    gi-stamp-session $src $sid
+    let dst = gi-fork-canvas $src
+    let copied = open --raw $dst
+    let source_still = gi-frontmatter-session $src
+    rm -rf $root
+
+    assert equal ($dst | path basename) "plan_1.md"
+    # The source keeps its session: forking is for carrying a document into
+    # another conversation, not for moving it out of the one it has.
+    assert equal $source_still $sid
+    # The copy arrives naming that same session — the launcher is what mints a
+    # fresh id and stamps it, exactly as --new-session does.
+    assert ($copied | str contains $"session: ($sid)")
+}
+
+@test
+def "a fork that cannot be stamped fails before the copy exists" [] {
+    let root = temp-root
+    let src = plain-canvas $root "gi/broken.md"
+    "---\nsession: 11111111-2222-3333-4444-555555555555\n\n# no closing fence\n" | save --force $src
+    let out = try { gi-fork-canvas $src; "" } catch {|e| $e.msg }
+    let left = ls ($root | path join "gi") | get name | path basename
+    rm -rf $root
+
+    # The error belongs to the source, and it has to arrive before the copy: the
+    # same throw after `cp` left an orphan bound to the source's session and
+    # burned a name out of the series, since numbering is max+1 and never
+    # reuses the gap.
+    assert ($out | str contains "frontmatter is not closed")
+    assert equal $left ["broken.md"]
+}
+
+@test
+def "forking a canvas that is not there is an error, not a new canvas" [] {
+    let root = temp-root
+    let out = try { gi-fork-canvas ($root | path join "gi" "missing.md"); "" } catch {|e| $e.msg }
+    rm -rf $root
+
+    # --fork names a source, so an absent file cannot mean "create it" the way
+    # a plain `gi open` does.
+    assert ($out | str contains "no canvas to fork")
+}
+
+@test
+def "open --fork launches the copy and leaves the source binding alone" [] {
+    let root = temp-root
+    mkdir $root
+    ^git -C $root init --quiet
+    let src = plain-canvas $root "gi/plan.md"
+    let sid = "11111111-2222-3333-4444-555555555555"
+    gi-stamp-session $src $sid
+    let launched = with-env {PATH: (stub-claude $root | append $env.PATH)} {
+        gi open gi/plan.md --fork --root $root | ignore
+        try { open --raw ($root | path join "claude-args") } catch { "" }
+    }
+    let source_still = gi-frontmatter-session $src
+    let fork_sid = gi-frontmatter-session ($root | path join "gi" "plan_1.md")
+    rm -rf $root
+
+    # The whole of --fork through the real command: the copy is what opens, on
+    # an id of its own declared with --session-id (never --resume, which would
+    # try to return to the source's conversation), and the source keeps its
+    # binding.
+    assert ($launched | str contains "--name gi/plan_1.md")
+    assert ($launched | str contains $"--session-id ($fork_sid)")
+    assert equal $source_still $sid
+    assert ($fork_sid != $sid)
+}
+
+@test
+def "the fork flags refuse the two ways they cannot mean anything" [] {
+    # Same reason as above: a guard that stopped firing must not reach the
+    # launcher and seed the repo the suite is running in.
+    let root = temp-root
+    # --fork is the one case where the positional names a source, so with no
+    # canvas named there is nothing to copy.
+    let no_doc = try { gi open --fork --root $root; "" } catch {|e| $e.msg }
+    assert ($no_doc | str contains "--fork needs the canvas")
+
+    # Both mint an id, but on different files — the pair names two intentions
+    # at once. Refused before anything is copied or launched.
+    let both = try { gi open gi/plan.md --fork --new-session --root $root; "" } catch {|e| $e.msg }
+    assert ($both | str contains "cannot be combined")
+    assert (not ($root | path exists))
 }
 
 @test

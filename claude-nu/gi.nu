@@ -7,7 +7,13 @@
 #   gi enable          seeds files into the repo — the Canvas output style and
 #                      the gi skills. Writes nothing to settings, turns nothing
 #                      on, and makes no canvas: that is the launcher's job, so
-#                      the two halves never write the same file.
+#                      no two verbs ever write the same canvas. `gi open` seeds
+#                      the same files itself, so this verb is not a prerequisite
+#                      for it; what it still owns is `--force` (refresh after a
+#                      module update — `open` must never clobber an edited
+#                      style) and the chicken-and-egg of `gi import`, which
+#                      needs the `gi-canvas` skill in the repo but launches
+#                      nothing and so never passes through `open`.
 #   gi import          writes one canvas, from a session's dialogue — the one it
 #                      runs inside, or any session named on the line. The only
 #                      verb that can capture the session running it, since it
@@ -22,6 +28,11 @@
 #                      case it is, the file says; there is no second verb.
 #                      `--new-session` is the way out when that session is gone
 #                      (deleted, expired): it overwrites the recorded id.
+#                      `--fork` is the other direction — keep the canvas bound
+#                      as it is and open a copy of it (`plan.md` -> `plan_1.md`)
+#                      on a session of its own, so a document planned in one
+#                      conversation can be carried on in a fresh context while
+#                      the conversation that planned it stays readable.
 #
 # Bare `gi` is the third name and does no work: it reports what is seeded here
 # and which canvas the asking session is bound to.
@@ -135,6 +146,7 @@ def gi-paths [root: path]: nothing -> record {
         style_dst: ($root | path join ".claude" "output-styles" "canvas.md")
         skills_src: ($GI_MODULE_DIR | path join "gi-md-src" "skills")
         skills_dst: ($root | path join ".claude" "skills")
+        ignore_dst: ($root | path join ".claude" ".gitignore")
     }
 }
 
@@ -160,6 +172,55 @@ def gi-default-doc []: nothing -> string {
     $"gi/canvas-(date now | format date '%J_%Q').md"
 }
 
+# The next name in a fork series: `plan.md` -> `plan_1.md`, and a fork of
+# `plan_1.md` -> `plan_2.md`. The trailing `_n` is stripped before numbering, so
+# forks of forks stay flat siblings instead of nesting into `plan_1_1.md` —
+# every canvas grown from one document sorts next to it.
+# Not the first free gap because: a fork name gets written down outside the
+# repo — a chat pointer, a commit body — and gi/ is untracked by default, so
+# nothing would stop a deleted `plan_1.md` from being handed to a different
+# canvas later. Exported for tests.
+export def gi-fork-name [name: string, siblings: list<string>]: nothing -> string {
+    let parsed = $name | path parse
+    let stem = $parsed.stem | str replace --regex '_\d+$' ''
+    let taken = $siblings
+        | each {|s| $s | path parse }
+        | where extension == $parsed.extension
+        | get stem
+        | parse --regex '^(?<base>.+)_(?<n>\d+)$'
+        | where base == $stem
+        | get n
+        | into int
+    $parsed | update stem $"($stem)_(($taken | append 0 | math max) + 1)" | path join
+}
+
+# Copy a canvas to the next free name in its series and hand back the copy.
+# Why the copy is what the launch then opens: the session binding travels with
+# the file (see gi-stamp-session), so a plain `cp` leaves two canvases naming
+# one session and both `gi open`s land in the same conversation. Forking is the
+# spelling for the other case — same document, deliberately another session
+# (a fresh context to implement what the first one planned).
+# Exported for tests.
+export def gi-fork-canvas [src: path]: nothing -> path {
+    if not ($src | path exists) {
+        error make --unspanned {
+            msg: $"no canvas to fork: ($src)"
+            help: "--fork copies a canvas that exists; drop it to start a new one"
+        }
+    }
+    # The copy is stamped with a fresh id as soon as the launch continues, and a
+    # canvas whose frontmatter is unclosed cannot be stamped. Ask that of the
+    # source here, before writing: the same error raised after the copy leaves
+    # an orphan canvas bound to the source's session, burns a name out of the
+    # `_n` series (numbering is max+1, so the gap is never reused), and names a
+    # path the user never typed.
+    gi-frontmatter-split $src | ignore
+    let dir = $src | path dirname
+    let dst = $dir | path join (gi-fork-name ($src | path basename) (ls $dir | get name | path basename))
+    cp $src $dst
+    $dst
+}
+
 # The bundled skills as [src dst] seed rows for enable's copy-if-absent loop.
 # Enumerated from disk, not hardcoded: adding a skill under gi-md-src/skills
 # is the whole change.
@@ -180,6 +241,71 @@ def gi-skill-seeds [paths: record]: nothing -> table {
 def gi-refresh-seeds [paths: record]: nothing -> table {
     [[src dst]; [$paths.style_src $paths.style_dst]]
     | append (gi-skill-seeds $paths)
+}
+
+# Copy the seeds into the repo, never clobbering a file that is already there
+# unless --force says to: once seeded they are the user's files, and refreshing
+# would destroy their edits. --force overwrites, because they are distributed
+# text a module update should be able to refresh.
+# Shared by `gi enable` and `gi open`. Why `open` seeds instead of refusing: the
+# style has to be on disk for `--settings` to name it, and refusing was its only
+# move — an error that also sat *after* the fork copy, so a launch that would not
+# start still left a stray canvas behind and burned a name in the `_n` series.
+# Seeding removes the error rather than reordering around it.
+def gi-seed [paths: record, --force, --no-gitignore]: nothing -> nothing {
+    for seed in (gi-refresh-seeds $paths | insert overwrite $force) {
+        if $seed.overwrite or not ($seed.dst | path exists) {
+            mkdir ($seed.dst | path dirname)
+            cp $seed.src $seed.dst
+        }
+    }
+    if not $no_gitignore {
+        let existing = if ($paths.ignore_dst | path exists) { open --raw $paths.ignore_dst } else { "" }
+        gi-ignore-text $paths $existing | save --force $paths.ignore_dst
+    }
+}
+
+# The block markers gi owns inside `.claude/.gitignore`. Everything between them
+# is regenerated; everything outside is somebody else's and is carried through
+# untouched — the same rule the seeded style and skills get, and the same rule
+# `gi import --gitignore` follows for the file beside a canvas. `.claude/` is a
+# shared folder: gi seeds into it but does not own it.
+const GI_IGNORE_BEGIN = "# gi seeds — regenerated by `claude-nu gi`. `git add` them to track them instead; ignore rules do not apply to tracked files."
+const GI_IGNORE_END = "# end gi seeds"
+
+# The ignore file gi writes beside its seeds, so a repo it seeded does not show
+# six untracked files nobody wants to read in a diff. `existing` is the file's
+# current content ("" when there is none); gi's block replaces the old one in
+# place, or is appended when the file has none yet.
+# Exact paths, never `*` or a bare `skills/`: a directory pattern would silently
+# hide a skill the user wrote by hand.
+# The block does not list the ignore file itself, on purpose. `git status` then
+# still reports `?? .claude/` as a single line resolving to this file alone, so
+# the folder says gi wrote here while the seeds stay quiet; hiding it too makes
+# `.claude/` vanish from `git status`, which is how you forget a tool is writing
+# into your repo. Regenerated on every seed run from the same enumeration the
+# copy loop uses, so a skill added to gi-md-src can never be left unignored.
+def gi-ignore-text [paths: record, existing: string = ""]: nothing -> string {
+    let dir = $paths.ignore_dst | path dirname
+    let lines = $existing | lines
+    let before = $lines | take until {|l| $l == $GI_IGNORE_BEGIN }
+    # A block opened and never closed means the file was hand-edited into a
+    # shape gi cannot rewrite without guessing where its own lines end. Say so
+    # rather than append a second block or swallow the rest of the file.
+    if (($before | length) < ($lines | length)) and ($GI_IGNORE_END not-in $lines) {
+        error make --unspanned {
+            msg: $"gi's block in ($paths.ignore_dst) has no closing line"
+            help: $"add `($GI_IGNORE_END)` after gi's entries, or delete the block and let gi write a new one"
+        }
+    }
+    let after = $lines | skip until {|l| $l == $GI_IGNORE_END } | skip 1
+    $before
+    | append $GI_IGNORE_BEGIN
+    | append (gi-refresh-seeds $paths | get dst | each {|dst| $dst | path relative-to $dir })
+    | append $GI_IGNORE_END
+    | append $after
+    | append ""
+    | str join "\n"
 }
 
 # Seeded files whose content differs from the module source. Why content
@@ -274,13 +400,32 @@ export def main [
 # template when it does not exist and continuing the session it already records
 # when it has one.
 export def --wrapped "gi open" [
-    doc?: path # The canvas (default: gi/canvas-<timestamp>.md)
+    doc?: path # The canvas (default: gi/canvas-<timestamp>.md); with --fork, the canvas to fork FROM
     --root: path # Repo root (default: git top-level)
     --no-hook # Launch with the Canvas style but without the Stop-hook floor
     --new-session # Start a fresh session on this canvas, overwriting the id it records
+    --fork # Copy the named canvas to its next `_n` sibling and open that, on a session of its own
     --dangerously-skip-permissions # Pass claude's flag of the same name through
     ...rest: string # Any other flags go straight to `claude`
 ]: nothing -> nothing {
+    # --fork is the one case where the positional names a source rather than the
+    # file being opened, so there is nothing to copy when it is omitted.
+    if $fork and ($doc | is-empty) {
+        error make --unspanned {
+            msg: "--fork needs the canvas to fork from"
+            help: "claude-nu gi open gi/plan.md --fork"
+        }
+    }
+    # Both mint an id, but on different files: --new-session overwrites the one
+    # this canvas records, --fork leaves it alone and binds the copy. Together
+    # they name two intentions at once, and the flags cannot say which file the
+    # user meant to keep.
+    if $fork and $new_session {
+        error make --unspanned {
+            msg: "--fork and --new-session cannot be combined"
+            help: "--fork already opens its copy on a fresh session; --new-session restarts the named canvas in place"
+        }
+    }
     # Why --dangerously-skip-permissions is declared when --wrapped would forward
     # it anyway: under --wrapped an unknown flag typed BEFORE the doc is taken as
     # the doc (`gi open --dangerously-skip-permissions` would name a canvas that),
@@ -299,28 +444,28 @@ export def --wrapped "gi open" [
             label: {text: "flags for `claude` go after the canvas: gi open <doc> <flags>" span: (metadata $doc).span}
         }
     }
-    gi-launch --root $root --doc $doc --hook=(not $no_hook) --new-session=$new_session --extra $extra
+    gi-launch --root $root --doc $doc --hook=(not $no_hook) --new-session=$new_session --fork=$fork --extra $extra
 }
 
 # Seed the gi protocol into this repo: the Canvas style and the gi skills.
 # Turns nothing on — `gi open` does that, per session — and writes to
 # no settings file. Re-runnable: seeded files are never clobbered.
+# Not a prerequisite for `gi open`, which seeds the same files itself. Run it to
+# refresh seeds with --force, or to get the `gi-canvas` skill into a repo where
+# the work will start from inside a live session rather than from a launch.
 export def "gi enable" [
     --root: path # Repo root to seed (default: git top-level)
     --force # Overwrite the seeded style and skills with the module's versions
+    --no-gitignore # Do not write .claude/.gitignore — leave the seeds visible to git
 ]: nothing -> record {
     let root = $root | default (gi-repo-root) | path expand
     let paths = gi-paths $root
-    # Seed the output style and the gi skills. Why not clobber: once they exist
-    # they are the user's files — refreshing would destroy their edits. --force
-    # overwrites them, because they are distributed text a module update should
-    # be able to refresh.
-    for seed in (gi-refresh-seeds $paths | insert overwrite $force) {
-        if $seed.overwrite or not ($seed.dst | path exists) {
-            mkdir ($seed.dst | path dirname)
-            cp $seed.src $seed.dst
-        }
-    }
+    # Why only this verb can decline the ignore file, while `gi open` always
+    # writes it: `open` is where a repo that never ran `enable` gets seeded, and
+    # that repo would otherwise get the noise back. Declining is the deliberate
+    # act, so it belongs on the deliberate verb — and it is a one-time state
+    # anyway: `git add` the seeds and the ignore file stops applying to them.
+    gi-seed $paths --force=$force --no-gitignore=$no_gitignore
     # Seeding alone changes nothing about the session that ran it: the style and
     # the hook arrive with `gi open`, so the next lines are the whole
     # instruction. Seeding writes no canvas, so both verbs that make one are
@@ -409,11 +554,11 @@ export def "gi import" [
     }
 
     print $"canvas: ($paths_doc.rel)"
-    # Seeding is a separate verb, so the style may not be here yet — and `gi
-    # open` refuses without it. Say so while the user is still looking at the
-    # command, rather than one step later.
+    # Not a blocked next step — `gi open` seeds the style itself. It is the
+    # skills that only `enable` puts here, and an in-session `gi import` needs
+    # them. Say so while the user is still looking at the command.
     if not ($paths.style_dst | path exists) {
-        print $"this repo is not seeded yet:  claude-nu gi enable"
+        print $"the gi skills are not in this repo yet:  claude-nu gi enable"
     }
     print $"open a bound session on it:  claude-nu gi open ($paths_doc.rel)"
     if $session == null {
@@ -450,14 +595,26 @@ export def gi-frontmatter-session [file: path]: nothing -> any {
 # both origins end up with one mechanism, and the binding travels with the file
 # — move or copy a canvas and it still names its session. Exported for tests.
 export def gi-stamp-session [file: path, sid: string]: nothing -> nothing {
-    let raw = open --raw $file
-    if not ($raw | str starts-with "---\n") {
-        return ($"---\nsession: ($sid)\n---\n\n($raw)" | save --force $file)
+    let split = gi-frontmatter-split $file
+    if $split.head == null {
+        return ($"---\nsession: ($sid)\n---\n\n($split.body)" | save --force $file)
     }
-    # Split at the closing fence: head is the opening `---` plus the keys. The
-    # rewrite happens inside head only, so a line of prose that happens to start
-    # with `session:` is never touched. The body is passed through untouched,
-    # trailing newline and all.
+    # The rewrite happens inside head only, so a line of prose that happens to
+    # start with `session:` is never touched. The body is passed through
+    # untouched, trailing newline and all.
+    let head = $split.head
+    | if ($in =~ '(?m)^session:') { str replace --regex --multiline '^session:.*$' $"session: ($sid)" } else { $"($in)\nsession: ($sid)" }
+    $"($head)\n---\n($split.body)" | save --force $file
+}
+
+# A canvas cut at its frontmatter fence: `head` is the opening `---` plus the
+# keys and `body` is everything after the closing one, or head is null when the
+# file has no frontmatter at all. One place defines what a well-formed canvas
+# looks like, so `--fork` can ask the question of the *source* before copying
+# anything, instead of the copy discovering it while being stamped.
+def gi-frontmatter-split [file: path]: nothing -> record {
+    let raw = open --raw $file
+    if not ($raw | str starts-with "---\n") { return {head: null, body: $raw} }
     let parts = $raw | split row --number 2 "\n---\n"
     if ($parts | length) < 2 {
         # Say which file and what is wrong with it. Indexing past the split
@@ -467,9 +624,7 @@ export def gi-stamp-session [file: path, sid: string]: nothing -> nothing {
             help: "the block opened by `---` needs a closing `---` line of its own before the body"
         }
     }
-    let head = $parts.0
-    | if ($in =~ '(?m)^session:') { str replace --regex --multiline '^session:.*$' $"session: ($sid)" } else { $"($in)\nsession: ($sid)" }
-    $"($head)\n---\n($parts.1)" | save --force $file
+    {head: $parts.0, body: $parts.1}
 }
 
 # Which session a launch runs on, decided from what the canvas records. Split
@@ -541,23 +696,26 @@ def gi-launch [
     --root: path # Repo root (default: git top-level)
     --hook # Carry the Stop-hook floor into the session
     --new-session # Mint a fresh session id, overwriting the one the canvas records
+    --fork # Open a copy of the named canvas instead, on a session of its own
     --extra: list<string> = [] # Flags forwarded to `claude` untouched
 ]: nothing -> nothing {
     gi-reject-owned-flags $extra
     let root = $root | default (gi-repo-root) | path expand
+    # outputStyle names a style file that must be on disk here, or the session
+    # starts with no style and gi is silently half on. So seed it — copy-if-
+    # absent, an edited style is never touched — rather than refuse. Seeding
+    # cannot fail on anything the user typed; every check that can (the flags
+    # above, the fork source below) either runs before it or before its own
+    # write, so no failure leaves a canvas behind.
+    gi-seed (gi-paths $root)
     let doc = $doc | default (gi-default-doc)
+    # The copy is made here and not in `gi open` so everything below — the
+    # session plan, the stamp, GI_CANVAS, --name — sees only the file being
+    # opened. From this line on a fork is an ordinary canvas.
     let paths_doc = gi-doc-path $root $doc
+    | if $fork { gi-doc-path $root (gi-fork-canvas $in.abs) } else { }
     let doc_abs = $paths_doc.abs
     let doc_rel = $paths_doc.rel
-    let style = (gi-paths $root).style_dst
-    # outputStyle names a style file that must already be on disk here; without
-    # it Claude Code would launch with no style and gi would be silently half on.
-    if not ($style | path exists) {
-        error make --unspanned {
-            msg: $"the Canvas style is not seeded in this repo: ($style)"
-            help: "run `claude-nu gi enable` first"
-        }
-    }
     # The canvas exists before a session is bound to it: a new one is stamped
     # with the id gi mints, and there must be a file to stamp.
     if not ($doc_abs | path exists) {
@@ -570,10 +728,18 @@ def gi-launch [
     # declines to read it, which mints and overwrites instead: a session file
     # can be deleted or expire, and `claude --resume` then fails on an id the
     # canvas can do nothing about.
-    let plan = gi-session-plan (gi-frontmatter-session $doc_abs) --new-session=$new_session
+    # A fork mints for the same reason --new-session does: the copy arrives
+    # carrying the source's id, and resuming that would put both canvases in one
+    # conversation — the thing forking exists to avoid. The id it drops is the
+    # source's, so the note below names the session this fork grew out of.
+    let plan = gi-session-plan (gi-frontmatter-session $doc_abs) --new-session=($new_session or $fork)
     if not $plan.resume {
         if ($plan.replaced | is-not-empty) {
-            print $"note: replacing session (gi-session-key $plan.replaced) recorded in ($doc_rel)"
+            print (if $fork {
+                $"note: ($doc_rel) is a fork of session (gi-session-key $plan.replaced) and starts one of its own"
+            } else {
+                $"note: replacing session (gi-session-key $plan.replaced) recorded in ($doc_rel)"
+            })
         }
         gi-stamp-session $doc_abs $plan.sid
     }
