@@ -58,17 +58,12 @@ def "enable makes no canvas" [] {
     let gi_dir = $root | path join "gi" | path exists
     rm -rf $root
 
-    # Canvases belong to the launcher: `gi open <doc>` creates one and binds a
-    # session to it in the same breath, so a canvas seeded here would be an
-    # unbound file nobody asked for.
-    assert equal $status.doc null
+    # Canvases belong to the two verbs that make one: `gi open <doc>` creates
+    # and binds in the same breath, `gi import` writes one from a session. A
+    # canvas seeded here would be an unbound file nobody asked for — enable
+    # does not even carry a `doc` field to report.
+    assert ("doc" not-in ($status | columns))
     assert (not $gi_dir)
-}
-
-@test
-def "a canvas path on enable without an import is rejected" [] {
-    let out = try { gi enable notes/plan.md; null } catch {|e| $e.msg }
-    assert ($out | str contains "makes no canvas")
 }
 
 @test
@@ -388,9 +383,10 @@ def "stamping a session joins an existing frontmatter block" [] {
     assert equal $meta {session: "11111111-2222-3333-4444-555555555555" title: "my plan"}
 }
 
-# No tests here for `gi --force`, `gi enable --no-hook`, or `gi <doc>`: each
-# verb is its own command, so the parser rejects those before the code runs —
-# and a parse error cannot be caught by `try`, which is the point.
+# No tests here for `gi --force`, `gi enable --no-hook`, `gi enable <doc>`, or
+# `gi <doc>`: each verb is its own command, so the parser rejects those before
+# the code runs — and a parse error cannot be caught by `try`, which is the
+# point.
 #
 # Nor for "open refuses a bound canvas" / "resume needs a session": there is
 # one verb now, and the canvas decides which half of it runs.
@@ -584,7 +580,7 @@ def "allow-rule budget is tunable via GI_HOOK_MAX_LEN" [] {
 }
 
 # =============================================================================
-# enable --from-session — the live session's dialogue as the canvas
+# import — a session's dialogue as the canvas
 # =============================================================================
 
 const FIXTURE_SESSION = '99bf0e5b-212c-4891-abb2-6bc585af2ea0'
@@ -612,6 +608,21 @@ def "import text carries the canvas header, the pointer note, and the dialogue" 
     assert not ($body | str contains "> [Bash:") # tool calls dropped by default
 }
 
+# The note is the copy that survives — the terminal line scrolls away — so it
+# must not claim a live session, or a missing tail, for an older named one.
+@test
+def "the import note claims a missing tail only for the live session" [] {
+    let file = $FIXTURES_SESSIONS_DIR | path join $"($FIXTURE_SESSION).jsonl"
+    let named = gi-import-text $file
+    let live = gi-import-text $file --live
+
+    assert ($named | str contains $"Imported from session ($FIXTURE_SESSION | str substring 0..7)")
+    assert not ($named | str contains "live session")
+    assert not ($named | str contains "is missing")
+    assert ($live | str contains "Imported from the live session")
+    assert ($live | str contains "The turn that ran the import is missing")
+}
+
 @test
 def "import text with the tools flag keeps one-line tool placeholders" [] {
     let body = gi-import-text ($FIXTURES_SESSIONS_DIR | path join $"($FIXTURE_SESSION).jsonl") --tools
@@ -621,12 +632,12 @@ def "import text with the tools flag keeps one-line tool placeholders" [] {
 }
 
 @test
-def "enable from-session writes a session-keyed canvas" [] {
+def "import writes a session-keyed canvas" [] {
     let root = temp-root
     let home = temp-root
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi enable --root $root --from-session
+        gi import --root $root
     }
     let body = open --raw $status.doc
     rm -rf $root $home
@@ -635,14 +646,60 @@ def "enable from-session writes a session-keyed canvas" [] {
     assert str contains $body "## User"
 }
 
+# The reason the session became a parameter: from the REPL there is no live
+# session to fall back on, and the one being imported is rarely the newest.
 @test
-def "from-session refuses to overwrite an existing doc" [] {
+def "import takes a named session, with no live session in the environment" [] {
+    let root = temp-root
+    let home = temp-root
+    stage-session $home
+    let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
+        gi import $FIXTURE_SESSION --root $root
+    }
+    let body = open --raw $status.doc
+    rm -rf $root $home
+
+    assert equal ($status.doc | path basename) $"session-($FIXTURE_SESSION | str substring 0..7).md"
+    assert str contains $body "## User"
+}
+
+# The other spelling the signature promises: a .jsonl path, which the default
+# doc name has to key on the same way it keys on a UUID.
+@test
+def "import takes a session as a .jsonl path" [] {
+    let root = temp-root
+    let home = temp-root
+    stage-session $home
+    let file = $home | path join ".claude" "projects" "-tmp-proj" $"($FIXTURE_SESSION).jsonl"
+    let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
+        gi import $file --root $root
+    }
+    rm -rf $root $home
+
+    assert equal ($status.doc | path basename) $"session-($FIXTURE_SESSION | str substring 0..7).md"
+}
+
+@test
+def "the to flag names the canvas, with no session named" [] {
+    let root = temp-root
+    let home = temp-root
+    stage-session $home
+    let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
+        gi import --to notes/plan.md --root $root
+    }
+    rm -rf $root $home
+
+    assert equal ($status.doc | path basename) "plan.md"
+}
+
+@test
+def "import refuses to overwrite an existing doc" [] {
     let root = temp-root
     let home = temp-root
     stage-session $home
     let out = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi enable --root $root --from-session | ignore
-        try { gi enable --root $root --from-session | ignore; null } catch {|e| $e.msg }
+        gi import --root $root | ignore
+        try { gi import --root $root | ignore; null } catch {|e| $e.msg }
     }
     rm -rf $root $home
 
@@ -650,10 +707,10 @@ def "from-session refuses to overwrite an existing doc" [] {
 }
 
 @test
-def "from-session errors when no live session id is exported" [] {
+def "import with no session errors when no live session id is exported" [] {
     let root = temp-root
     let out = with-env {CLAUDE_CODE_SESSION_ID: null} {
-        try { gi enable --root $root --from-session | ignore; null } catch {|e| $e.msg }
+        try { gi import --root $root | ignore; null } catch {|e| $e.msg }
     }
     rm -rf $root
 
@@ -666,7 +723,7 @@ def "the gitignore flag keeps the import out of git, beside the doc" [] {
     let home = temp-root
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi enable --root $root --from-session --gitignore
+        gi import --root $root --gitignore
     }
     let ignored = open --raw ($root | path join "gi" ".gitignore") | lines
     rm -rf $root $home
@@ -684,7 +741,7 @@ def "the commit flag puts the import into git history" [] {
     git -C $root config user.email "test@example.com"
     git -C $root config user.name "test"
     with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi enable --root $root --from-session --commit | ignore
+        gi import --root $root --commit | ignore
     }
     let committed = git -C $root show --name-only --format="%s" HEAD | lines
     rm -rf $root $home
@@ -695,20 +752,8 @@ def "the commit flag puts the import into git history" [] {
 
 @test
 def "commit and gitignore flags contradict each other" [] {
-    let out = try { gi enable --from-session --commit --gitignore; null } catch {|e| $e.msg }
+    let out = try { gi import --commit --gitignore; null } catch {|e| $e.msg }
     assert ($out | str contains "contradict")
-}
-
-@test
-def "the commit flag without an import errors" [] {
-    let out = try { gi enable --commit; null } catch {|e| $e.msg }
-    assert ($out | str contains "apply to the imported doc")
-}
-
-@test
-def "the tools flag without an import errors" [] {
-    let out = try { gi enable --tools; null } catch {|e| $e.msg }
-    assert ($out | str contains "apply to the imported doc")
 }
 
 # =============================================================================
@@ -716,12 +761,12 @@ def "the tools flag without an import errors" [] {
 # =============================================================================
 
 @test
-def "a from-session canvas carries the full session id in its frontmatter" [] {
+def "an imported canvas carries the full session id in its frontmatter" [] {
     let root = temp-root
     let home = temp-root
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi enable --root $root --from-session
+        gi import --root $root
     }
     let sid = gi-frontmatter-session $status.doc
     rm -rf $root $home

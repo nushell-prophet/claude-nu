@@ -36,12 +36,16 @@ A canvas keeps one session for life, and `gi open` handles both halves of that: 
 ## Import this session
 
 ```nushell
-nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi enable --from-session'          # → gi/session-<id>.md, seeds style + skills
-nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi enable --from-session --tools'  # ...keeping tool calls as one-line placeholders
-nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi enable notes/x.md --from-session' # ...at a chosen path
+nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi import'                     # → gi/session-<id>.md
+nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi import --tools'             # ...keeping tool calls as one-line placeholders
+nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi import --to notes/x.md'     # ...at a chosen path
 ```
 
-It refuses to overwrite an existing doc — that is deliberate, do not delete the old one to get past it; name another path instead (`gi enable <doc> --from-session`).
+Named with no session, `gi import` takes the one it runs inside — which is this one, since you are running it. The first positional names another session, and only the user needs that (they get a completer for it in the REPL).
+
+It refuses to overwrite an existing doc — that is deliberate, do not delete the old one to get past it; name another path instead.
+
+If it says the repo is not seeded, run `nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi enable'` — that drops the style and the skills in, and makes no canvas.
 
 Then tell the user, in one line: exit this session and run `claude-nu gi open <doc>`. The import wrote this session's id into the canvas, so that reopens **this same session** (same id, full context) with the canvas bound, and the missing tail — the turns after the import, which the session log cannot contain yet — is still in context and can be appended there.
 

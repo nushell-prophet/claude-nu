@@ -8,7 +8,7 @@
 #   project-move    # Retarget Claude's stored state from a project's old path to its new one
 #   commits         # Per-commit Claude-authorship table; --by-month for the monthly share
 #   code-authorship # Claude's share of the lines living in the tree now (git blame)
-#   gi              # gi protocol: status on its own; gi enable seeds a repo, gi open launches a session bound to a canvas
+#   gi              # gi protocol: status on its own; gi enable seeds a repo, gi import turns a session into a canvas, gi open launches a session bound to one
 #
 # Usage:
 #   use claude-nu
@@ -25,7 +25,7 @@ export use sessions.nu [
 ]
 # `gi check` is deliberately absent: it is the Stop hook's body, not a verb a
 # user types, and the hook imports it straight from gi.nu (see GI_COMMAND).
-export use gi.nu [ main "gi enable" "gi open" ]
+export use gi.nu [ main "gi enable" "gi import" "gi open" ]
 # `main` imports under the module's own name — this is `claude-nu project-move`.
 export use project-move.nu [ main ]
 export use attribution.nu [ commits code-authorship ]

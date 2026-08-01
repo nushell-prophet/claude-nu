@@ -22,7 +22,7 @@ claude-nu/
 │   ├── discovery.nu     # On-disk session layout: enumerate, resolve, read session files
 │   ├── extract.nu       # Session records -> text, dialogue, metrics
 │   ├── render.nu        # Record content -> markdown text
-│   ├── gi.nu            # gi protocol, as real subcommands (`gi enable`, `gi open`, bare `gi` for status): enable seeds the repo, open launches a session bound to one canvas (style + Stop hook travel with the launch)
+│   ├── gi.nu            # gi protocol, as real subcommands (`gi enable`, `gi import`, `gi open`, bare `gi` for status): enable seeds the repo, import writes a canvas from a session's dialogue, open launches a session bound to one canvas (style + Stop hook travel with the launch)
 │   ├── project-move.nu  # Retarget stored state from a project's old path to its new one
 │   ├── gi-hook.nu       # Stop-hook entry point — `nu --stdin` runs this file; it imports `gi check` from gi.nu, which mod.nu deliberately does not re-export
 │   └── attribution.nu   # Claude-authorship of git history: commits (--by-month) and code-authorship (blame)
@@ -44,8 +44,9 @@ Reference-doc fetchers (Claude Code + Nushell docs) moved to cozy: `cozy docs cl
 - `nu.nu` completions dynamically parse script AST to discover subcommands at tab-time
 - `claude.nu` session picker shows age, size, and summary alongside UUIDs
 - `claude-nu/gi-md-src/canvas-output-style.md` is the canonical Canvas style; `gi enable` seeds it into each repo's `.claude/output-styles/canvas.md`, and `gi open` turns it on for one launch via `claude --settings`. A public copy lives in `../my-claude-skills/plugins/canvas-output-style/output-styles/canvas.md` — edit here first, then sync there. That copy deliberately drops the `$env.GI_CANVAS` sentence (nothing sets it there) and the protected-branch bullet (it names a skill the plugin doesn't ship). Keep the style file itself comment-free: it is seeded verbatim and injected into every consumer session's system prompt.
-- `gi enable` seeds only distributed text — the style and the skills. Canvases are the launcher's: `gi open <doc>` creates one from `gi-md-src/canvas-header.md` and stamps the session it mints into its frontmatter, so a canvas is never written by both halves. A path on `enable` only names where `--from-session` puts its import.
-- `claude-nu/gi-md-src/skills/` holds the skills `gi enable` seeds into a repo's `.claude/skills/`. `gi-canvas` is the in-session entry point: it runs the import and hands the user the command to launch the bound session, because a session cannot bind itself.
+- `gi enable` seeds only distributed text — the style and the skills. Canvases come from the other two verbs: `gi open <doc>` creates one from `gi-md-src/canvas-header.md` and stamps the session it mints into its frontmatter, `gi import` writes one from a session's dialogue (export-session stamps the frontmatter there) — so no two verbs ever write the same file.
+- `gi import` is the only verb runnable from inside the session being captured: `enable` makes no canvas and `open` launches `claude`, which a live session cannot do for itself. Its session is a parameter with the `nu-complete claude sessions` picker, not a switch — a switch could only mean the live session, so the REPL case (import an older chat) had no spelling at all.
+- `claude-nu/gi-md-src/skills/` holds the skills `gi enable` seeds into a repo's `.claude/skills/`. `gi-canvas` is the in-session entry point: it runs `gi import` and hands the user the command to launch the bound session, because a session cannot bind itself.
 
 ## Commands
 
@@ -77,10 +78,10 @@ claude-nu commits | where is_claude | length # any other cut is a pipeline on th
 claude-nu code-authorship              # Claude's share of surviving lines (git blame): { total_lines, claude_lines, pct }
 claude-nu gi enable                    # Seed the Canvas style and the gi skills into this repo (writes no settings, turns nothing on, makes no canvas)
 claude-nu gi enable --force            # Re-seed the style and skills from the module
-claude-nu gi enable --from-session     # ...and start a canvas from this session's dialogue (gi/session-<id>.md)
-claude-nu gi enable notes/plan.md --from-session # ...at a chosen path
-claude-nu gi enable --from-session --tools     # ...keeping tool calls as one-line placeholders
-claude-nu gi enable --from-session --commit    # ...and commit it; --gitignore keeps it out of git instead
+claude-nu gi import                    # A canvas from a session's dialogue (gi/session-<id>.md). No session named = the one this runs inside; name any session (completer: age, size, summary) to import an older chat from the REPL
+claude-nu gi import --to notes/plan.md # ...at a chosen path (a flag, not a positional: the in-session call names a path but no session)
+claude-nu gi import --tools            # ...keeping tool calls as one-line placeholders
+claude-nu gi import --commit           # ...and commit it; --gitignore keeps it out of git instead
 claude-nu gi open gi/plan.md           # Launch a session bound to that canvas: style + Stop hook via `claude --settings`, $env.GI_CANVAS set. A canvas with no `session:` gets one minted and written in; one that has it is resumed. Created from the template if new; --no-hook drops the floor; --new-session overwrites the recorded id when that session is gone; parallel canvases per repo. `--wrapped`: unknown flags (`--dangerously-skip-permissions`, `--model`, ...) go straight to `claude`, except the ones gi sets itself (`--settings`, `--session-id`, `--resume`/`-r`, `--continue`/`-c`, `--fork-session`, `--name`), and a flag in the doc's place is an error rather than a canvas named `--model`
 claude-nu gi                           # { canvas, style, skills, stale } — canvas comes from $env.GI_CANVAS, i.e. the asking session
 ```

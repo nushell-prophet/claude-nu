@@ -1,13 +1,18 @@
 # gi — the gi protocol: seeded per repo, activated per session at launch.
 #
 # The gi protocol moves all "what/why" into git: the diff and the commit body
-# carry the record, the chat carries almost nothing. Two commands do the work,
+# carry the record, the chat carries almost nothing. Three commands do the work,
 # and the split between them is the whole design:
 #
 #   gi enable          seeds files into the repo — the Canvas output style and
 #                      the gi skills. Writes nothing to settings, turns nothing
 #                      on, and makes no canvas: that is the launcher's job, so
 #                      the two halves never write the same file.
+#   gi import          writes one canvas, from a session's dialogue — the one it
+#                      runs inside, or any session named on the line. The only
+#                      verb that can capture the session running it, since it
+#                      launches nothing: `enable` seeds no canvas, and `open`
+#                      cannot be reached from the session being imported.
 #   gi open            launches Claude Code bound to one canvas: `--settings`
 #                      carries the output style and the Stop hook for that launch
 #                      alone, and $env.GI_CANVAS names the canvas. Both reach the
@@ -40,7 +45,7 @@
 # so there is nothing to switch off. A repo set up by the older, repo-wide gi
 # keeps working from its own settings until those keys are deleted by hand.
 
-use sessions.nu [export-session resolve-session-file]
+use sessions.nu [export-session resolve-session-file "nu-complete claude sessions"]
 
 # The output-style name gi passes to `claude --settings` at launch. Matches the
 # `name:` frontmatter in the seeded style file — outputStyle names a style, and
@@ -188,38 +193,47 @@ def gi-stale [paths: record]: nothing -> list {
     | get dst
 }
 
-# The UUID of the session this command runs inside. Why the env var and not
-# export-session's default (newest session file by mtime): during a live session
-# the newest file is just as likely a subagent transcript or a session running in
-# another window, and importing someone else's dialogue as your canvas is silent
-# and wrong. Errors when unset — no fallback, since the wrong import is worse
-# than none.
+# The UUID of the session this command runs inside — what `gi import` falls back
+# to when no session is named. Why the env var and not export-session's default
+# (newest session file by mtime): during a live session the newest file is just
+# as likely a subagent transcript or a session running in another window, and
+# importing someone else's dialogue as your canvas is silent and wrong. Errors
+# when unset — no fallback, since the wrong import is worse than none.
 def gi-session-id []: nothing -> string {
     let sid = $env.CLAUDE_CODE_SESSION_ID? | default ""
     if ($sid | is-empty) {
         error make --unspanned {
             msg: "no live session: $env.CLAUDE_CODE_SESSION_ID is unset"
-            help: "--from-session imports the session it runs inside — run it from a Claude Code session"
+            help: "with no session named, `gi import` imports the session it runs inside — name one, or run it from a Claude Code session"
         }
     }
     $sid
 }
 
-# The working doc's starting content for --from-session: the canvas header, an
+# A canvas's starting content for `gi import`: the canvas header, an
 # import note, then the session's dialogue — user messages and Claude's visible
 # replies; tool calls dropped, or kept as one-line placeholders with --tools.
 # Why a note carrying the .jsonl path: everything left out is one `open` away,
-# and the import can never contain the turn that asked for it (Claude Code
-# writes the log as the turn runs), so the gap is stated in the file rather
-# than only in the terminal, where it scrolls away. Exported for tests, which
-# drive it with a fixture session.
+# so the gap is stated in the file rather than only in the terminal, where it
+# scrolls away. Why --live is a parameter and not "compare against
+# $env.CLAUDE_CODE_SESSION_ID": only the caller knows whether the session was
+# named or fell back to the live one, and the missing-tail sentence is true in
+# exactly that second case — a named older session's log is complete. Exported
+# for tests, which drive it with a fixture session.
 export def gi-import-text [
     session_id: string # UUID, or a .jsonl path (what the tests pass)
     --tools # Keep tool calls as one-line placeholders instead of dropping them
+    --live # This is the session running the import: its log cannot hold the current turn
 ]: nothing -> string {
     let file = resolve-session-file $session_id
     let left_out = if $tools { "Thinking is dropped here; tool calls are one-line placeholders" } else { "Tool calls, results, and thinking are dropped here" }
-    let note = $"> Imported from the live session on (date now | format date '%Y-%m-%d %H:%M'). The turn that ran the import is missing — Claude Code writes the session log as the turn runs. ($left_out); the full record is `($file)`."
+    let source = if $live {
+        "Imported from the live session"
+    } else {
+        $"Imported from session (gi-session-key $file)"
+    }
+    let gap = if $live { " The turn that ran the import is missing — Claude Code writes the session log as the turn runs." }
+    let note = $"> ($source) on (date now | format date '%Y-%m-%d %H:%M').($gap | default '') ($left_out); the full record is `($file)`."
     # Replace the H1 rather than prepend the header: export-session titles the
     # doc from the session summary, and two H1s in a committed doc is noise.
     # First match only (no --all) — later `# ` lines belong to the dialogue.
@@ -228,9 +242,11 @@ export def gi-import-text [
     | str replace --multiline --no-expand '^# .+' ([(open --raw $GI_HEADER_SRC) $note] | str join "\n")
 }
 
-# The 8-char session key used in the default doc name.
-def gi-session-key [session_id: string]: nothing -> string {
-    $session_id | str substring 0..7
+# The 8-char session key used in the default doc name and in messages. Takes a
+# UUID or a .jsonl path, because `gi import` accepts both: `path basename`
+# leaves a bare UUID untouched, so one line serves the two spellings.
+def gi-session-key [session: string]: nothing -> string {
+    $session | path basename | str replace --regex '\.jsonl$' '' | str substring 0..7
 }
 
 # Why real subcommands and not one command with an action positional (which is
@@ -247,7 +263,7 @@ def gi-session-key [session_id: string]: nothing -> string {
 # blank line.
 
 # What gi has seeded in this repo, and the canvas this session is bound to.
-# The verbs: `gi enable`, `gi open`.
+# The verbs: `gi enable`, `gi import`, `gi open`.
 export def main [
     --root: path # Repo root to inspect (default: git top-level)
 ]: nothing -> record {
@@ -290,78 +306,11 @@ export def --wrapped "gi open" [
 # Turns nothing on — `gi open` does that, per session — and writes to
 # no settings file. Re-runnable: seeded files are never clobbered.
 export def "gi enable" [
-    doc?: path # Where the --from-session import lands (default: gi/session-<id>.md)
     --root: path # Repo root to seed (default: git top-level)
     --force # Overwrite the seeded style and skills with the module's versions
-    --from-session # Start a canvas from this session's dialogue
-    --commit # Commit the imported doc
-    --gitignore # Keep the imported doc out of git
-    --tools # Keep tool calls in the import as one-line placeholders
 ]: nothing -> record {
-    # What is left after the signature: the three rules that relate options to
-    # each other, which no signature can state.
-    # enable seeds the style and the skills; it does not make canvases. `gi open
-    # <doc>` does that, and binds a session in the same breath — so a path here
-    # with nothing to import would name a file enable has no reason to write.
-    if $doc != null and not $from_session {
-        error make {
-            msg: "gi enable makes no canvas — a path here is where --from-session puts the import"
-            label: {text: "to start a canvas: gi open <doc>; to import this session into it: gi enable <doc> --from-session" span: (metadata $doc).span}
-        }
-    }
-    if $commit and $gitignore {
-        error make {
-            msg: "--commit and --gitignore contradict each other"
-            label: {text: "pick one: put the import in git, or keep it out" span: (metadata $gitignore).span}
-        }
-    }
-    # These flags shape or file the imported transcript, so none of them means
-    # anything without an import — committing whatever an older canvas happens
-    # to hold is a different action, not this one.
-    let import_only = [
-        [given span];
-        [$commit (metadata $commit).span]
-        [$gitignore (metadata $gitignore).span]
-        [$tools (metadata $tools).span]
-    ]
-    | where given
-    if not $from_session and ($import_only | is-not-empty) {
-        error make {
-            msg: "--commit, --gitignore, and --tools apply to the imported doc"
-            label: {text: "add --from-session to import this session" span: ($import_only | first | get span)}
-        }
-    }
     let root = $root | default (gi-repo-root) | path expand
     let paths = gi-paths $root
-    let sid = if $from_session { gi-session-id }
-
-    # Canvases are not enable's business: `gi open <doc>` creates one from the
-    # template and binds a session to it in the same breath. Only an import
-    # needs a path here, because the dialogue has to land in a file. Default is
-    # session-keyed, so re-running it in one session refreshes one file and
-    # leaves the repo's older canvases alone.
-    let paths_doc = if $from_session {
-        gi-doc-path $root ($doc | default $"gi/session-(gi-session-key $sid).md")
-    }
-    let doc_abs = $paths_doc.abs?
-
-    # Build the import before anything is written: a session that can't be read
-    # must not leave a half-seeded repo behind.
-    let imported = if $from_session {
-        if ($doc_abs | path exists) {
-            error make --unspanned {
-                msg: $"working doc already exists: ($doc_abs)"
-                help: "the import is the doc's starting content and won't overwrite work already in it — delete the file to re-import, or name another doc: gi enable <doc> --from-session"
-            }
-        }
-        gi-import-text $sid --tools=$tools
-    }
-
-    if $imported != null {
-        mkdir ($doc_abs | path dirname)
-        $imported | save --force $doc_abs
-    }
-
     # Seed the output style and the gi skills. Why not clobber: once they exist
     # they are the user's files — refreshing would destroy their edits. --force
     # overwrites them, because they are distributed text a module update should
@@ -372,6 +321,72 @@ export def "gi enable" [
             cp $seed.src $seed.dst
         }
     }
+    # Seeding alone changes nothing about the session that ran it: the style and
+    # the hook arrive with `gi open`, so the next lines are the whole
+    # instruction. Seeding writes no canvas, so both verbs that make one are
+    # named here — this is where the user is standing.
+    print $"gi seeded in ($root)."
+    print $"start a canvas:  claude-nu gi open [<doc>]"
+    print $"...or from a session's dialogue:  claude-nu gi import [<session>]"
+    let status = gi-status --root $root
+    # Surface drift at the moment the user is already touching gi — status
+    # carries the same list, but nobody polls it.
+    if not $force and ($status.stale | is-not-empty) {
+        print $"note: ($status.stale | length) seeded file\(s\) differ from the module — `gi enable --force` refreshes them."
+    }
+    $status
+}
+
+# Why a verb of its own and not a flag on `gi enable` (which is what this
+# replaced): enable seeds distributed text and makes no canvas, so an import
+# living there dragged in a path and three flags the command had no other use
+# for, plus three run-time guards to keep them apart. Why the session is a
+# parameter and not "the session I run inside": a switch can only ever mean the
+# live one, so importing an older chat from the REPL was impossible, and a
+# switch gives a completer nothing to complete.
+
+# Write a canvas from a session's dialogue: the canvas header, an import note,
+# then the user's messages and Claude's visible replies. The doc records that
+# session, so `gi open <doc>` resumes it instead of minting a new one.
+export def "gi import" [
+    session?: string@"nu-complete claude sessions" # Session UUID or .jsonl path (default: the session this runs inside)
+    --to: path # Where the canvas lands (default: gi/session-<key>.md)
+    --root: path # Repo root (default: git top-level)
+    --tools # Keep tool calls as one-line placeholders instead of dropping them
+    --commit # Commit the imported doc
+    --gitignore # Keep the imported doc out of git
+]: nothing -> record {
+    if $commit and $gitignore {
+        error make {
+            msg: "--commit and --gitignore contradict each other"
+            label: {text: "pick one: put the import in git, or keep it out" span: (metadata $gitignore).span}
+        }
+    }
+    # Not `| default (gi-session-id)`: default evaluates its argument eagerly,
+    # so the live-session lookup would error even when a session was named.
+    let sid = if $session == null { gi-session-id } else { $session }
+    let root = $root | default (gi-repo-root) | path expand
+    let paths = gi-paths $root
+    # Default is session-keyed, so re-running it for one session names one file
+    # and leaves the repo's other canvases alone.
+    # Why --to and not a second positional: the common in-session call names a
+    # path but no session, and a positional cannot be skipped. Also the word
+    # export-session already uses for "where the output lands".
+    let paths_doc = gi-doc-path $root ($to | default $"gi/session-(gi-session-key $sid).md")
+    # Check before reading the session: a doc that already holds work must not
+    # be reported as a near-miss after a long export.
+    if ($paths_doc.abs | path exists) {
+        error make --unspanned {
+            msg: $"canvas already exists: ($paths_doc.abs)"
+            help: "the import is the doc's starting content and won't overwrite work already in it — delete the file to re-import, or name another doc: gi import --to <doc>"
+        }
+    }
+    # Build the import before anything is written: a session that can't be read
+    # must leave no half-written canvas behind.
+    let imported = gi-import-text $sid --tools=$tools --live=($session == null)
+    mkdir ($paths_doc.abs | path dirname)
+    $imported | save --force $paths_doc.abs
+
     # An import lands in the working tree and stays there: neither flag by
     # default. Why not tracked: a transcript carries raw paths and whatever the
     # dialogue quoted, and that is the user's call to make once they have read
@@ -381,50 +396,42 @@ export def "gi enable" [
     if $gitignore {
         # Beside the doc, not in the root .gitignore: gi owns that directory,
         # and the entry stays with the file it names wherever the doc lives.
-        let ignore_file = $doc_abs | path dirname | path join ".gitignore"
-        let entry = $doc_abs | path basename
+        let ignore_file = $paths_doc.abs | path dirname | path join ".gitignore"
+        let entry = $paths_doc.abs | path basename
         let lines = if ($ignore_file | path exists) { open --raw $ignore_file | lines } else { [] }
         if $entry not-in $lines {
             $lines | append $entry | append "" | str join "\n" | save --force $ignore_file
         }
     }
     if $commit {
-        ^git -C $root add -- $doc_abs
-        ^git -C $root commit --quiet -m $"gi: import session (gi-session-key $sid) as the working doc" -m "Dialogue up to the import; the full session log stays outside the repo." -- $doc_abs
+        ^git -C $root add -- $paths_doc.abs
+        ^git -C $root commit --quiet -m $"gi: import session (gi-session-key $sid) as the working doc" -m "Dialogue up to the import; the full session log stays outside the repo." -- $paths_doc.abs
     }
 
-    # Seeding alone changes nothing about the session that ran it: the style and
-    # the hook arrive with `gi open`, so the next line is the whole
-    # instruction. With no import there is no canvas yet — `gi open` mints one.
-    print $"gi seeded in ($root)."
-    if $doc_abs == null {
-        print $"start a canvas:  claude-nu gi open [<doc>]"
-    } else {
-        print $"canvas: ($paths_doc.rel)"
-        print $"open a bound session on it:  claude-nu gi open ($paths_doc.rel)"
+    print $"canvas: ($paths_doc.rel)"
+    # Seeding is a separate verb, so the style may not be here yet — and `gi
+    # open` refuses without it. Say so while the user is still looking at the
+    # command, rather than one step later.
+    if not ($paths.style_dst | path exists) {
+        print $"this repo is not seeded yet:  claude-nu gi enable"
     }
-    if $imported != null {
+    print $"open a bound session on it:  claude-nu gi open ($paths_doc.rel)"
+    if $session == null {
         # The log can never hold the turn that ran the import (Claude Code writes
         # it as the turn runs). After `gi open` the agent is back in this same
         # session and still holds that turn, so it can close the gap itself —
-        # the file's note can only state it.
+        # the file's note can only state it. Only for the live session: an older
+        # session's log is complete, and its turns are in nobody's context.
         print $"the import stops before this turn — after resuming, ask the agent to append the tail from its context."
     }
-    let status = gi-status --root $root
-    # Surface drift at the moment the user is already touching gi — status
-    # carries the same list, but nobody polls it.
-    if not $force and ($status.stale | is-not-empty) {
-        print $"note: ($status.stale | length) seeded file\(s\) differ from the module — `gi enable --force` refreshes them."
-    }
     # `doc` and status's `canvas` are different questions: the canvas this call
-    # imported (null without --from-session — seeding writes no canvas), versus
-    # the one the calling session is bound to (usually none).
-    $status | insert doc $doc_abs
+    # wrote, versus the one the calling session is bound to (usually none).
+    gi-status --root $root | insert doc $paths_doc.abs
 }
 
 # The `session:` value from a canvas's YAML frontmatter, or null when the file
 # has no frontmatter or no session key. Both origins write it: export-session
-# for a canvas seeded with `gi enable --from-session`, and `gi open` for every
+# for a canvas written by `gi import`, and `gi open` for every
 # other one. Null therefore means an unbound canvas — one `gi open` may claim.
 # Exported for tests. Why parse by hand and not `open`: a .md file is raw text
 # to nushell, and the frontmatter is between the first two `---` lines.
@@ -439,7 +446,7 @@ export def gi-frontmatter-session [file: path]: nothing -> any {
 # Write `session: <sid>` into a canvas's frontmatter — replacing the key when
 # it is already there (that is `--new-session`), adding it to an existing block,
 # or creating the block when the file has none. Why stamp the file rather than
-# keep a side record: a `--from-session` canvas already carries this key, so
+# keep a side record: an imported canvas already carries this key, so
 # both origins end up with one mechanism, and the binding travels with the file
 # — move or copy a canvas and it still names its session. Exported for tests.
 export def gi-stamp-session [file: path, sid: string]: nothing -> nothing {
