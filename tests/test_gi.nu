@@ -639,6 +639,10 @@ def "stamping a session joins an existing frontmatter block" [] {
 # check — the Stop hook decision (contract)
 # =============================================================================
 
+# What the hook must always block: an answer, not a note. Over the line budget
+# rather than merely long, so the fixture survives a change to GI_HOOK_MAX_LEN.
+const BLOCKED_ANSWER = "A full answer for the canvas,\nwritten over more lines\nthan a chat note\nis ever allowed to take,\nand still going."
+
 # GI_CANVAS is what makes the hook enforce anything, so every rule test binds
 # one. cwd defaults to a non-repo dir: the branch guard must see the payload's
 # state, not whatever branch the test runner's own repo happens to be on.
@@ -651,9 +655,8 @@ def block-decision [payload: record, --canvas: string]: nothing -> any {
 
 @test
 def "check stands down when no canvas is bound to the session" [] {
-    let prose = "Long prose without any link signal that must be blocked by the rule"
     let out = with-env { GI_CANVAS: null } {
-        {cwd: $nu.temp-dir, last_assistant_message: $prose} | to json | gi check
+        {cwd: $nu.temp-dir, last_assistant_message: $BLOCKED_ANSWER} | to json | gi check
     }
 
     # A plain `claude` session never sets GI_CANVAS, so the same hook body is
@@ -680,14 +683,14 @@ def "check allows a short pointer carrying a path" [] {
 }
 
 @test
-def "check blocks multiline prose" [] {
-    let out = block-decision { last_assistant_message: "First I changed the parser.\nThen I updated the tests.\nHere is why it matters." }
+def "check blocks prose over the line budget" [] {
+    let out = block-decision { last_assistant_message: "First I changed the parser.\nThen I updated the tests.\nHere is why it matters.\nAnd here is what is next.\nOne more thought." }
     assert equal ($out | from json | get decision) "block"
 }
 
 @test
-def "check blocks a long single line with no link signal" [] {
-    let out = block-decision { last_assistant_message: "this is a single line but it is quite long and carries no link signal anywhere in it at all friend" }
+def "check blocks a single line over the budget" [] {
+    let out = block-decision { last_assistant_message: (1..100 | each { "prose" } | str join " ") }
     assert equal ($out | from json | get decision) "block"
 }
 
@@ -726,8 +729,7 @@ def "check with no stdin treats the event as empty" [] {
 def "check names the bound canvas in the block reason" [] {
     let root = temp-root
     git init -qb canvas-work $root
-    let prose = "Long prose without any link signal that must be blocked by the rule"
-    let reason = block-decision { last_assistant_message: $prose, cwd: $root } --canvas ($root | path join "gi" "plan.md")
+    let reason = block-decision { last_assistant_message: $BLOCKED_ANSWER, cwd: $root } --canvas ($root | path join "gi" "plan.md")
     | from json
     | get reason
     rm -rf $root
@@ -741,8 +743,7 @@ def "check shortens the canvas path from a subdirectory cwd" [] {
     let root = temp-root
     git init -qb canvas-work $root
     mkdir ($root | path join "sub")
-    let prose = "Long prose without any link signal that must be blocked by the rule"
-    let reason = block-decision { last_assistant_message: $prose, cwd: ($root | path join "sub") } --canvas ($root | path join "gi" "plan.md")
+    let reason = block-decision { last_assistant_message: $BLOCKED_ANSWER, cwd: ($root | path join "sub") } --canvas ($root | path join "gi" "plan.md")
     | from json
     | get reason
     rm -rf $root
@@ -779,9 +780,9 @@ def "check passes an allowed message on a work branch" [] {
 # internal failures must surface as a block decision instead.
 @test
 def "check converts internal errors into a block, not a crash" [] {
-    let prose = "Long prose without any link signal that must be blocked by the rule"
+    # Any non-empty message reaches the budget parse, which is what breaks here.
     let out = with-env { GI_HOOK_MAX_LEN: "abc" } {
-        block-decision { last_assistant_message: $prose }
+        block-decision { last_assistant_message: "a chat line long enough to be judged" }
     }
 
     let decision = $out | from json
@@ -794,7 +795,7 @@ def "check converts internal errors into a block, not a crash" [] {
 # =============================================================================
 
 @test
-def "allow-rule passes empty, done, noted, and short pointers" [] {
+def "allow-rule passes empty, short notes, and short pointers" [] {
     assert (gi-allowed "")
     assert (gi-allowed "done")
     assert (gi-allowed "DONE!")
@@ -802,15 +803,17 @@ def "allow-rule passes empty, done, noted, and short pointers" [] {
     assert (gi-allowed "moved to `docs/plan.md`")
     assert (gi-allowed "see commands.nu:1180")
     assert (gi-allowed "next → tests/test_gi.nu")
+    # A short note needs no path: it hides no answer from the canvas.
+    assert (gi-allowed "waiting on the background agent before drafting")
+    # A note and a pointer are two lines; up to 3 breaks are inside the budget.
+    assert (gi-allowed "waiting on the survey agent.\nnext → `todo/plan.md`")
 }
 
 @test
-def "allow-rule blocks prose and unanchored lines" [] {
-    assert (not (gi-allowed "Here is a plain sentence with no link that should not be allowed in chat"))
-    assert (not (gi-allowed "line one\nline two"))
-    # Abbreviations and glued sentences are not filename signals.
-    assert (not (gi-allowed "short prose with e.g an aside"))
-    assert (not (gi-allowed "First thought ends.Next one starts"))
+def "allow-rule blocks messages over either budget" [] {
+    let long = 1..100 | each { "prose" } | str join " " # 599 chars, one line
+    assert (not (gi-allowed $long))
+    assert (not (gi-allowed "one\ntwo\nthree\nfour\nfive"))
 }
 
 @test
@@ -821,6 +824,111 @@ def "allow-rule budget is tunable via GI_HOOK_MAX_LEN" [] {
     with-env { GI_HOOK_MAX_LEN: "500" } {
         assert (gi-allowed "short `f.nu`")
     }
+}
+
+# =============================================================================
+# gi-off-canvas — the `chat:` aside
+# =============================================================================
+
+# A transcript holding the given records in order. Strings become authored user
+# turns; a record is written as-is (for the tool-result rows that are user-type
+# but not human turns).
+def transcript-of [records: list<any>]: nothing -> path {
+    let file = $nu.temp-dir | path join $"gi-transcript-(random uuid).jsonl"
+    $records
+    | each {|r|
+        if ($r | describe) == "string" { {type: "user" message: {role: "user" content: $r}} } else { $r }
+    }
+    | each { to json --raw }
+    | str join "\n"
+    | save --force $file
+    $file
+}
+
+@test
+def "off-canvas is true when the last user message opens with the marker" [] {
+    let file = transcript-of ["chat: what does --fork do?"]
+    let out = gi-off-canvas $file
+    rm $file
+
+    assert $out
+}
+
+@test
+def "off-canvas ignores case and leading whitespace" [] {
+    let file = transcript-of ["  Chat: quick question"]
+    let out = gi-off-canvas $file
+    rm $file
+
+    assert $out
+}
+
+@test
+def "off-canvas is false without the marker" [] {
+    let file = transcript-of ["rewrite the import section"]
+    let out = gi-off-canvas $file
+    rm $file
+
+    assert (not $out)
+}
+
+@test
+def "off-canvas reads the last human turn, not an earlier marked one" [] {
+    # An aside is spent when it is answered: the next turn is canvas work again.
+    let file = transcript-of ["chat: what does --fork do?" "now rewrite the import section"]
+    let out = gi-off-canvas $file
+    rm $file
+
+    assert (not $out)
+}
+
+@test
+def "off-canvas looks past the tool-result records of the same turn" [] {
+    # Tool results are user-type records; only authored turns carry the marker.
+    let tool_result = {type: "user" message: {role: "user" content: [{type: "tool_result" content: "ok"}]}}
+    let file = transcript-of ["chat: what does --fork do?" $tool_result $tool_result]
+    let out = gi-off-canvas $file
+    rm $file
+
+    assert $out
+}
+
+@test
+def "off-canvas leaves the floor up when there is no transcript" [] {
+    assert (not (gi-off-canvas ""))
+    assert (not (gi-off-canvas ($nu.temp-dir | path join $"gi-missing-(random uuid).jsonl")))
+}
+
+@test
+def "check lets a marked turn end with any answer" [] {
+    let file = transcript-of ["chat: what does --fork do?"]
+    # The fixture the rule always blocks, so the marker is what clears it here.
+    let out = block-decision { last_assistant_message: $BLOCKED_ANSWER, transcript_path: $file }
+    rm $file
+
+    assert equal $out null
+}
+
+@test
+def "check lets a marked turn end on a protected branch" [] {
+    # The branch guard protects the trunk from gi commits; an aside makes none.
+    let root = temp-root
+    git init -qb master $root
+    let file = transcript-of ["chat: which branch am I on?"]
+    let out = block-decision { last_assistant_message: "You are on `master`.", cwd: $root, transcript_path: $file }
+    rm -rf $root
+    rm $file
+
+    assert equal $out null
+}
+
+@test
+def "check still blocks prose when the turn is not marked" [] {
+    let file = transcript-of ["rewrite the import section"]
+    let out = block-decision { last_assistant_message: $BLOCKED_ANSWER, transcript_path: $file }
+    rm $file
+
+    assert equal ($out | from json | get decision) "block"
 }
 
 # =============================================================================

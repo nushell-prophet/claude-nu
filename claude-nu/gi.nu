@@ -46,8 +46,8 @@
 #
 # The style is proactive shaping only — it rests on prose, and the agent drifts
 # back to long chat answers. The Stop hook is the structural floor under it: it
-# blocks the turn when the final chat message is more than `done`/`noted` or a
-# short pointer, and blocks turns ending on main/master (gi commits are internal
+# blocks the turn when the final chat message is more than one short line, and
+# blocks turns ending on main/master (gi commits are internal
 # working history — they reach a public branch only squash-merged, after
 # finalization). It comes with every `gi open`; `--no-hook` opens a canvas with
 # the style alone.
@@ -56,7 +56,7 @@
 # so there is nothing to switch off. A repo set up by the older, repo-wide gi
 # keeps working from its own settings until those keys are deleted by hand.
 
-use sessions.nu [export-session resolve-session-file "nu-complete claude sessions"]
+use sessions.nu [export-session resolve-session-file read-session-records user-message-texts "nu-complete claude sessions"]
 
 # The output-style name gi passes to `claude --settings` at launch. Matches the
 # `name:` frontmatter in the seeded style file — outputStyle names a style, and
@@ -819,6 +819,13 @@ def gi-check-rules []: record -> any {
     let canvas = $env.GI_CANVAS? | default ""
     if ($canvas | is-empty) { return }
 
+    # The chat aside, before every rule: the user asked something in chat and
+    # said the answer stays there, so this turn is not canvas work at all. It
+    # writes no file and makes no commit, which is also why it clears the branch
+    # guard below — that guard protects the trunk from commits, and there are
+    # none here.
+    if (gi-off-canvas ($payload.transcript_path? | default "")) { return }
+
     let root = gi-repo-root ($payload.cwd? | default $env.PWD)
 
     # Branch guard, before the message rule: even a perfect `done` may not end
@@ -840,30 +847,58 @@ def gi-check-rules []: record -> any {
     # on the user's screen, and the stop_hook_active guard ends the turn on the
     # follow-up whatever it says — a misfire can redirect one reply, never trap
     # the agent.
-    let reason = $"Chat may carry only `done`/`noted` or a short pointer \(one line with a path/link). Move the full answer into `($doc)` and commit it; leave only a pointer in chat. If this block looks like a misfire — wrong canvas, no gi work in this session — don't move anything: reply with one short line telling the user to read your previous message above in the chat and to check the session's canvas \(`claude-nu gi`)."
+    let reason = $"Chat may carry only one short line — `done`, a status note, or a pointer to where the answer landed. Move the full answer into `($doc)` and commit it; leave only that one line in chat. If this block looks like a misfire — wrong canvas, no gi work in this session — don't move anything: reply with one short line telling the user to read your previous message above in the chat and to check the session's canvas \(`claude-nu gi`)."
     {decision: "block" reason: $reason}
 }
 
-# The allow-rule: what may stand alone in chat. True (allowed) when, after trim:
-# empty; or `done`/`noted` (trailing punctuation ok); or a short pointer — one
-# line, within the length budget, carrying a link signal (backtick, `→`, or a
-# filename). Everything else (prose, long unanchored lines) is blocked.
-# Why a budget env-var: "short pointer" is fuzzy; GI_HOOK_MAX_LEN makes the
-# threshold tunable without editing the hook (legacy prefix kept — deployed
-# sessions already use it). Default is strict — prose fails.
+# The marker that takes one exchange off the canvas, written by the user at the
+# start of their message: `chat: what does this flag do?`.
+const GI_CHAT_MARKER = "chat:"
+
+# True when the user's last message opens with the marker — the exchange is an
+# aside: answer in chat, write nothing to the canvas, commit nothing.
+# Why the user's message and never the agent's: a marker the agent could write
+# is the agent lifting its own floor, which is the one thing this hook exists to
+# prevent. The user's words reach the hook only through the transcript, so the
+# event's `transcript_path` is where the marker is read from.
+# Why the LAST authored user message: it is the one that opened this turn.
+# Tool-result records are user-type too, so the filter that `messages` uses
+# decides what counts as a human turn — one definition, not a second one here.
+# No path (a hand-run `gi check`, an event without the field) leaves the floor
+# up: the aside is something the user asks for, not a state we assume. A path
+# that exists but cannot be read is not caught — `gi check` turns it into a
+# loud block.
+export def gi-off-canvas [transcript: string]: nothing -> bool {
+    if ($transcript | is-empty) or not ($transcript | path exists) { return false }
+    # --contains screens the raw lines before decoding: only user records can
+    # carry the marker, and this parse runs at every turn end.
+    $transcript
+    | read-session-records --contains '"type":"user"'
+    | user-message-texts
+    | last 1 | get 0? | default ""
+    | str trim | str lowercase | str starts-with $GI_CHAT_MARKER
+}
+
+# Line breaks allowed in a chat message, alongside the character budget.
+const GI_HOOK_MAX_BREAKS = 3
+
+# The allow-rule: what may stand alone in chat. True (allowed) when, after trim,
+# the message is empty, or fits the budget: at most 3 line breaks and
+# GI_HOOK_MAX_LEN characters. Size is the whole floor — a real answer exceeds it.
+# Why not one line: a status note plus a pointer is two lines, and a floor that
+# forbids the second one is not measuring the thing it cares about.
+# Not a link signal (backtick, `→`, filename) because: it made a path the price
+# of every chat line, so a short honest status note ("waiting on the background
+# agent") was blocked even though it hid nothing from the canvas. Demanding a
+# path where there is none teaches the agent to invent one, which is worse than
+# the sentence it was meant to prevent.
+# Why a budget env-var: "short" is fuzzy; GI_HOOK_MAX_LEN makes the threshold
+# tunable without editing the hook (legacy prefix kept — deployed sessions
+# already use it).
 export def gi-allowed [message: string]: nothing -> bool {
     let text = $message | str trim
     if ($text | is-empty) { return true }
-    if (($text | str lowercase | str replace -r '[.!…]+$' '') in ["done" "noted"]) { return true }
 
     let max = $env.GI_HOOK_MAX_LEN? | default 480 | into int
-    let single_line = not ($text | str contains "\n")
-    let within = ($text | str length) <= $max
-    # The filename signal needs a 2+ char lowercase/digit extension: `\w+`
-    # also matched abbreviations (`e.g`) and glued sentences (`end.Next`),
-    # letting short prose through as a "pointer". Real one-letter-extension
-    # files (main.c) are indistinguishable from abbreviations; a pointer to
-    # one still passes via backticks.
-    let has_signal = ($text =~ '`') or ($text =~ '→') or ($text =~ '[\w./-]+\.[a-z0-9]{2,}')
-    $single_line and $within and $has_signal
+    (($text | lines | length) <= ($GI_HOOK_MAX_BREAKS + 1)) and (($text | str length) <= $max)
 }
