@@ -1,6 +1,6 @@
 ---
 name: git-intent
-description: Process commits as instructions — execute the user's inline markers (`!!`, `??`, `%%`) and `gi: <text>` commit-subject instructions, propagate user-committed choices through the codebase. Use when the user says "git-intent", "process commits", "apply intent", or pastes a `git log` containing markers or `gi:` subjects.
+description: Process commits as instructions — execute the user's inline markers (`!!`, `??`, `%%`) and `gi: <text>` commit-subject instructions, then propagate the resulting choices through the codebase. Use this whenever the user has put the instructions in the repo rather than in the chat: "git-intent", "process commits", "apply intent", "выполни коммиты", "разбери маркеры", a pasted `git log` carrying markers or `gi:` subjects, or a plain "I committed my edits, go" after they edited files themselves. Reach for it even when they never name the skill — an edit the user committed is a decision to honor and propagate, not a diff to read past.
 argument-hint: <N>
 allowed-tools: Bash(git *), Read, Edit, Write, Grep, Glob
 ---
@@ -20,8 +20,6 @@ Three channels carry user intent into a commit:
 - **User markers** in any file — pinpoint instructions next to the target: `!!` do this, `??` a question, `%%` a remark.
 - **Commit message** — explanation/context for the committed edit, optionally prefixed `gi:` (git intent). If the message reads as an imperative ("rename foo to bar", "expand this section"), treat it as actionable.
 - **Direct edit** — the user's edit itself, with no marker and no commit-message text, is also an instruction. The edit *is* the decision; the agent's job is to honor and propagate it.
-
-N = `$ARGUMENTS` — when that is empty or not a positive integer, use `1`.
 
 ## Commit patterns
 
@@ -47,7 +45,7 @@ The subject prefix is `gi:` (quiet — the commit *is* the unit, no surrounding 
 
 1. **Clean-tree check** — run `git status --porcelain`. If non-empty, stop and ask the user to commit or stash.
 
-2. **Get the diff** — run `git log -p -N --reverse` where `N = $ARGUMENTS`. If the patch is very large (>500 lines), prefer `git log -N --stat` plus targeted `git show` per file to avoid filling context.
+2. **Get the diff** — run `git log -p -N --reverse` where `N = $ARGUMENTS`, or `1` when `$ARGUMENTS` is empty or is not a positive integer. If the patch is very large (>500 lines), prefer `git log -N --stat` plus targeted `git show` per file to avoid filling context.
 
 3. **Read files in scope** in full. Skip files you've already read or edited in this session, and skip binary files.
 
@@ -80,4 +78,5 @@ The subject prefix is `gi:` (quiet — the commit *is* the unit, no surrounding 
 ## Related
 
 - `/git-intent-readback` — when the commits to process are the user's answers to your questions, run this first: restate them and stop, instead of executing a reading nobody confirmed
+- `/git-intent-distill` — when the document has filled up with spent markers and superseded deliberation, cut it back to current state before the next loop
 - `/git-intent-squash-archive` — when done iterating, squash the branch into one clean commit preserved as a git tag

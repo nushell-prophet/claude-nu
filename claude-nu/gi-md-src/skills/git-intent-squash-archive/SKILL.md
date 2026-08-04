@@ -1,8 +1,12 @@
 ---
 name: git-intent-squash-archive
-description: Squash all commits on the current branch into one, preserving the original history in a git tag. Use when the user says "squash branch" or "git-intent-squash-archive".
+description: Squash every commit on the current branch into one, keeping the original commit stream recoverable in an `archive/<branch>` git tag. Use this whenever a working branch is finished and its step-by-step history should stop being noise for whoever reads the trunk — "squash branch", "squash and archive", "сверни ветку", "finalize this branch", "collapse these commits", "archive the history before merging" — even when the user never names the skill. For gi working branches; when the branch also needs merging and `todo/`/`gi/` kept off the trunk, use `/land-branch` instead.
 allowed-tools: Bash(git *)
 ---
+
+A working branch's commits are rollback points while the work runs, and noise the moment it is done: an agent that later reads `git log` on the trunk wades through abandoned attempts and reversed decisions instead of history. So the branch lands as one commit. But those abandoned attempts are the record of *why* the surviving shape won, so the original stream is kept in a tag rather than dropped — squash for the reader, archive for the record.
+
+This rewrites the branch (`git reset --soft`, `git tag -f`). That is why steps 1 and 6 stop instead of warning: on a trunk the reset would rewrite history other people have, and once it has run there is nothing left to confirm.
 
 Verify the working tree is clean (`git status --porcelain` returns empty). If not, stop and ask the user to commit or stash first.
 

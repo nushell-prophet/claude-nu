@@ -1,6 +1,6 @@
 ---
 name: git-intent-distill
-description: Reduce a canvas document to its current-state meaning, letting spent rejected paths and process scaffolding fall into git history (recoverable via `git log -p -- <doc>`). Use when the user says "distill", "git-intent-distill", or "reduce the canvas".
+description: Reduce a canvas or working document to its current-state meaning, letting spent markers, resolved readbacks, and dead rejected paths fall into git history (every cut recoverable via `git log -p -- <doc>`). Use this whenever a working document has grown heavy with process material and the user wants it readable again — "distill", "reduce the canvas", "почисти канвас", "сократи документ", "убери отработанное", "this doc got bloated", "trim it down", "clean up the resolved markers" — even when they never name the skill. Prefer it over trimming the file by hand: hand-deleting loses the reasoning, this keeps it recoverable.
 argument-hint: [scope or instructions]
 allowed-tools: Bash(git *), Read, Edit, Write, Grep, Glob
 ---
