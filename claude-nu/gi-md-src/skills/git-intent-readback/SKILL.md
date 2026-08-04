@@ -26,7 +26,7 @@ Judgment: doubt is cheap here and silence is not. If you hesitate between *clear
 
 1. **Clean-tree check** — `git status --porcelain`. Non-empty → stop and ask the user to commit; half-written answers are not answers. (Same guard as the sibling skills.)
 2. **Get the answers** — `git log -p -N -- <doc>` with `N = $ARGUMENTS` (default `1`); `$ARGUMENTS` may instead name a scope or file. `git show HEAD~N:<doc>` gives the pre-answer version — that is where your original questions still stand.
-3. **Read the canvas in full** — path is `$env.GI_CANVAS`; if unset, ask which document.
+3. **Read the canvas in full** — a session launched by `gi open` was told its canvas path in its own instructions; if you were given no such path, ask which document.
 4. **Sort and write.** Ambiguous, unanswered, and conflicting go in as `???` next to the relevant spot, per the Canvas protocol. Clear ones go into one `## Readback` section — one line each — so the user reviews the whole set as a single diff instead of hunting through the file.
 5. **Commit** the document alone. Subject names the pass; body stays thin — the diff is the content.
 6. **Stop. Do not start the work.** Report one line to chat: `readback in <doc> — N clear, M ambiguous, K unanswered`.

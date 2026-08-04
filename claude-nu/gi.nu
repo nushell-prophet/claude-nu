@@ -21,8 +21,9 @@
 #                      cannot be reached from the session being imported.
 #   gi open            launches Claude Code bound to one canvas: `--settings`
 #                      carries the output style and the Stop hook for that launch
-#                      alone, and $env.GI_CANVAS names the canvas. Both reach the
-#                      hook, which runs as a child of that session. A canvas holds
+#                      alone, `--append-system-prompt` names the canvas to the
+#                      agent, and $env.GI_CANVAS names it to the hook, which runs
+#                      as a child of that session. A canvas holds
 #                      one session for life — a canvas with no session gets one
 #                      minted and written in, one that has it is resumed. Which
 #                      case it is, the file says; there is no second verb.
@@ -646,18 +647,22 @@ export def gi-session-plan [recorded: any, --new-session]: nothing -> record {
     }
 }
 
-# The `claude` flags a canvas launch owns: the session it binds and the settings
-# that carry the style and the hook. Short forms included — `-c` and `-r` pick a
-# session as surely as their long spellings.
-const GI_OWNED_FLAGS = ["--settings" "--session-id" "--resume" "-r" "--continue" "-c" "--fork-session" "--name"]
+# The `claude` flags a canvas launch owns: the session it binds, the settings
+# that carry the style and the hook, and the system-prompt line that names the
+# canvas. Short forms included — `-c` and `-r` pick a session as surely as their
+# long spellings.
+const GI_OWNED_FLAGS = ["--settings" "--session-id" "--resume" "-r" "--continue" "-c" "--fork-session" "--name" "--append-system-prompt"]
 
 # The pass-through's one rule: it may not carry a flag gi sets itself. Why it has
 # to fail and not just lose: `claude` takes the LAST --settings, so a forwarded
 # one wins and takes the style and the Stop hook with it — gi half on, the same
 # state the style-exists check in gi-launch refuses to allow, only silent. A
 # forwarded --resume/--session-id likewise unbinds the launch from the canvas
-# that named it. `=` split so `--settings={...}` is caught too. Called once, at
-# the top of gi-launch, before the canvas is written.
+# that named it. --append-system-prompt is the same failure again and measured:
+# given two, `claude` keeps only the last, so a forwarded one drops the line that
+# names the canvas and the session is back to guessing. `=` split so
+# `--settings={...}` is caught too. Called once, at the top of gi-launch, before
+# the canvas is written.
 export def gi-reject-owned-flags [extra: list<string>]: nothing -> nothing {
     let owned = $extra | where ($it | split row "=" | first) in $GI_OWNED_FLAGS
     if ($owned | is-not-empty) {
@@ -674,11 +679,21 @@ export def gi-reject-owned-flags [extra: list<string>]: nothing -> nothing {
 # records it, so the canvas can be reopened); --resume returns to one the canvas
 # already carried. --name puts the canvas in the prompt box, the /resume picker,
 # and the terminal title, so the session says which canvas it belongs to.
+# --append-system-prompt says the same thing to the agent, and is the only one of
+# the three it can actually read. Why not leave that to $env.GI_CANVAS, which the
+# launch also sets: an environment variable is not in the model's context. The
+# style pointed at it, so every session opened by spending a shell call to
+# resolve it — and observed repeatedly, the agent guessed the variable's name
+# wrong, read an empty string, and fell back to listing directories hunting for a
+# canvas. The path is known here and text costs nothing. GI_CANVAS stays for the
+# Stop hook and `gi status`: those are processes, and that is where a process
+# reads it.
 # `extra` is the caller's own `claude` flags, appended last and untouched — gi
 # has no opinion on them beyond the one rule gi-reject-owned-flags states.
 export def gi-launch-args [sid: string, doc: string, --resume, ...extra: string]: nothing -> list<string> {
     if $resume { ["--resume" $sid] } else { ["--session-id" $sid] }
     | append ["--name" $doc]
+    | append ["--append-system-prompt" $"This session's canvas is `($doc)` — the one file the Canvas output style is about. Read it before your first answer; do not search for it."]
     | append $extra
 }
 

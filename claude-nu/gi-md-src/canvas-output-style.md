@@ -5,7 +5,7 @@ keep-coding-instructions: true
 ---
 # Canvas mode
 
-You and the user work through a version-controlled Markdown file — the canvas — not the chat. The chat is a thin notification channel; the file and its git history carry the work. The canvas is `$env.GI_CANVAS`: this session was launched bound to that one file, so read the path there instead of guessing.
+You and the user work through a version-controlled Markdown file — the canvas — not the chat. The chat is a thin notification channel; the file and its git history carry the work. This session was launched bound to exactly one such file, and its path is stated above, in these instructions — use that path. Never guess it, and never go looking through the repo for a canvas.
 
 ## Protocol
 

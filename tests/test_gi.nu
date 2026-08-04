@@ -365,13 +365,24 @@ def "launch args bind the canvas session and name the session after it" [] {
 
     # A minted id is declared with --session-id; one the canvas already carried
     # is returned to with --resume. One verb, and the canvas decides which.
-    assert equal (gi-launch-args $sid "gi/plan.md") ["--session-id" $sid "--name" "gi/plan.md"]
-    assert equal (gi-launch-args $sid "gi/plan.md" --resume) ["--resume" $sid "--name" "gi/plan.md"]
+    assert equal (gi-launch-args $sid "gi/plan.md" | first 4) ["--session-id" $sid "--name" "gi/plan.md"]
+    assert equal (gi-launch-args $sid "gi/plan.md" --resume | first 4) ["--resume" $sid "--name" "gi/plan.md"]
 
     # The caller's own claude flags ride along last, untouched.
     assert equal (
-        gi-launch-args $sid "gi/plan.md" "--dangerously-skip-permissions" "--model" "opus"
-    ) ["--session-id" $sid "--name" "gi/plan.md" "--dangerously-skip-permissions" "--model" "opus"]
+        gi-launch-args $sid "gi/plan.md" "--dangerously-skip-permissions" "--model" "opus" | last 3
+    ) ["--dangerously-skip-permissions" "--model" "opus"]
+}
+
+@test
+def "the launch states the canvas path in the system prompt" [] {
+    # An env var is not in the model's context, so $env.GI_CANVAS cannot be how
+    # the agent learns which file it is bound to — the launch has to say it in
+    # words, or the session opens by hunting the repo for a canvas. The path has
+    # to be in the line; the wording around it is free to change.
+    let args = gi-launch-args "11111111-2222-3333-4444-555555555555" "gi/plan.md"
+    let at = $args | enumerate | where item == "--append-system-prompt" | get index | first
+    assert ($args | get ($at + 1) | str contains "gi/plan.md")
 }
 
 @test
@@ -396,8 +407,10 @@ def "a flag typed where the canvas goes is not taken as the canvas" [] {
 @test
 def "the pass-through refuses the flags a canvas launch sets itself" [] {
     # A second --settings would win over gi's and take the style and the hook
-    # with it; a forwarded session flag would unbind the launch from the canvas.
-    for flag in ["--settings" "--settings={}" "--resume" "-c" "--name"] {
+    # with it; a forwarded session flag would unbind the launch from the canvas;
+    # a second --append-system-prompt wins outright — `claude` keeps only the
+    # last — and drops the line naming the canvas.
+    for flag in ["--settings" "--settings={}" "--resume" "-c" "--name" "--append-system-prompt"] {
         let out = try { gi-reject-owned-flags ["--model" $flag]; "" } catch {|e| $e.msg }
         assert ($out | str contains "gi sets") $"($flag) should be refused"
     }
