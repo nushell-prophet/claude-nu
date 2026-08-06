@@ -26,12 +26,9 @@ claude-nu/
 │   ├── project-move.nu  # Retarget stored state from a project's old path to its new one
 │   ├── gi-hook.nu       # Stop-hook entry point — `nu --stdin` runs this file; it imports `gi check` from gi.nu, which mod.nu deliberately does not re-export
 │   └── attribution.nu   # Claude-authorship of git history: commits (--by-month) and code-authorship (blame)
-├── completions/         # External command completions
+├── completions/         # Completions for the two CLIs this repo is about; unrelated tools moved to ../dotfiles/nushell/completions/
 │   ├── claude.nu        # claude CLI (50+ flags, session picker, MCP/plugin subcommands)
-│   ├── nu.nu            # nu CLI (dynamic: parses scripts for subcommands at tab-time)
-│   ├── zellij.nu        # zellij (100+ actions, live session completers)
-│   ├── chafa.nu         # chafa image viewer (35+ completers)
-│   └── sandbox-exec.nu  # macOS sandbox-exec
+│   └── nu.nu            # nu CLI (dynamic: parses scripts for subcommands at tab-time)
 ├── tests/               # 60+ tests (nutest framework)
 └── toolkit.nu           # Dev tools: test, vendor-sessions, check
 ```

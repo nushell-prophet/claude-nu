@@ -206,23 +206,19 @@ An imported canvas records the session it came from, so `gi open <doc>` reopens 
 
 ## CLI Completions
 
-The repo includes hand-crafted completions for several CLI tools. Add any combination to your `config.nu`:
+Two completion files live here, for the two CLIs this repo is actually about. Add either to your `config.nu`:
 
 ```nushell no-run
 use completions/claude.nu *
 use completions/nu.nu *
-use completions/zellij.nu *
-use completions/chafa.nu *
-use completions/sandbox-exec.nu *
 ```
 
 | File | Command | Highlights |
 |------|---------|------------|
 | `completions/claude.nu` | `claude` | 50+ flags, MCP/plugin subcommands, session picker for `--resume` |
 | `completions/nu.nu` | `nu` | Parses .nu scripts at tab-time to offer their subcommands and flags |
-| `completions/zellij.nu` | `zellij` | 100+ actions, live session/layout completers |
-| `completions/chafa.nu` | `chafa` | 35+ completers for image rendering options |
-| `completions/sandbox-exec.nu` | `sandbox-exec` | macOS sandbox profiles from `/usr/share/sandbox/` |
+
+Completions for unrelated tools (`zellij`, `fd`, `chafa`, `sandbox-exec`) used to live here too. They moved to the dotfiles repo, under `nushell/completions/`, which is where per-tool shell integration belongs.
 
 **Session picker example:**
 ```
