@@ -203,6 +203,25 @@ def "keeps the 0600 mode of the files it rewrites" [] {
     assert equal $history_mode "rw-------"
 }
 
+# A transcript's mtime is what puts a project's sessions in order, so a move that
+# lets `mv` stamp every one of them with the time of the move hands both
+# `claude-nu sessions` and the `claude --resume` picker a shuffled history.
+@test
+def "keeps the mtime of the transcripts it rewrites" [] {
+    let home = fake-home
+    let was = "2026-01-02T03:04:05Z" | into datetime
+    let sessions = projects-dir $home | path join "-work-demo"
+    touch --modified --timestamp $was ($sessions | path join "aaaa.jsonl") ($sessions | path join "aaaa" "subagents" "agent-1.jsonl")
+    with-env {HOME: $home} { project-move $OLD $NEW | ignore }
+    let moved = projects-dir $home | path join "-work-moved-demo"
+    let top = ls ($moved | path join "aaaa.jsonl") | get 0.modified
+    let sub = ls ($moved | path join "aaaa" "subagents" "agent-1.jsonl") | get 0.modified
+    rm -rf $home
+
+    assert equal $top $was
+    assert equal $sub $was
+}
+
 @test
 def "rewrites through a symlinked config instead of replacing the link" [] {
     let home = fake-home

@@ -97,6 +97,15 @@ def count-in-file [file: path, needle: string]: nothing -> int {
 # one on disk turns that silent loss into an error. It leaves a window of the few
 # milliseconds between the check and the `mv`; the alternative is a lock file
 # Claude itself does not take.
+# Why the mtime is then put back: a transcript's mtime is what puts a project's
+# sessions in order — `claude-nu sessions` sorts by it (discovery.nu), and the
+# `claude --resume` picker went shuffled after a real move, so it reads the same
+# field. `mv` stamps every file it lands with the time of the move, which
+# collapses a whole project's history into one second. The mtime of a transcript
+# means "when this conversation last spoke", and a retarget does not change that.
+# The same touch also lands on ~/.claude.json and history.jsonl: nothing is known
+# to order by their mtime, and a special case would cost more than the uniformity
+# buys.
 def swap-in-file [file: path, needle: string, replacement: string]: nothing -> nothing {
     let before = ls $file | get 0.modified
     let tmp = $"($file).claude-nu-move"
@@ -110,6 +119,7 @@ def swap-in-file [file: path, needle: string, replacement: string]: nothing -> n
         error make {msg: $"($file) changed while claude-nu was rewriting it — nothing was written to it; rerun the move"}
     }
     mv --force $tmp $file
+    touch --modified --timestamp $before $file
 }
 
 # Stop a rename that would drag a second project's sessions along.
