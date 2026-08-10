@@ -62,6 +62,23 @@ def jsonl-files [dir: path]: nothing -> list<path> {
     | flatten
 }
 
+# Every file under `dir`, at any depth, as a path relative to `dir`.
+# Not `glob`, for the same reason as `jsonl-files`: the directory name is built
+# from the project path, so a `[` in it turns the walk into a pattern matching
+# nothing. Every file, not just `.jsonl` — a store also holds `memory/` and
+# whatever else Claude drops in there, and all of it has to relocate.
+def relative-files [dir: path]: nothing -> list<string> {
+    ls $dir
+    | each {|entry|
+        if $entry.type == "dir" {
+            relative-files $entry.name | each {|rel| [($entry.name | path basename) $rel] | path join }
+        } else {
+            [($entry.name | path basename)]
+        }
+    }
+    | flatten
+}
+
 # A file's bytes as text.
 # Why the explicit `into string`: `open --raw` yields a byte stream, and one that
 # is not valid UTF-8 splits into a single chunk — count 0 — so the file would
@@ -149,9 +166,58 @@ def refuse-shared-dir [scanned: table, src: path, old: path]: nothing -> nothing
     }
 }
 
-# Plan rows for the sessions directory: the rename itself, plus every JSONL under
-# it that records the old cwd. `source` is where the file is read and written now;
-# `path` is where it ends up, since the rename comes last.
+# Which copy of a file that exists in both stores survives.
+# A transcript is append-only JSONL, so two copies of one session differ by one
+# being an earlier, shorter version of the other — the longer one is the whole
+# conversation. Identical falls out of the same test, which is why there is no
+# third verdict for it. Only a pair where neither copy contains the other is a
+# real disagreement, and that one is not ours to resolve.
+def fold-verdict [from: binary, to: binary]: nothing -> string {
+    if ($to | bytes starts-with $from) {
+        "keep-destination"
+    } else if ($from | bytes starts-with $to) {
+        "keep-source"
+    } else {
+        "conflict"
+    }
+}
+
+# Plan rows for the files that exist in both stores.
+# Why a fold and not a refusal: a project that moves twice comes back to a name
+# Claude already knows, so a collision is the normal end state, not a mistake.
+# The question worth asking is not "does the destination exist" but "does it hold
+# anything the source doesn't" — and that is computed, not asked of the user.
+def plan-fold [src: path, dst: path, rewriting: list<string>, needle: string, replacement: string]: nothing -> table {
+    relative-files $src
+    | where {|rel| $dst | path join $rel | path exists }
+    | sort
+    | each {|rel|
+        let from = $src | path join $rel
+        let to = $dst | path join $rel
+        # Compared as the source will look after its cwd swap, not as it looks
+        # now: the swap runs first, so comparing the current bytes would resolve
+        # a pair that never exists on disk. Which is also why the swap is applied
+        # only to the files that will really get it — a store holds more than
+        # transcripts, and predicting a rewrite that never happens can drop a
+        # source copy the destination does not actually contain.
+        # Byte-level rather than text, because this walks every file and only
+        # transcripts are known to be UTF-8.
+        let after = if $from in $rewriting {
+            open --raw $from | into binary | bytes replace --all ($needle | into binary) ($replacement | into binary)
+        } else {
+            open --raw $from | into binary
+        }
+        let verdict = fold-verdict $after (open --raw $to | into binary)
+        if $verdict == "conflict" {
+            error make {msg: $"($rel) exists in both stores and neither copy contains the other: ($from) and ($to). Nothing was written — settle that file by hand, then rerun."}
+        }
+        {kind: $verdict path: $to replaced: null source: $from needle: null replacement: null}
+    }
+}
+
+# Plan rows for the sessions directory: the relocation itself, plus every JSONL
+# under it that records the old cwd. `source` is where the file is read and
+# written now; `path` is where it ends up, since the relocation comes last.
 def plan-sessions [src: path, dst: path, old: path, new: path]: nothing -> table {
     if not ($src | path exists) { return [] }
 
@@ -171,12 +237,23 @@ def plan-sessions [src: path, dst: path, old: path, new: path]: nothing -> table
             }
         }
 
-    # Only the rename can strand another project, so a move that keeps the
+    # Only the relocation can strand another project, so a move that keeps the
     # encoded name has nothing to refuse — it just rewrites cwds in place.
     if $src != $dst { refuse-shared-dir $scanned $src $old }
 
+    # Checked after the shared-directory refusal: a store holding a second
+    # project is the wrong store to fold anywhere, and that is the error worth
+    # showing first.
+    let folding = $src != $dst and ($dst | path exists)
+    let rewriting = $scanned | where scan.old > 0 | get source
+    let fold = if $folding { plan-fold $src $dst $rewriting $needle $replacement } else { [] }
+    # A copy the destination already contains whole is deleted, not moved, so
+    # rewriting its cwd first would be work reported on a file about to vanish.
+    let dropped = $fold | where kind == "keep-destination" | get source
+
     let files = $scanned
         | where scan.old > 0
+        | where source not-in $dropped
         | insert kind "session"
         | insert path {|row| $row.source | str replace $src $dst }
         | insert replaced {|row| $row.scan.old }
@@ -188,13 +265,44 @@ def plan-sessions [src: path, dst: path, old: path, new: path]: nothing -> table
         | select kind path replaced source needle replacement
 
     # A move between two paths that encode to the same directory name has
-    # nothing to rename, only cwds to rewrite.
+    # nothing to relocate, only cwds to rewrite.
     if $src == $dst {
         $files
     } else {
-        [{kind: "sessions-dir" path: $dst replaced: null source: $src needle: null replacement: null}]
+        let relocation = if $folding { "sessions-fold" } else { "sessions-dir" }
+        [{kind: $relocation path: $dst replaced: null source: $src needle: null replacement: null}]
+        | append $fold
         | append $files
     }
+}
+
+# Move the source store into a destination store that already exists, file by
+# file, applying the verdicts the plan settled. A directory rename cannot merge,
+# and every file here is either already accounted for at the destination or has
+# a name no destination file holds.
+def fold-into [src: path, dst: path, plan: table]: nothing -> nothing {
+    let dropped = $plan | where kind == "keep-destination" | get source
+    relative-files $src
+    | each {|rel|
+        let from = $src | path join $rel
+        if $from in $dropped {
+            rm --force $from
+        } else {
+            let to = $dst | path join $rel
+            mkdir ($to | path dirname)
+            # A rename inside one directory tree, so the mtime that orders a
+            # project's sessions survives without being put back by hand.
+            mv --force $from $to
+        }
+    }
+
+    # What is left has to be empty directories. Anything else means the plan and
+    # the tree disagree, and a recursive delete under ~/.claude must not run on
+    # the assumption that they don't.
+    if (relative-files $src | is-not-empty) {
+        error make {msg: $"($src) still holds files after the fold — it was left in place"}
+    }
+    rm --recursive --force $src
 }
 
 # Plan row for a single file whose path references are a quoted JSON string.
@@ -222,6 +330,13 @@ def plan-swap [file: path, kind: string, needle: string, replacement: string]: n
 # Projects nested under the old path (git worktrees, for instance) are separate
 # projects and are not moved with it.
 #
+# A sessions directory already standing at the destination is folded into rather
+# than refused — a project that moves twice comes back to a name Claude knows.
+# A file present in both stores is resolved by containment: a transcript is
+# append-only, so the copy that contains the other is the whole one and wins
+# (`keep-source` or `keep-destination`). A pair where neither contains the other
+# stops the run before anything is written.
+#
 # Returns one row per artifact touched; `--dry-run` returns the same rows and
 # writes nothing.
 @example "see what a move would touch" { claude-nu project-move ~/old/proj ~/new/proj --dry-run }
@@ -239,14 +354,14 @@ export def main [
     let src = projects-root | path join ($old | encode-project-dir)
     let dst = projects-root | path join ($new | encode-project-dir)
     let config = claude-config
-    # Two ways Claude can already know the new path, and both mean the move would
-    # merge two projects rather than rename one. The config check is not
-    # cosmetic: the swap is textual, so rewriting the old key when the new one is
-    # already there leaves `projects` holding the same key twice — JSON a parser
-    # still reads, keeping one entry and dropping the other's permissions.
-    if $src != $dst and ($dst | path exists) {
-        error make {msg: $"Claude already has state for ($new) at ($dst) — merging two projects is not this command's job"}
-    }
+    # A sessions directory already standing at the destination is not refused: it
+    # is folded into, file by file, because two copies of a transcript resolve
+    # themselves (see `fold-verdict`). Two config entries do not. The swap is
+    # textual, so rewriting the old key when the new one is already there leaves
+    # `projects` holding the same key twice — JSON a parser still reads, keeping
+    # one entry and dropping the other's permissions — and there is no
+    # append-only rule that picks a winner for `allowedTools` or a trust flag.
+    #
     # Why both paths must be present for this to be a merge: the config swap is
     # the last write before the rename, so a run that died in between leaves the
     # config carrying the new path and nothing else. That is our own work, not a
@@ -258,7 +373,14 @@ export def main [
         and (count-in-file $config $'"($old)"') > 0
     )
     if $merges_config {
-        error make {msg: $"($config) already has an entry for ($new) — merging two projects is not this command's job"}
+        # The two entries are printed rather than diffed: which side wins is a
+        # judgement per field, so the useful thing to hand over is both records.
+        error make {msg: ([
+            $"($config) already has an entry for ($new) — merging two settings records is not this command's job."
+            "Read both, fold them into one by hand, then rerun:"
+            $"  open ($config) | get projects | get \"($old)\""
+            $"  open ($config) | get projects | get \"($new)\""
+        ] | str join "\n")}
     }
 
     let plan = [
@@ -276,14 +398,13 @@ export def main [
 
     $plan | where needle != null | each {|row| swap-in-file $row.source $row.needle $row.replacement }
 
-    # Rename last, so that a run which dies partway can be finished by running it
-    # again: the sessions are still under the old name, the files already
+    # Relocate last, so that a run which dies partway can be finished by running
+    # it again: the sessions are still under the old name, the files already
     # rewritten report zero occurrences and drop out of the next plan, and what
-    # is left gets done. Renaming first would strand the move — `src` would be
-    # gone and `dst` would exist, which is exactly the state the guard above
-    # refuses to touch. It is also gated on the plan: a project Claude knows only
-    # from its config has no directory to rename.
+    # is left gets done. It is also gated on the plan: a project Claude knows
+    # only from its config has no directory to move.
     if ($plan | any {|row| $row.kind == "sessions-dir" }) { mv $src $dst }
+    if ($plan | any {|row| $row.kind == "sessions-fold" }) { fold-into $src $dst $plan }
 
     $plan | reject source needle replacement
 }

@@ -72,6 +72,22 @@ def mode-of [file: path]: nothing -> string {
     ls --long $file | get 0.mode
 }
 
+# A store already standing at the new encoded path, holding one file. This is
+# what a project that has moved before comes back to.
+def seed-destination [home: path, rel: string, content: string]: nothing -> path {
+    let dst = projects-dir $home | path join "-work-moved-demo"
+    let file = $dst | path join $rel
+    mkdir ($file | path dirname)
+    $content | save --raw $file
+    $dst
+}
+
+# A source transcript as it looks once its cwd has been swapped — what the fold
+# compares against, since the swap runs first.
+def rewritten [...lines: string]: nothing -> string {
+    $lines | str join "\n" | $"($in)\n" | str replace --all $'"cwd":"($OLD)"' $'"cwd":"($NEW)"'
+}
+
 # =============================================================================
 # What moves
 # =============================================================================
@@ -404,14 +420,135 @@ def "reports one row per artifact touched" [] {
     assert equal ($report | where kind == sessions-dir | get 0.path | path basename) "-work-moved-demo"
 }
 
+# =============================================================================
+# Folding into a store that already stands at the destination
+# =============================================================================
+
 @test
-def "refuses a move to a path Claude already has state for" [] {
+def "folds into a sessions directory already standing at the destination" [] {
     let home = fake-home
-    mkdir (projects-dir $home | path join "-work-moved-demo")
+    # A project that moves twice comes back to a name Claude already knows, so
+    # this is the normal end state, not a mistake to refuse.
+    let dst = seed-destination $home "cccc.jsonl" '{"type":"user","cwd":"/work/moved/demo"}'
+    let report = with-env {HOME: $home} { project-move $OLD $NEW }
+    let old_gone = not (projects-dir $home | path join "-work-demo" | path exists)
+    let names = ls $dst | get name | path basename | sort
+    let top = open --raw ($dst | path join "aaaa.jsonl")
+    rm -rf $home
+
+    assert $old_gone
+    assert equal $names [aaaa aaaa.jsonl cccc.jsonl]
+    assert equal ($top | str contains '"cwd":"/work/moved/demo"') true
+    assert equal ($report | get kind) [sessions-fold session session history config]
+}
+
+@test
+def "drops a source copy the destination already holds whole" [] {
+    let home = fake-home
+    let both = rewritten $USER_LINE $ASSISTANT_LINE
+    let dst = seed-destination $home "aaaa.jsonl" $both
+    let report = with-env {HOME: $home} { project-move $OLD $NEW }
+    let content = open --raw ($dst | path join "aaaa.jsonl")
+    rm -rf $home
+
+    assert equal ($report | where kind == keep-destination | get path | path basename) [aaaa.jsonl]
+    # No `session` row for it either: rewriting the cwd of a file that is about
+    # to be deleted would be work reported on nothing.
+    assert equal ($report | where kind == session | get path | path basename) ["agent-1.jsonl"]
+    assert equal $content $both
+}
+
+@test
+def "keeps the source copy when it continues the destination one" [] {
+    let home = fake-home
+    # A transcript is append-only JSONL, so the destination holding the same
+    # session one turn shorter means the source copy is that conversation later
+    # in its life — not a disagreement about it.
+    let dst = seed-destination $home "aaaa.jsonl" (rewritten $USER_LINE)
+    let report = with-env {HOME: $home} { project-move $OLD $NEW }
+    let content = open --raw ($dst | path join "aaaa.jsonl")
+    rm -rf $home
+
+    assert equal ($report | where kind == keep-source | get path | path basename) [aaaa.jsonl]
+    assert equal $content (rewritten $USER_LINE $ASSISTANT_LINE)
+}
+
+@test
+def "keeps the destination copy when it is the one that continues" [] {
+    let home = fake-home
+    let both = rewritten $USER_LINE $ASSISTANT_LINE
+    let dst = seed-destination $home "aaaa.jsonl" $both
+    # Now the source is the shorter one, so the same rule points the other way.
+    $"($USER_LINE)\n" | save --raw --force (projects-dir $home | path join "-work-demo" "aaaa.jsonl")
+    let report = with-env {HOME: $home} { project-move $OLD $NEW }
+    let content = open --raw ($dst | path join "aaaa.jsonl")
+    rm -rf $home
+
+    assert equal ($report | where kind == keep-destination | get path | path basename) [aaaa.jsonl]
+    assert equal $content $both
+}
+
+@test
+def "folds a file that is not a transcript by the same containment rule" [] {
+    let home = fake-home
+    let memory = projects-dir $home | path join "-work-demo" "memory"
+    mkdir $memory
+    "- [one](one.md)\n- [two](two.md)\n" | save --raw ($memory | path join "MEMORY.md")
+    let dst = seed-destination $home ("memory" | path join "MEMORY.md") "- [one](one.md)\n"
+    with-env {HOME: $home} { project-move $OLD $NEW | ignore }
+    let index = open --raw ($dst | path join "memory" "MEMORY.md")
+    rm -rf $home
+
+    # A store holds more than transcripts, and the memory index grows the same
+    # way — by appending lines. The rule settles it without knowing the format,
+    # which is why the fold compares bytes and not JSON.
+    assert equal $index "- [one](one.md)\n- [two](two.md)\n"
+}
+
+@test
+def "does not resolve a file by a rewrite that will never happen to it" [] {
+    let home = fake-home
+    # Only transcripts get their cwd swapped. A file that is not one keeps its
+    # bytes, so predicting the swap on it would compare the destination against
+    # a source that never exists — and here that comparison would come back
+    # "identical", deleting a copy the destination does not hold.
+    '{"cwd":"/work/demo"}' | save --raw (projects-dir $home | path join "-work-demo" "notes.txt")
+    seed-destination $home "notes.txt" '{"cwd":"/work/moved/demo"}' | ignore
     let failed = try { with-env {HOME: $home} { project-move $OLD $NEW }; false } catch { true }
+    let survived = open --raw (projects-dir $home | path join "-work-demo" "notes.txt")
     rm -rf $home
 
     assert $failed
+    assert equal $survived '{"cwd":"/work/demo"}'
+}
+
+@test
+def "refuses a pair where neither copy contains the other" [] {
+    let home = fake-home
+    seed-destination $home "aaaa.jsonl" '{"type":"user","cwd":"/work/moved/demo","message":"a different conversation"}' | ignore
+    let failed = try { with-env {HOME: $home} { project-move $OLD $NEW }; false } catch { true }
+    let untouched = open --raw (projects-dir $home | path join "-work-demo" "aaaa.jsonl")
+    rm -rf $home
+
+    # Two copies that genuinely disagree are the one case no rule settles, and a
+    # flag that deleted one side would make exactly the wrong call easy. The
+    # conflict is found while planning, so nothing has been written yet.
+    assert $failed
+    assert equal ($untouched | str contains '"cwd":"/work/demo"') true
+}
+
+@test
+def "dry-run reports the fold without writing it" [] {
+    let home = fake-home
+    let dst = seed-destination $home "aaaa.jsonl" (rewritten $USER_LINE)
+    let plan = with-env {HOME: $home} { project-move $OLD $NEW --dry-run }
+    let still_old_name = projects-dir $home | path join "-work-demo" | path exists
+    let untouched = open --raw ($dst | path join "aaaa.jsonl")
+    rm -rf $home
+
+    assert $still_old_name
+    assert equal $untouched (rewritten $USER_LINE)
+    assert equal ($plan | get kind) [sessions-fold keep-source session session history config]
 }
 
 @test
