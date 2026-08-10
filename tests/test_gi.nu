@@ -13,9 +13,12 @@ def settings-of [root: path]: nothing -> path {
     $root | path join ".claude" "settings.local.json"
 }
 
-# A directory holding a `claude` that records its arguments instead of starting
-# a session, for the tests that run a launch to the end. Returns the directory,
-# to be prepended to PATH for that call only.
+# A directory holding a `claude` that records the directory it ran in and its
+# arguments, instead of starting a session — for the tests that run a launch to
+# the end. Returns the directory, to be prepended to PATH for that call only.
+# Why the cwd is recorded and not just the arguments: the canvas path handed to
+# the session is relative, so it only resolves if the launch stands where that
+# path was anchored. Nothing else in the suite can tell those two apart.
 # The `which` assertion is the guard that matters: PATH lookup silently skips a
 # file it cannot execute, so a temp dir mounted noexec (or a chmod that did not
 # take) would hand the launch to the REAL claude, which then blocks on a TTY —
@@ -24,7 +27,7 @@ def stub-claude [root: path]: nothing -> path {
     let dir = $root | path join "stub-bin"
     mkdir $dir
     let bin = $dir | path join "claude"
-    $"#!/bin/sh\necho \"$@\" > ($root | path join 'claude-args')\n" | save --force $bin
+    $"#!/bin/sh\nprintf '%s\\n%s\\n' \"$PWD\" \"$*\" > ($root | path join 'claude-args')\n" | save --force $bin
     ^chmod +x $bin
     with-env {PATH: ([$dir] | append $env.PATH)} {
         assert equal (which claude | get path.0? ) $bin "the stub claude is not the one PATH resolves"
@@ -357,6 +360,55 @@ def "open seeds an unseeded repo instead of refusing" [] {
     # `open` cannot decline the ignore file — this is the repo that never ran
     # `enable`, and it is the one that would otherwise get the noise back.
     assert $ignored
+}
+
+@test
+def "a relative canvas is read where the user stands, not at the repo root" [] {
+    # The monorepo shape: one git repo, work happening in a subdirectory. gi
+    # used to join every relative canvas onto the git top-level, so `gi open
+    # todo/plan.md` from `sub/` made and bound `<root>/todo/plan.md` — a second
+    # file with the same basename as the one the user meant, in a directory
+    # they were not in.
+    let root = temp-root
+    let sub = $root | path join "sub"
+    mkdir $sub
+    ^git -C $root init --quiet
+    let launched = with-env {PATH: (stub-claude $root | append $env.PATH)} {
+        do { cd $sub; gi open todo/plan.md | ignore }
+        try { open --raw ($root | path join "claude-args") } catch { "" }
+    }
+    let at_sub = $sub | path join "todo" "plan.md" | path exists
+    let at_root = $root | path join "todo" "plan.md" | path exists
+    rm -rf $root
+
+    assert $at_sub "the canvas did not land under the directory the launch ran from"
+    assert (not $at_root) "the canvas was anchored at the repo root"
+    # The two halves of one sentence, and they only mean something together:
+    # the session is told a relative path, and it stands where that path
+    # resolves. A launch that cd'd to the repo root would pass this line and
+    # still open the wrong file.
+    assert ($launched | str contains "--name todo/plan.md")
+    assert equal ($launched | lines | first) $sub "the launch did not run in the directory the canvas is relative to"
+}
+
+@test
+def "the root flag moves the whole run, canvas included" [] {
+    # The other half of the same rule: --root says where gi runs, so a relative
+    # canvas is read there and not beside the caller — otherwise running gi
+    # against another repo would write the canvas outside the directory it
+    # launches in.
+    let root = temp-root
+    mkdir $root
+    ^git -C $root init --quiet
+    with-env {PATH: (stub-claude $root | append $env.PATH)} {
+        gi open gi/plan.md --root $root | ignore
+    }
+    let at_root = $root | path join "gi" "plan.md" | path exists
+    let beside_caller = $env.PWD | path join "gi" "plan.md" | path exists
+    rm -rf $root
+
+    assert $at_root
+    assert (not $beside_caller) "the canvas was written next to the caller instead of under --root"
 }
 
 @test
@@ -752,18 +804,23 @@ def "check names the bound canvas in the block reason" [] {
 }
 
 @test
-def "check shortens the canvas path from a subdirectory cwd" [] {
+def "check names the canvas relative to the session directory" [] {
     let root = temp-root
+    let sub = $root | path join "sub"
     git init -qb canvas-work $root
-    mkdir ($root | path join "sub")
-    let reason = block-decision { last_assistant_message: $BLOCKED_ANSWER, cwd: ($root | path join "sub") } --canvas ($root | path join "gi" "plan.md")
-    | from json
-    | get reason
+    mkdir $sub
+    let inside = block-decision { last_assistant_message: $BLOCKED_ANSWER, cwd: $sub } --canvas ($sub | path join "gi" "plan.md")
+    | from json | get reason
+    let above = block-decision { last_assistant_message: $BLOCKED_ANSWER, cwd: $sub } --canvas ($root | path join "gi" "plan.md")
+    | from json | get reason
     rm -rf $root
 
-    # The repo root comes from git, not from the event's cwd, so a session that
-    # drifted into a subdirectory still names the canvas the short way.
-    assert ($reason | str contains "`gi/plan.md`")
+    # The short form is relative to where the session stands, not to the repo
+    # root: the agent reads this path and has to be able to open it. A canvas
+    # above that directory has no short form that resolves, so it is named in
+    # full — `gi/plan.md` there would point at a file inside `sub`.
+    assert ($inside | str contains "`gi/plan.md`")
+    assert ($above | str contains $"`($root | path join 'gi' 'plan.md')`")
 }
 
 @test
@@ -1055,6 +1112,29 @@ def "the to flag names the canvas, with no session named" [] {
     rm -rf $root $home
 
     assert equal ($status.doc | path basename) "plan.md"
+}
+
+@test
+def "a relative --to is read where the user stands" [] {
+    # The same rule as `gi open`, on the other verb. It also settles the
+    # `claude-nu gi open ...` line import prints: that path is relative to the
+    # same directory, so pasting it where it appeared reopens this canvas
+    # instead of making a second one a level up.
+    let root = temp-root
+    let home = temp-root
+    let sub = $root | path join "sub"
+    mkdir $sub
+    ^git -C $root init --quiet
+    stage-session $home
+    with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
+        do { cd $sub; gi import --to notes/plan.md | ignore }
+    }
+    let at_sub = $sub | path join "notes" "plan.md" | path exists
+    let at_root = $root | path join "notes" "plan.md" | path exists
+    rm -rf $root $home
+
+    assert $at_sub "the canvas did not land under the directory the import ran from"
+    assert (not $at_root) "the canvas was anchored at the repo root"
 }
 
 @test

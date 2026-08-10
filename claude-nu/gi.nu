@@ -151,19 +151,38 @@ def gi-paths [root: path]: nothing -> record {
     }
 }
 
+# The directory gi runs in: --root when the user names one, otherwise where
+# they are standing. Everything a gi command does happens here — the launch
+# cd's to it, a relative canvas is read against it, and the short form printed
+# and handed to the agent is relative to it.
+# `root` (the repo) is a different question and stays a different value: it is
+# where `.claude/` is seeded and which branch the guard reads. Those are
+# repo-scoped; the canvas is not.
+# Why not the repo root for both, which is what this replaced: a path typed on a
+# command line means what it means everywhere else in a shell — relative to
+# where you stand — and inside a monorepo the repo root is never where you work.
+# Run from `mono/sub`, `gi open todo/x.md` silently made and bound
+# `mono/todo/x.md`, a second file with the same basename as the one the user
+# meant, and the session wrote its whole answer into it.
+def gi-run-dir [root?: path]: nothing -> path {
+    $root | default $env.PWD | path expand
+}
+
 # A canvas path in both forms: absolute (what GI_CANVAS carries and what the
-# hook resolves against any cwd) and root-relative (what the user reads in a
-# message). Shared by enable and the launcher so one rule serves both.
+# hook resolves against any cwd) and relative to the run directory (what the
+# user reads in a message, pastes back as a command, and what the agent — whose
+# cwd is that directory — resolves). Shared by import and the launcher so one
+# rule serves both.
 # Why expand the dirname and not the whole path: the canvas may not exist yet,
 # and `path expand` resolves symlinks only for paths that do — this still lets
 # an absolute path arriving through a symlink (cozy's ~/repos) come back
-# root-relative.
-def gi-doc-path [root: path, doc: path]: nothing -> record {
-    let joined = $root | path join $doc
+# relative.
+def gi-doc-path [dir: path, doc: path]: nothing -> record {
+    let joined = $dir | path join $doc
     let abs = $joined | path dirname | path expand | path join ($joined | path basename)
     {
         abs: $abs
-        rel: (if ($abs | str starts-with $"($root)/") { $abs | path relative-to $root } else { $abs })
+        rel: (if ($abs | str starts-with $"($dir)/") { $abs | path relative-to $dir } else { $abs })
     }
 }
 
@@ -401,8 +420,8 @@ export def main [
 # template when it does not exist and continuing the session it already records
 # when it has one.
 export def --wrapped "gi open" [
-    doc?: path # The canvas (default: gi/canvas-<timestamp>.md); with --fork, the canvas to fork FROM
-    --root: path # Repo root (default: git top-level)
+    doc?: path # The canvas, relative to where you are (default: gi/canvas-<timestamp>.md); with --fork, the canvas to fork FROM
+    --root: path # Run gi in this directory instead of here: the canvas is read there and the session starts there (default: your cwd)
     --no-hook # Launch with the Canvas style but without the Stop-hook floor
     --new-session # Start a fresh session on this canvas, overwriting the id it records
     --fork # Copy the named canvas to its next `_n` sibling and open that, on a session of its own
@@ -496,8 +515,8 @@ export def "gi enable" [
 # session, so `gi open <doc>` resumes it instead of minting a new one.
 export def "gi import" [
     session?: string@"nu-complete claude sessions" # Session UUID or .jsonl path (default: the session this runs inside)
-    --to: path # Where the canvas lands (default: gi/session-<key>.md)
-    --root: path # Repo root (default: git top-level)
+    --to: path # Where the canvas lands, relative to where you are (default: gi/session-<key>.md)
+    --root: path # Run gi in this directory instead of here: --to is read there (default: your cwd)
     --tools # Keep tool calls as one-line placeholders instead of dropping them
     --commit # Commit the imported doc
     --gitignore # Keep the imported doc out of git
@@ -511,6 +530,8 @@ export def "gi import" [
     # Not `| default (gi-session-id)`: default evaluates its argument eagerly,
     # so the live-session lookup would error even when a session was named.
     let sid = if $session == null { gi-session-id } else { $session }
+    # Read the run directory off the flag before the next line shadows it.
+    let dir = gi-run-dir $root
     let root = $root | default (gi-repo-root) | path expand
     let paths = gi-paths $root
     # Default is session-keyed, so re-running it for one session names one file
@@ -518,7 +539,7 @@ export def "gi import" [
     # Why --to and not a second positional: the common in-session call names a
     # path but no session, and a positional cannot be skipped. Also the word
     # export-session already uses for "where the output lands".
-    let paths_doc = gi-doc-path $root ($to | default $"gi/session-(gi-session-key $sid).md")
+    let paths_doc = gi-doc-path $dir ($to | default $"gi/session-(gi-session-key $sid).md")
     # Check before reading the session: a doc that already holds work must not
     # be reported as a near-miss after a long export.
     if ($paths_doc.abs | path exists) {
@@ -708,17 +729,22 @@ export def gi-launch-args [sid: string, doc: string, --resume, ...extra: string]
 # matching the frontmatter, or the canvas can't be reopened a third time.
 def gi-launch [
     --doc: path # The canvas; created from the template when new
-    --root: path # Repo root (default: git top-level)
+    --root: path # Run gi in this directory instead of here (default: your cwd)
     --hook # Carry the Stop-hook floor into the session
     --new-session # Mint a fresh session id, overwriting the one the canvas records
     --fork # Open a copy of the named canvas instead, on a session of its own
     --extra: list<string> = [] # Flags forwarded to `claude` untouched
 ]: nothing -> nothing {
     gi-reject-owned-flags $extra
+    # Read the run directory off the flag before the next line shadows it.
+    let dir = gi-run-dir $root
     let root = $root | default (gi-repo-root) | path expand
-    # outputStyle names a style file that must be on disk here, or the session
-    # starts with no style and gi is silently half on. So seed it — copy-if-
-    # absent, an edited style is never touched — rather than refuse. Seeding
+    # outputStyle names a style file that must be on disk, or the session starts
+    # with no style and gi is silently half on. So seed it — copy-if-absent, an
+    # edited style is never touched — rather than refuse. At the repo root and
+    # not at the run directory: Claude Code searches every `.claude/output-styles/`
+    # from the working directory up to the root, so one seed serves the whole
+    # repo instead of one per subdirectory a canvas was ever opened from. Seeding
     # cannot fail on anything the user typed; every check that can (the flags
     # above, the fork source below) either runs before it or before its own
     # write, so no failure leaves a canvas behind.
@@ -727,8 +753,8 @@ def gi-launch [
     # The copy is made here and not in `gi open` so everything below — the
     # session plan, the stamp, GI_CANVAS, --name — sees only the file being
     # opened. From this line on a fork is an ordinary canvas.
-    let paths_doc = gi-doc-path $root $doc
-    | if $fork { gi-doc-path $root (gi-fork-canvas $in.abs) } else { }
+    let paths_doc = gi-doc-path $dir $doc
+    | if $fork { gi-doc-path $dir (gi-fork-canvas $in.abs) } else { }
     let doc_abs = $paths_doc.abs
     let doc_rel = $paths_doc.rel
     # The canvas exists before a session is bound to it: a new one is stamped
@@ -766,10 +792,13 @@ def gi-launch [
     }
     let args = gi-launch-args $plan.sid $doc_rel --resume=$plan.resume ...$extra
     print $"canvas ($doc_rel), session (gi-session-key $plan.sid)(if $hook { '' } else { ', no Stop hook' })"
-    # cd so claude resolves the session under this project and so outputStyle
-    # finds .claude/output-styles here.
+    # cd only matters when --root sent the launch elsewhere; without it this is
+    # already where the user stands. It is not needed to find the style: Claude
+    # Code loads project output styles from every `.claude/output-styles/`
+    # between the working directory and the repository root, so the seed at the
+    # root resolves from any subdirectory of it.
     do {
-        cd $root
+        cd $dir
         with-env { GI_CANVAS: $doc_abs } { ^claude --settings (gi-launch-settings --hook=$hook) ...$args }
     }
 }
@@ -841,7 +870,11 @@ def gi-check-rules []: record -> any {
     # none here.
     if (gi-off-canvas ($payload.transcript_path? | default "")) { return }
 
-    let root = gi-repo-root ($payload.cwd? | default $env.PWD)
+    # Two questions, two values, the same split as in the commands: the session's
+    # own directory is what a path is shortened against (that is where the agent
+    # stands), and the repo around it is what the branch guard reads.
+    let dir = $payload.cwd? | default $env.PWD | path expand
+    let root = gi-repo-root $dir
 
     # Branch guard, before the message rule: even a perfect `done` may not end
     # a turn on a protected branch — gi commits are internal working history,
@@ -855,9 +888,11 @@ def gi-check-rules []: record -> any {
     let message = $payload.last_assistant_message? | default ""
     if (gi-allowed $message) { return }
 
-    # Name the canvas the short way when it is inside this repo — the agent
-    # reads this path in a message, and the absolute form is noise there.
-    let doc = if ($canvas | str starts-with $"($root)/") { $canvas | path relative-to $root } else { $canvas }
+    # Name the canvas the short way when it is under the session's directory —
+    # the agent reads this path in a message, and the absolute form is noise
+    # there. Relative to that directory and not to the repo root, or the agent
+    # is handed a path that does not resolve from where it is standing.
+    let doc = if ($canvas | str starts-with $"($dir)/") { $canvas | path relative-to $dir } else { $canvas }
     # The escape hatch is safe by construction: the blocked message is already
     # on the user's screen, and the stop_hook_active guard ends the turn on the
     # follow-up whatever it says — a misfire can redirect one reply, never trap
