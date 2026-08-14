@@ -186,6 +186,25 @@ def gi-doc-path [dir: path, doc: path]: nothing -> record {
     }
 }
 
+# A path as the caller would type it from where they stand: relative to the
+# current directory when it sits under it, absolute when it does not.
+# The convention nu-multiproof and nu-cybergraph already follow (`_fs.nu
+# cwd-relative`), duplicated here rather than cross-imported, as those copies
+# are. For a path gi constructs and hands back for a person to read; a caller
+# who needs a handle rather than a label takes `| path expand` — the exact
+# inverse, since the value is relative to the cwd it was made in.
+# Why a prefix test and not `try { path relative-to } catch { }`: "not under
+# here" is an ordinary answer, not a failure. The trailing separator is part
+# of the prefix: without it `/a/bc` counts as under `/a/b`.
+def cwd-relative []: path -> path {
+    let p = $in
+    if ($p | str starts-with ($env.PWD | path join "")) {
+        $p | path relative-to $env.PWD
+    } else {
+        $p
+    }
+}
+
 # The canvas name minted when the user names none. A def and not a const: the
 # timestamp has to be read when the command runs, not when the module parses.
 def gi-default-doc []: nothing -> string {
@@ -490,7 +509,14 @@ export def "gi enable" [
     # the hook arrive with `gi open`, so the next lines are the whole
     # instruction. Seeding writes no canvas, so both verbs that make one are
     # named here — this is where the user is standing.
-    print $"gi seeded in ($root)."
+    # cwd-relative cannot shorten the root itself (a directory is not *under*
+    # itself), and the common call runs exactly there — so that case is named
+    # in words instead of echoing the long absolute path back.
+    print (if $root == ($env.PWD | path expand) {
+        "gi seeded here."
+    } else {
+        $"gi seeded in ($root | cwd-relative)."
+    })
     print $"start a canvas:  claude-nu gi open [<doc>]"
     print $"...or from a session's dialogue:  claude-nu gi import [<session>]"
     let status = gi-status --root $root
@@ -593,7 +619,7 @@ export def "gi import" [
     }
     # `doc` and status's `canvas` are different questions: the canvas this call
     # wrote, versus the one the calling session is bound to (usually none).
-    gi-status --root $root | insert doc $paths_doc.abs
+    gi-status --root $root | insert doc ($paths_doc.abs | cwd-relative)
 }
 
 # The `session:` value from a canvas's YAML frontmatter, or null when the file
@@ -810,16 +836,18 @@ def gi-status [
 ]: nothing -> record {
     let root = $root | default (gi-repo-root) | path expand
     let paths = gi-paths $root
-    # Paths stay absolute. Shortening them against PWD made the same field
-    # change spelling with where you stand. Data here; display is the caller's
-    # business.
+    # Paths pass through cwd-relative. This revises "data here; display is the
+    # caller's business", which kept them absolute: the record's only consumer
+    # is a human terminal, where a wide column truncates exactly the segment
+    # that differs, and no script reads these fields — the hook reads
+    # $env.GI_CANVAS itself, which stays absolute.
     {
         # Read from the environment, not from a file: activation is per session,
         # so "is gi on" is a property of who is asking, not of the repo.
-        canvas: ($env.GI_CANVAS?)
-        style: $paths.style_dst
-        skills: (gi-skill-seeds $paths | get dst)
-        stale: (gi-stale $paths)
+        canvas: ($env.GI_CANVAS? | if ($in | is-not-empty) { cwd-relative } else { })
+        style: ($paths.style_dst | cwd-relative)
+        skills: (gi-skill-seeds $paths | get dst | each {|p| $p | cwd-relative })
+        stale: (gi-stale $paths | each {|p| $p | cwd-relative })
     }
 }
 

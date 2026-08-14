@@ -282,19 +282,25 @@ def "status reports the session canvas from the environment" [] {
 }
 
 @test
-def "status returns absolute paths regardless of cwd" [] {
+def "status paths shorten against the cwd and stay absolute elsewhere" [] {
     let root = temp-root
     gi enable --root $root | ignore
-    let expected = $root | path expand | path join ".claude" "output-styles" "canvas.md"
+    # The expanded form, so cd lands on the physical path cwd-relative compares
+    # against — the record is built from an expanded root.
+    let abs = $root | path expand
+    let outside = gi --root $root
     let orig = $env.PWD
-    cd $root
-    let status = gi --root $root
+    cd $abs
+    let inside = gi --root $root
     cd $orig
     rm -rf $root
 
-    # Data, not display: paths never shorten against PWD, so a consumer gets
-    # the same value wherever status is called from.
-    assert equal $status.style $expected
+    # The record's consumer is a person at a terminal: a path reads as they
+    # would type it from where they stand, and stays absolute when it is not
+    # under them — which is also why these tests, run from elsewhere, can keep
+    # handling the paths they get back.
+    assert equal $inside.style (".claude" | path join "output-styles" "canvas.md")
+    assert equal $outside.style ($abs | path join ".claude" "output-styles" "canvas.md")
 }
 
 @test
