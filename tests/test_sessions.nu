@@ -104,7 +104,7 @@ def "export-session merges a ! command and its output into one user turn" [] {
         '{"type":"user","message":{"content":"<bash-stdout>file.txt</bash-stdout><bash-stderr></bash-stderr>"},"timestamp":"2024-01-15T10:00:01Z"}'
     ] | str join "\n" | save --force $f
 
-    let md = {path: $f} | export-session | get 0.markdown
+    let md = {path: $f} | export-session
 
     rm $f
 
@@ -1695,59 +1695,6 @@ def "sessions expands piped project dirs like positional dirs" [] {
 }
 
 # =============================================================================
-# sanitize-topic tests
-# =============================================================================
-
-@test
-def "sanitize-topic converts to lowercase" [] {
-    let result = "Hello World" | sanitize-topic
-    assert equal $result "hello-world"
-}
-
-@test
-def "sanitize-topic replaces special chars with dashes" [] {
-    let result = "feat: add new feature!" | sanitize-topic
-    assert equal $result "feat-add-new-feature"
-}
-
-@test
-def "sanitize-topic collapses multiple dashes" [] {
-    let result = "a--b---c" | sanitize-topic
-    assert equal $result "a-b-c"
-}
-
-@test
-def "sanitize-topic trims leading and trailing dashes" [] {
-    let result = "---hello---" | sanitize-topic
-    assert equal $result "hello"
-}
-
-@test
-def "sanitize-topic handles empty string" [] {
-    let result = "" | sanitize-topic
-    assert equal $result ""
-}
-
-@test
-def "sanitize-topic truncates to 50 chars" [] {
-    let long_input = "this-is-a-very-long-topic-name-that-exceeds-fifty-characters-limit"
-    let result = $long_input | sanitize-topic
-    assert (($result | str length) <= 50)
-}
-
-@test
-def "sanitize-topic preserves numbers" [] {
-    let result = "version-2.0.1-release" | sanitize-topic
-    assert equal $result "version-2-0-1-release"
-}
-
-@test
-def "sanitize-topic handles unicode" [] {
-    let result = "café résumé" | sanitize-topic
-    assert equal $result "caf-r-sum"
-}
-
-# =============================================================================
 # Tests against vendored real-session fixtures (Claude Code 2.1.x)
 # =============================================================================
 
@@ -2018,7 +1965,7 @@ def "extract-token-usage zeros when usage absent" [] {
 @test
 def "export-session default omits tool blocks" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
-    let md = {path: $p} | export-session | get 0.markdown
+    let md = {path: $p} | export-session
 
     # No blockquote placeholders should leak when --tools is absent
     assert not ($md | str contains "> [")
@@ -2031,7 +1978,7 @@ def "export-session default omits tool blocks" [] {
 @test
 def "export-session --tools renders tool_use as one-line blockquote" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
-    let md = {path: $p} | export-session --tools | get 0.markdown
+    let md = {path: $p} | export-session --tools
 
     # Real fixture has Bash and Read tool calls
     assert ($md | str contains "> [Bash:")
@@ -2041,7 +1988,7 @@ def "export-session --tools renders tool_use as one-line blockquote" [] {
 @test
 def "export-session --tools renders tool_result placeholder with char count" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
-    let md = {path: $p} | export-session --tools | get 0.markdown
+    let md = {path: $p} | export-session --tools
 
     assert ($md =~ '> \[result(?: error)?: \d+ chars\]')
 }
@@ -2056,7 +2003,7 @@ def "export-session --tools truncates long tool inputs to ~120 chars" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let md = {path: $temp_file} | export-session --tools | get 0.markdown
+    let md = {path: $temp_file} | export-session --tools
     rm $temp_file
 
     # The placeholder line shouldn't blow past ~130 chars including marker
@@ -2075,7 +2022,7 @@ def "export-session --tools renders tool_result error marker" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let md = {path: $temp_file} | export-session --tools | get 0.markdown
+    let md = {path: $temp_file} | export-session --tools
     rm $temp_file
 
     assert ($md =~ '> \[result error: \d+ chars\]')
@@ -2090,7 +2037,7 @@ def "export-session --tools picks file_path for Read tool placeholder" [] {
     ]
     $lines | str join "\n" | save --force $temp_file
 
-    let md = {path: $temp_file} | export-session --tools | get 0.markdown
+    let md = {path: $temp_file} | export-session --tools
     rm $temp_file
 
     assert ($md | str contains "> [Read: /src/main.rs]")
@@ -2282,66 +2229,34 @@ def "messages regex argument filters by rendered text" [] {
 }
 
 # =============================================================================
-# Tests for export-session --to file output and collisions
+# Tests for export-session output shape
 # =============================================================================
 
 @test
-def "export-session --to writes the markdown and returns session and filepath" [] {
-    let dir = $nu.temp-dir | path join $"md-in-(random uuid)"
-    mkdir $dir
-    let f = $dir | path join "11111111-1111-1111-1111-111111111111.jsonl"
-    [
-        '{"type":"summary","summary":"my topic"}'
-        '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
-    ] | str join "\n" | save --force $f
-
-    let out = $nu.temp-dir | path join $"md-out-(random uuid)"
-    let result = {path: $f} | export-session --to $out
-
-    let written = open --raw $result.0.filepath
-    let basename = $result.0.filepath | path basename
-    rm -rf $dir $out
-
-    assert equal ($result | columns) [session filepath]
-    assert equal $basename "20240115-my-topic.md"
-    assert ($written | str contains "# My Topic")
-}
-
-@test
-def "export-session --to writes nothing, not even the directory, for an empty selection" [] {
-    # Why: naming the directory is what asks for the write, so a search that
-    # matched nothing must leave no trace — an empty `out/` reads as "something
-    # was exported here" to whoever finds it next.
-    let out = $nu.temp-dir | path join $"md-out-(random uuid)"
-    let result = [] | export-session --to $out
-
-    assert equal $result []
-    assert not ($out | path exists)
-}
-
-@test
-def "export-session --to disambiguates colliding filenames with the session id" [] {
-    # Why: two sessions sharing a date+topic would clobber one file; the writer
-    # appends a session-id prefix so both survive.
+def "export-session gives a string for one session and a list for many" [] {
+    # Why: markdown is the whole output — saving is the shell's job
+    # (`| save file.md`). One piped row unwraps to its string; a table keeps
+    # one markdown string per session, never concatenated (the frontmatter
+    # blocks would land mid-file).
     let dir = $nu.temp-dir | path join $"md-in-(random uuid)"
     mkdir $dir
     let files = ["aaaa1111-1111-1111-1111-111111111111" "bbbb2222-2222-2222-2222-222222222222"]
         | each {|id|
             let f = $dir | path join $"($id).jsonl"
             [
-                '{"type":"summary","summary":"topic x"}'
+                '{"type":"summary","summary":"my topic"}'
                 '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
             ] | str join "\n" | save --force $f
             {path: $f}
         }
 
-    let out = $nu.temp-dir | path join $"md-out-(random uuid)"
-    let result = $files | export-session --to $out
-    let names = ls $out | get name | path basename | sort
-    rm -rf $dir $out
+    let one = {path: $files.0.path} | export-session
+    let many = $files | export-session
+    rm -rf $dir
 
-    assert equal ($result | length) 2
-    assert equal $names ["20240115-topic-x-aaaa11.md" "20240115-topic-x-bbbb22.md"]
+    assert equal ($one | describe) "string"
+    assert ($one | str contains "# My Topic")
+    assert equal ($many | each { describe }) ["string" "string"]
 }
 
 # =============================================================================
@@ -2359,7 +2274,7 @@ def "export-session merges consecutive same-role turns" [] {
         '{"type":"assistant","message":{"content":[{"type":"text","text":"reply"}]},"timestamp":"2024-01-15T10:00:02Z"}'
     ] | str join "\n" | save --force $f
 
-    let md = {path: $f} | export-session | get 0.markdown
+    let md = {path: $f} | export-session
 
     rm $f
 

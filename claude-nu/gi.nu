@@ -403,7 +403,6 @@ export def gi-import-text [
     # doc from the session summary, and two H1s in a committed doc is noise.
     # First match only (no --all) — later `# ` lines belong to the dialogue.
     {path: $file} | export-session --tools=$tools
-    | get 0.markdown
     | str replace --multiline --no-expand '^# .+' ([(open --raw $GI_HEADER_SRC) $note] | str join "\n")
 }
 
@@ -563,8 +562,7 @@ export def "gi import" [
     # Default is session-keyed, so re-running it for one session names one file
     # and leaves the repo's other canvases alone.
     # Why --to and not a second positional: the common in-session call names a
-    # path but no session, and a positional cannot be skipped. Also the word
-    # export-session already uses for "where the output lands".
+    # path but no session, and a positional cannot be skipped.
     let paths_doc = gi-doc-path $dir ($to | default $"gi/session-(gi-session-key $sid).md")
     # Check before reading the session: a doc that already holds work must not
     # be reported as a near-miss after a long export.

@@ -119,17 +119,16 @@ claude-nu sessions --all-columns                  # All available columns
 
 ### `claude-nu export-session`
 
-Export session dialogue to a markdown file for git tracking.
+Export session dialogue to markdown.
 
 ```nushell no-run
-claude-nu export-session                    # Uses session summary as topic
-claude-nu export-session "auth-refactor"    # Custom topic
+claude-nu export-session                    # Uses session summary as title
+claude-nu export-session "Auth refactor"    # Custom title, used as given
 claude-nu sessions --session <uuid> | claude-nu export-session # Specific session
-claude-nu export-session --to docs/sessions # Write the markdown to files instead of returning it
-claude-nu sessions | claude-nu export-session --to ./tmp # One file per session of the project
+claude-nu export-session | save session.md  # Saving is the shell's job
 ```
 
-Without `--to` the command returns `{session, date, topic, markdown}` — pipe it into `get markdown` to read the text before anything touches the disk. With `--to` it writes `<dir>/yyyymmdd-topic.md` and returns `{session, filepath}`; two sessions that would share a filename get the first characters of their session id appended. The directory has no default: naming it is what asks for the write.
+The output is the markdown itself — one string per session, with the session id and date in the YAML frontmatter. Saving is ordinary `save`, not a flag.
 
 Filters out system-generated messages, keeping only user prompts and assistant responses.
 

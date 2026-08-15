@@ -64,12 +64,12 @@ claude-nu sessions --last | claude-nu messages # Just the current session
 claude-nu sessions --session <uuid> | claude-nu messages # One named session — `sessions` is the only place selection lives
 claude-nu sessions --all-projects | claude-nu messages 'regex' # search across all projects
 claude-nu sessions | claude-nu messages 'regex' | claude-nu messages --include-responses # full dialogues of matched sessions
-claude-nu sessions | claude-nu messages 'regex' | claude-nu export-session --to docs/sessions # export matched sessions to markdown files ({session, filepath} out; no --to = markdown in the pipeline)
+claude-nu sessions | claude-nu messages 'regex' | claude-nu export-session # markdown of matched sessions in the pipeline (one string per session)
 claude-nu sessions                     # Top-level (human) sessions with summaries and stats
 claude-nu sessions --subagents         # Also include subagent transcripts (parent_session_id set)
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, thinking level...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
-claude-nu export-session               # Export to markdown with YAML frontmatter; --to <dir> writes the files (save-markdown folded in)
+claude-nu export-session               # Markdown with YAML frontmatter; save is the shell's job: `| save file.md`
 claude-nu project-move ~/old ~/new     # Retarget Claude's state after a project directory moved: sessions dir name, `cwd` in every record, ~/.claude.json (`projects` + `githubRepoPaths`), history.jsonl. `--dry-run` reports the same rows without writing. Literal substring swap, never a JSON round trip. A store already standing at the destination is folded into, not refused — a project that moves twice comes back to a name Claude knows. A file in both stores is resolved by containment: transcripts are append-only, so the copy that contains the other wins (`keep-source` / `keep-destination`), and a pair where neither contains the other stops the run before anything is written. Only two `~/.claude.json` project entries are still refused — no rule picks a winner for `allowedTools` or a trust flag, so the error prints the two commands that show both records
 claude-nu commits                      # Per-commit table (sha, date, email, is_claude) for the repo at cwd
 claude-nu commits --by-month           # Claude's share of commits per month: { month, total, claude, pct }

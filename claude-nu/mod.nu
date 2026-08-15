@@ -4,7 +4,7 @@
 #   projects        # List Claude Code projects, most recent first
 #   sessions        # Parse sessions into a structured table
 #   messages        # Extract user messages from a session
-#   export-session  # Render a session's dialogue to markdown; --to writes it to files
+#   export-session  # Render a session's dialogue to markdown
 #   project-move    # Retarget Claude's stored state from a project's old path to its new one
 #   commits         # Per-commit Claude-authorship table; --by-month for the monthly share
 #   code-authorship # Claude's share of the lines living in the tree now (git blame)

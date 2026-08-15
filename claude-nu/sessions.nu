@@ -556,30 +556,24 @@ export def main [
     }
 }
 
-# Sanitize topic string for use in filename
-export def sanitize-topic []: string -> string {
-    str lowercase
-    | str replace --all --regex '[^a-z0-9]+' '-'
-    | str trim --char '-'
-    | str substring 0..<50
-}
-
-# Export session dialogue to structured data with markdown.
+# Export session dialogue to markdown.
 # Scope by piping session rows in — `sessions --session <uuid> | export-session`
 # for one, `sessions | export-session` for the whole project. With no input it
 # reads the current project's most recent session.
 # Why no `--session` here: selection lives in `sessions` alone (see the note on
 # `messages`).
+# Why markdown out, not a record: saving is the shell's job (`| save file.md`),
+# and the record only repeated what the markdown already carries — session and
+# date in the frontmatter, the title in the H1.
 export def export-session [
-    topic?: string # Topic for filename (default: session summary)
+    title?: string # Title for the exported doc, used as given (default: session summary)
     --tools # Render tool_use/tool_result blocks as one-line blockquote placeholders (default: drop)
-    --to: path # Write each session to <dir>/<date>-<topic>.md; returns {session, filepath}
-]: [nothing -> record record -> table table -> table] {
+]: [nothing -> string record -> string table -> list<string>] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
 
-    if $piped_files != null and $topic != null {
-        error make "Piped input conflicts with topic argument"
+    if $piped_files != null and $title != null {
+        error make "Piped input conflicts with title argument"
     }
 
     let export_one = {|session_file|
@@ -595,10 +589,11 @@ export def export-session [
 
         let summary = $records | extract-summary
 
-        # Determine topic: argument > summary > "session"
-        let resolved_topic = $topic
-            | default (if $summary != "" { $summary } else { "session" })
-            | sanitize-topic
+        # Title: the argument as given; the summary fallback gets title-cased.
+        # Why no slug pass anymore: lowercasing and hyphens served the filename,
+        # which went away with --to.
+        let doc_title = $title
+            | default ((if $summary != "" { $summary } else { "session" }) | str title-case)
 
         # Date from the first user record, or now
         let first_timestamp = $records
@@ -629,7 +624,7 @@ export def export-session [
         | to yaml
         | $"---\n($in)---\n"
 
-        let title = $"# ($resolved_topic | str replace --all '-' ' ' | str title-case)"
+        let heading = $"# ($doc_title)"
 
         let body = $dialogue
             | each {|turn|
@@ -638,63 +633,16 @@ export def export-session [
             }
             | str join "\n\n"
 
-        let markdown = [$frontmatter "" $title "" $body] | str join "\n"
-
-        {
-            session: $session_id
-            date: ($first_timestamp | format date "%Y%m%d")
-            topic: $resolved_topic
-            markdown: $markdown
-        }
+        [$frontmatter "" $heading "" $body] | str join "\n"
     }
 
-    let exported = if $piped_files != null {
-        $piped_files | each {|f| do $export_one $f }
+    if $piped_files != null {
+        $piped_files
+        | each {|f| do $export_one $f }
+        # A single piped row means one session: hand back its markdown, not a
+        # one-element list.
+        | if ($input | is-record) { first } else { }
     } else {
         do $export_one (resolve-session-file)
     }
-
-    $exported | if $to != null { write-markdown $to } else { }
-}
-
-# Write exported rows to <dir>/<date>-<topic>.md.
-# Why private, not the old public `save-markdown`: it only ever accepted
-# export-session's own output and checked for it at runtime — a pair the user
-# had to spell out and that could only be typed one way. As `--to` the check is
-# gone with the seam.
-# Keeps export-session's own shape (record in -> record out): `--to` chooses
-# what is returned, not how many rows.
-def write-markdown [dir: path]: [record -> record table -> table] {
-    let input = $in
-    # Why before mkdir: a selection that matched nothing wrote nothing, yet still
-    # left the named directory behind. Naming the directory is what asks for the
-    # write — with nothing to write there is nothing to ask for.
-    if ($input | is-empty) { return $input }
-    let rows = if ($input | is-record) { [$input] } else { $input }
-
-    let rows = $rows
-        | insert filename {|r| $"($r.date)-($r.topic).md" }
-
-    # Detect collisions: filenames shared by multiple sessions
-    let collision_names = $rows
-        | group-by filename --to-table
-        | where ($it.items | length) > 1
-        | get filename
-
-    let rows = $rows
-        | update filename {|r|
-            if $r.filename in $collision_names {
-                $"($r.date)-($r.topic)-($r.session | str substring 0..5).md"
-            } else { }
-        }
-
-    mkdir $dir
-
-    $rows
-    | each {|r|
-        let filepath = $dir | path join $r.filename
-        $r.markdown | save --force $filepath
-        {session: $r.session filepath: $filepath}
-    }
-    | if ($input | is-record) { first } else { }
 }
