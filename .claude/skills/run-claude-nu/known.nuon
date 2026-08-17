@@ -1,0 +1,106 @@
+# What claude-nu believes about Claude Code's transcript format.
+#
+# `drift.nu` compares this against the newest sessions on disk. Every entry is
+# one line a human can flip, and the `note` is the reason it was flipped.
+#
+# status:
+#   handled — a claude-nu reader consumes it. Absent from the window => `dead`:
+#             the reader has nothing left to read, so delete it.
+#   ignored — deliberately not read, with a reason in the note.
+#   rare    — real, but too infrequent to expect in a 40-session window.
+#             Exempt from the dead check.
+#   todo    — seen in the transcripts, not yet triaged. Always reported.
+#
+# Baseline taken 2026-08-17 against Claude Code 2.1.233.
+{
+    record_types: {
+        user: {status: handled note: "dialogue — messages, export-session, every user_msg_* metric"}
+        assistant: {status: handled note: "dialogue, token usage, tool calls"}
+        ai-title: {status: handled note: "extract-summary reads the last one as the session summary"}
+        summary: {status: rare note: "legacy summary record; 2.1.x writes ai-title instead, but old sessions still carry it and extract-summary prefers it"}
+        custom-title: {status: handled note: "the name `claude --name` writes, and what `gi open` sets to the canvas path. extract-summary prefers it over summary and ai-title: a human chose it"}
+        attachment: {status: ignored note: "context Claude Code attaches to a turn, never a turn itself — so no dialogue command reads it. Subtypes seen in the newest 80 sessions, most first: total_tokens_reminder, output_style, deferred_tools_delta, skill_listing, mcp_instructions_delta, agent_listing_delta, edited_text_file, command_permissions, task_reminder, file, agent_mention, nested_memory, directory, hook_system_message, queued_command, hook_blocking_error, date_change. The file-ish ones look like user content but are not typed text: when the user writes @file.txt, the message already carries the mention (that is what mentioned_files reads) and the attachment carries the file's whole body. Folding that into messages or export-session would put text no human wrote into the record of what the human said, and would bloat every export by the size of the files read"}
+        system: {status: ignored note: "Claude Code's own notices, not dialogue"}
+        mode: {status: ignored note: "output-style / mode switches"}
+        permission-mode: {status: ignored note: "permission mode switches"}
+        last-prompt: {status: ignored note: "pointer to the last prompt; the user record already holds the text"}
+        file-history-snapshot: {status: ignored note: "editor undo state"}
+        file-history-delta: {status: ignored note: "editor undo state"}
+        queue-operation: {status: ignored note: "queued-prompt bookkeeping"}
+        agent-name: {status: ignored note: "display name of a background agent"}
+        relocated: {status: ignored note: "records a cwd move; project-move rewrites cwd itself and does not read this"}
+    }
+
+    content_blocks: {
+        text: {status: handled note: "render-block"}
+        thinking: {status: handled note: "render-block --thinking"}
+        tool_use: {status: handled note: "render-block --tools, plus every tool metric"}
+        tool_result: {status: handled note: "render-block --tools, tool_errors"}
+        server_tool_use: {status: ignored note: "server-side tool call (advisor). render-block returns '' — correct here, the paired result is encrypted"}
+        advisor_tool_result: {status: ignored note: "content is advisor_redacted_result with encrypted_content; there is nothing to render"}
+    }
+
+    tool_names: {
+        Bash: {status: handled note: "bash_commands, bash_count"}
+        Edit: {status: handled note: "edited_files"}
+        Write: {status: handled note: "edited_files"}
+        Read: {status: handled note: "read_files"}
+        Agent: {status: handled note: "extract-agents"}
+        Skill: {status: handled note: "skill_invocations"}
+        AskUserQuestion: {status: handled note: "ask_user_count"}
+        EnterPlanMode: {status: rare note: "plan_mode_used — only present when the session used plan mode"}
+        ToolSearch: {status: handled note: "tool_counts"}
+        Monitor: {status: rare note: "tool_counts — long-running sessions only"}
+        TaskCreate: {status: rare note: "tool_counts"}
+        TaskUpdate: {status: rare note: "tool_counts"}
+        TaskStop: {status: rare note: "tool_counts"}
+        SendMessage: {status: ignored note: "agent-to-agent messaging; no metric asks for it, and tool_call_count counts it generically"}
+        WebFetch: {status: ignored note: "no metric asks for it; tool_call_count counts it generically"}
+        WebSearch: {status: ignored note: "no metric asks for it; tool_call_count counts it generically"}
+        "mcp__*": {status: ignored note: "every MCP tool, collapsed to one class by observe. The real names are mcp__<server>__<tool> and depend on which servers the user connected, so listing them one by one would never settle"}
+    }
+
+    usage_fields: {
+        input_tokens: {status: handled note: "extract-token-usage"}
+        output_tokens: {status: handled note: "extract-token-usage"}
+        cache_creation_input_tokens: {status: handled note: "extract-token-usage"}
+        cache_read_input_tokens: {status: handled note: "extract-token-usage"}
+        cache_creation: {status: ignored note: "per-TTL breakdown; the top-level total already covers it"}
+        iterations: {status: ignored note: "per-iteration breakdown; the top-level totals already cover it"}
+        output_tokens_details: {status: ignored note: "holds thinking_tokens, which is a slice of output_tokens (measured: 1689 of 2213), not an uncounted bucket"}
+        server_tool_use: {status: ignored note: "count of server-side tool calls, not a token bucket"}
+        service_tier: {status: ignored note: "routing metadata"}
+        inference_geo: {status: ignored note: "routing metadata"}
+        speed: {status: ignored note: "routing metadata"}
+    }
+
+    # Leading wrapper tags on user-record text. `drops` is the classification the
+    # code is supposed to implement: true means SYSTEM_PREFIXES swallows it
+    # because nobody typed it, false means it is kept because a human did hand it
+    # over. drift.nu asks is-user-text the same question and reports any tag
+    # where the two answers differ — that is how a wrapper starts being counted
+    # as a human turn. `status` stays on its usual axis: whether the reader is
+    # live, exempt from the dead check, or waiting to be fixed.
+    user_tags: {
+        command-name: {status: handled drops: true note: "slash-command wrapper"}
+        command-message: {status: handled drops: true note: "slash-command wrapper"}
+        local-command-caveat: {status: handled drops: true note: "slash-command wrapper"}
+        local-command-stdout: {status: handled drops: true note: "slash-command wrapper"}
+        local-command-stderr: {status: rare drops: true note: "slash-command wrapper; present only when the command wrote to stderr"}
+        task-notification: {status: handled drops: true note: "a finished background agent reporting in its own voice, filed under type: user"}
+        system-reminder: {status: handled drops: true note: "Claude Code injects it. Dropped only when it leads the text — that is a turn nobody typed. A reminder appended after the user's own words leaves those words first, so the message survives the str-starts-with check whole"}
+        selected-text: {status: ignored drops: false note: "the user handing over an editor selection — real user content, kept on purpose"}
+        img: {status: rare drops: false note: "the user pasting an image — real user content, kept on purpose"}
+        bash-input: {status: rare drops: false note: "a `!` command the user ran; render-bash-wrapper renders it instead of dropping it"}
+        bash-stdout: {status: rare drops: false note: "output of a `!` command; render-bash-wrapper renders it"}
+        bash-stderr: {status: rare drops: false note: "stderr of a `!` command; render-bash-wrapper renders it"}
+    }
+
+    # `sessions` columns that are blank across a whole window without anything
+    # being wrong. Everything else blank in every recent session is a reader that
+    # stopped reading, so this list stays short and each entry earns its place.
+    expected_blank_columns: {
+        parent_session_id: {note: "null for top-level sessions; only subagent rows carry a parent"}
+        plan_mode_used: {note: "false unless the session used plan mode"}
+    }
+}
