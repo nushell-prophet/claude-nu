@@ -69,7 +69,7 @@ const tools = [
     {value: "Write" description: "Write files"}
     {value: "Glob" description: "File pattern matching"}
     {value: "Grep" description: "Search file contents"}
-    {value: "Task" description: "Launch subagents"}
+    {value: "Agent" description: "Launch subagents"}
     {value: "WebFetch" description: "Fetch web content"}
     {value: "WebSearch" description: "Search the web"}
     {value: "TodoWrite" description: "Manage task lists"}

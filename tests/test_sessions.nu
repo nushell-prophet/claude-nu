@@ -49,6 +49,7 @@ def "messages drops every system/command wrapper prefix" [] {
         '{"type":"user","message":{"content":"<local-command-stdout>out"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<local-command-stderr>err"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<task-notification>agent done"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<system-reminder>injected context"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"Caveat: heads up"},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
     $lines | str join "\n" | save --force $temp_file
@@ -58,6 +59,26 @@ def "messages drops every system/command wrapper prefix" [] {
     rm $temp_file
 
     assert equal $result ["real human message"]
+}
+
+@test
+def "messages keeps a message that only ends with a system reminder" [] {
+    # Why this guard: Claude Code appends <system-reminder> blocks to messages a
+    # human really typed. Filtering by prefix is what makes that safe — the tag
+    # is only grounds to drop a turn when it starts the text. If the check ever
+    # loosens to str contains, this test is what notices.
+    let temp_file = $nu.temp-dir | path join $"test-sysreminder-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"fix the parser\n<system-reminder>some injected context</system-reminder>"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = {path: $temp_file} | messages | get message
+
+    rm $temp_file
+
+    assert equal ($result | length) 1
+    assert str contains ($result | first) "fix the parser"
 }
 
 @test
@@ -264,6 +285,32 @@ def "extract-summary takes latest ai-title" [] {
     assert equal ($records | extract-summary) "Current title"
 }
 
+@test
+def "extract-summary prefers a title the user chose over a generated one" [] {
+    # custom-title is what `claude --name` writes, and what `gi open` sets to
+    # the canvas path — a human picked it, so it outranks both the legacy
+    # summary record and the model's ai-title.
+    let records = [
+        {type: "ai-title" aiTitle: "Generated title"}
+        {type: "summary" summary: "Legacy summary"}
+        {type: "custom-title" customTitle: "todo/my-canvas.md"}
+    ]
+
+    assert equal ($records | extract-summary) "todo/my-canvas.md"
+}
+
+@test
+def "extract-summary takes the latest custom-title" [] {
+    # A session can be renamed; the last record is the name in force.
+    let records = [
+        {type: "custom-title" customTitle: "first name"}
+        {type: "user" message: {content: "hi"}}
+        {type: "custom-title" customTitle: "renamed"}
+    ]
+
+    assert equal ($records | extract-summary) "renamed"
+}
+
 # =============================================================================
 # Integration tests for sessions overview and column selection
 # =============================================================================
@@ -279,7 +326,7 @@ def "sessions extracts all overview fields from session file" [] {
         '{"type":"assistant","message":{"content":[{"type":"text","text":"I will read that file."},{"type":"tool_use","name":"Read","input":{"file_path":"/src/main.rs"}}]},"timestamp":"2024-01-15T10:00:01Z"}'
         '{"type":"user","message":{"content":"Now edit @src/lib.rs please"},"timestamp":"2024-01-15T10:00:02Z"}'
         '{"type":"assistant","message":{"content":[{"type":"text","text":"Making the edit."},{"type":"tool_use","name":"Edit","input":{"file_path":"/src/lib.rs","old_string":"old","new_string":"new"}}]},"timestamp":"2024-01-15T10:00:03Z"}'
-        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Task","input":{"subagent_type":"Explore","description":"Find tests"}}]},"timestamp":"2024-01-15T10:00:04Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"Explore","description":"Find tests"}}]},"timestamp":"2024-01-15T10:00:04Z"}'
     ]
 
     $lines | str join "\n" | save --force $temp_file
@@ -424,15 +471,15 @@ def "sessions default columns are the overview set" [] {
 def "sessions column flag narrows output to base plus requested" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
-    '{"type":"user","slug":"narrow-test","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+    '{"type":"user","version":"2.1.233","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
         | save --force $temp_file
 
-    let result = sessions $temp_file --columns slug | first
+    let result = sessions $temp_file --columns version | first
 
     rm $temp_file
 
-    assert equal ($result | columns) [slug path parent_session_id]
-    assert equal $result.slug "narrow-test"
+    assert equal ($result | columns) [version path parent_session_id]
+    assert equal $result.version "2.1.233"
 }
 
 @test
@@ -458,12 +505,12 @@ def "session-columns completer accumulates comma-separated picks" [] {
     # After a pick + comma, the completer returns full comma-joined values and
     # drops the already-chosen column, so the menu keeps working for the next
     # element — the reason --columns is a comma string, not a list<string>.
-    let offered = nu-complete claude session-columns "sessions --columns slug,"
+    let offered = nu-complete claude session-columns "sessions --columns version,"
 
-    assert ("slug,version" in $offered)
-    assert ("slug,cwd" in $offered)
-    assert ("slug,slug" not-in $offered)
-    assert ($offered | all {|c| $c | str starts-with "slug," })
+    assert ("version,cwd" in $offered)
+    assert ("version,git_branch" in $offered)
+    assert ("version,version" not-in $offered)
+    assert ($offered | all {|c| $c | str starts-with "version," })
 }
 
 @test
@@ -492,7 +539,7 @@ def "sessions rejects --columns combined with --all-columns" [] {
         | save --force $temp_file
 
     let failed = try {
-        sessions $temp_file --columns slug --all-columns
+        sessions $temp_file --columns version --all-columns
         false
     } catch { true }
 
@@ -906,23 +953,6 @@ def "sessions extracts session_id from first record" [] {
 }
 
 @test
-def "sessions extracts slug from first record" [] {
-    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
-
-    let lines = [
-        '{"type":"user","slug":"happy-coding-session","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
-    ]
-
-    $lines | str join "\n" | save --force $temp_file
-
-    let result = sessions $temp_file --columns slug | first
-
-    rm $temp_file
-
-    assert equal $result.slug "happy-coding-session"
-}
-
-@test
 def "sessions extracts version from first record" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
@@ -983,40 +1013,40 @@ def "sessions handles missing metadata with empty defaults" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns session_id,slug,version,cwd,git_branch | first
+    let result = sessions $temp_file --columns session_id,version,cwd,git_branch | first
 
     rm $temp_file
 
     assert equal $result.session_id ""
-    assert equal $result.slug ""
     assert equal $result.version ""
     assert equal $result.cwd ""
     assert equal $result.git_branch ""
 }
 
 # =============================================================================
-# Tests for sessions command - Thinking level extraction
+# Tests for sessions command - reasoning effort extraction
 # =============================================================================
 
 @test
-def "sessions extracts thinking_level from user records" [] {
+def "sessions extracts effort from assistant records" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
-        '{"type":"user","thinkingMetadata":{"level":"high","disabled":false},"message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","effort":"high","message":{"content":[{"type":"text","text":"Hi"}]},"timestamp":"2024-01-15T10:00:01Z"}'
     ]
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns thinking_level | first
+    let result = sessions $temp_file --columns effort | first
 
     rm $temp_file
 
-    assert equal $result.thinking_level "high"
+    assert equal $result.effort "high"
 }
 
 @test
-def "sessions handles missing thinking metadata" [] {
+def "sessions handles a session with no effort recorded" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1025,11 +1055,11 @@ def "sessions handles missing thinking metadata" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = sessions $temp_file --columns thinking_level | first
+    let result = sessions $temp_file --columns effort | first
 
     rm $temp_file
 
-    assert equal $result.thinking_level ""
+    assert equal $result.effort ""
 }
 
 # =============================================================================
@@ -1265,8 +1295,8 @@ def "sessions --all-columns includes all columns" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
-        '{"type":"user","sessionId":"test-id","slug":"test-slug","version":"1.0","cwd":"/test","gitBranch":"main","thinkingMetadata":{"level":"high"},"message":{"content":"@file.txt"},"timestamp":"2024-01-15T10:00:00Z"}'
-        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"echo"}}]}}'
+        '{"type":"user","sessionId":"test-id","version":"1.0","cwd":"/test","gitBranch":"main","message":{"content":"@file.txt"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","effort":"high","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"echo"}}]}}'
     ]
 
     $lines | str join "\n" | save --force $temp_file
@@ -1287,11 +1317,10 @@ def "sessions --all-columns includes all columns" [] {
     assert ("first_timestamp" in $cols)
     assert ("last_timestamp" in $cols)
     assert ("session_id" in $cols)
-    assert ("slug" in $cols)
     assert ("version" in $cols)
     assert ("cwd" in $cols)
     assert ("git_branch" in $cols)
-    assert ("thinking_level" in $cols)
+    assert ("effort" in $cols)
     assert ("bash_commands" in $cols)
     assert ("bash_count" in $cols)
     assert ("skill_invocations" in $cols)
@@ -1714,14 +1743,15 @@ def "extract-agents recognizes Agent tool name in 2.1.x" [] {
 }
 
 @test
-def "extract-agents still recognizes legacy Task tool name" [] {
+def "extract-agents ignores the retired Task tool name" [] {
     let tool_calls = [
-        {name: "Task" input: {subagent_type: "Explore" description: "Old name"}}
-        {name: "Agent" input: {subagent_type: "general-purpose" description: "New name"}}
+        {name: "Task" input: {subagent_type: "Explore" description: "Retired name"}}
+        {name: "Agent" input: {subagent_type: "general-purpose" description: "Current name"}}
     ]
     let agents = $tool_calls | extract-agents
 
-    assert equal ($agents | length) 2
+    assert equal ($agents | length) 1
+    assert equal ($agents | first | get type) "general-purpose"
 }
 
 @test
@@ -1739,7 +1769,7 @@ def "extract-session-metadata walks records to find each field" [] {
     let records = [
         {type: "permission-mode" sessionId: "sess-abc" permissionMode: "auto"}
         {type: "file-history-snapshot" snapshot: {}}
-        {type: "user" sessionId: "sess-abc" cwd: "/project" version: "2.1.138" gitBranch: "main" slug: "my-slug" message: {content: "hi"}}
+        {type: "user" sessionId: "sess-abc" cwd: "/project" version: "2.1.138" gitBranch: "main" message: {content: "hi"}}
     ]
     let meta = $records | extract-session-metadata
 
@@ -1747,7 +1777,6 @@ def "extract-session-metadata walks records to find each field" [] {
     assert equal $meta.cwd "/project"
     assert equal $meta.version "2.1.138"
     assert equal $meta.git_branch "main"
-    assert equal $meta.slug "my-slug"
 }
 
 @test
@@ -1761,7 +1790,6 @@ def "extract-session-metadata returns empty defaults when no records carry a fie
     assert equal $meta.cwd ""
     assert equal $meta.version ""
     assert equal $meta.git_branch ""
-    assert equal $meta.slug ""
 }
 
 @test

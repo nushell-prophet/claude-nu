@@ -27,11 +27,10 @@ const SESSION_COLUMNS = [
     [edited_files false]
     [user_messages true]
     [session_id false]
-    [slug false]
     [version false]
     [cwd false]
     [git_branch false]
-    [thinking_level false]
+    [effort false]
     [bash_commands false]
     [bash_count false]
     [skill_invocations false]
@@ -302,12 +301,12 @@ def parse-session-columns [selected: list<string>]: path -> record {
         $all_tool_calls | extract-agents
     } else { [] }
 
-    let meta = if (do $need [session_id slug version cwd git_branch]) {
+    let meta = if (do $need [session_id version cwd git_branch]) {
         $records | extract-session-metadata
     } else { {} }
 
-    let thinking = if ("thinking_level" in $selected) {
-        $user_records | extract-thinking-level
+    let effort = if ("effort" in $selected) {
+        $assistant_records | extract-effort
     } else { "" }
 
     let tool_stats = if (do $need [
@@ -347,11 +346,10 @@ def parse-session-columns [selected: list<string>]: path -> record {
         edited_files: $file_ops.edited_files?
         user_messages: $user_messages
         session_id: $meta.session_id?
-        slug: $meta.slug?
         version: $meta.version?
         cwd: $meta.cwd?
         git_branch: $meta.git_branch?
-        thinking_level: $thinking
+        effort: $effort
         bash_commands: $tool_stats.bash_commands?
         bash_count: $tool_stats.bash_count?
         skill_invocations: $tool_stats.skill_invocations?
@@ -404,7 +402,7 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
 }
 
 # Completer for --columns: comma-separated session column names. Returns full
-# comma-joined values (e.g. `slug,version`) so the menu re-spawns after each
+# comma-joined values (e.g. `version,cwd`) so the menu re-spawns after each
 # comma and accumulates; names already chosen in the token are excluded.
 # Why: --columns is a string, not list<string>, because Nushell completes a
 # list-typed flag only outside its `[ ]` — where a bare value won't parse — and
@@ -521,7 +519,7 @@ export def main [
     let all_names = $SESSION_COLUMNS | get name
 
     # Why: --columns is a comma-separated string (see the completer) — split,
-    # trim, and drop empties so "slug, cwd" and a trailing comma are forgiving.
+    # trim, and drop empties so "version, cwd" and a trailing comma are forgiving.
     # uniq because `select` (unlike the old where+reduce) rejects a repeated name.
     let requested = $columns
         | default ""

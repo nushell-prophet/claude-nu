@@ -73,7 +73,7 @@ claude-nu sessions ~/other/project                # Sessions from another path
 claude-nu sessions --all-projects                 # Every project under ~/.claude/projects
 claude-nu sessions --session <uuid>               # Single session (tab-completable)
 claude-nu sessions --last --columns token_usage   # Most recent session, just the requested column
-claude-nu sessions --columns slug,cwd,git_branch  # Several columns, comma-separated
+claude-nu sessions --columns version,cwd,git_branch  # Several columns, comma-separated
 claude-nu sessions --all-columns                  # All available columns
 ```
 
@@ -100,11 +100,10 @@ claude-nu sessions --all-columns                  # All available columns
 |--------|-------------|
 | `user_messages` | List of user message texts |
 | `session_id` | UUID |
-| `slug` | Human-readable name |
 | `version` | Claude Code version |
 | `cwd` | Working directory |
 | `git_branch` | Branch at session start |
-| `thinking_level` | Thinking mode used |
+| `effort` | Reasoning effort the session ran at |
 | `bash_commands` | List of bash commands run |
 | `bash_count` | Number of bash commands |
 | `skill_invocations` | Skills used |

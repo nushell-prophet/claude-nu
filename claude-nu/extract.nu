@@ -8,8 +8,12 @@ use render.nu [render-message-content render-content content-blocks]
 # for the same reason though nothing renders them — they pass through as the
 # user's own text, an editor selection and a pasted image. Only what Claude
 # Code synthesizes on its own is filtered — slash-command and caveat wrappers,
-# and the <task-notification> a finished background agent injects in its own
-# voice under type: "user".
+# the <task-notification> a finished background agent injects in its own voice
+# under type: "user", and a <system-reminder> that opens the text.
+# Why <system-reminder> is safe to list even though it usually rides along with
+# a real message: the check is str starts-with, so it only drops a record whose
+# text *begins* with the tag — a turn nobody typed. A reminder appended after
+# the user's own words leaves those words first, and the message survives whole.
 const SYSTEM_PREFIXES = [
     "<command-name>"
     "<command-message>"
@@ -17,6 +21,7 @@ const SYSTEM_PREFIXES = [
     "<local-command-stdout>"
     "<local-command-stderr>"
     "<task-notification>"
+    "<system-reminder>"
     "Caveat:"
 ]
 
@@ -86,18 +91,29 @@ export def extract-tool-results []: table -> table {
 }
 
 # Extract a session summary string from records.
-# Why: 2.1.x sessions rarely carry a `summary` record; the canonical short
-# summary now lives in `ai-title.aiTitle`. Prefer the legacy `summary`
-# record when present, fall back to `ai-title.aiTitle`.
+# Why this order: a name a human chose outranks one a model generated. A
+# `custom-title` record is what `claude --name` writes, so it is the user's own
+# label — and `gi open` sets it to the canvas path, which is the most useful
+# thing a gi session could be called. Then the legacy `summary` record, which
+# 2.1.x rarely writes any more, and last `ai-title.aiTitle`, the generated one.
 export def extract-summary []: table -> string {
     let records = $in
+    # Why the last record of each kind: Claude Code rewrites both titles as the
+    # session evolves, so the final one is what the app shows.
+    let from_custom = $records | where type? == "custom-title" | last-of $.customTitle
+    if ($from_custom | is-not-empty) {
+        return $from_custom
+    }
     let from_summary = $records | where type? == "summary" | get 0?.summary?
     if ($from_summary | is-not-empty) {
         return $from_summary
     }
-    # Why: Claude Code rewrites ai-title as the session evolves; the last
-    # record carries the current title, matching what the app shows.
-    $records | where type? == "ai-title" | reverse | get 0?.aiTitle? | default ""
+    $records | where type? == "ai-title" | last-of $.aiTitle
+}
+
+# Last non-null value of a field across records, "" when absent.
+def last-of [field: cell-path]: table -> string {
+    get $field --optional | compact | last | default ""
 }
 
 # First non-null value of a field across records, "" when absent
@@ -114,16 +130,20 @@ export def extract-session-metadata []: table -> record {
     let records = $in
     {
         session_id: ($records | pick-first $.sessionId)
-        slug: ($records | pick-first $.slug)
         version: ($records | pick-first $.version)
         cwd: ($records | pick-first $.cwd)
         git_branch: ($records | pick-first $.gitBranch)
     }
 }
 
-# Extract thinking level from user records
-export def extract-thinking-level []: table -> string {
-    pick-first $.thinkingMetadata.level
+# Reasoning effort the session ran at, from assistant records.
+# Why not thinkingMetadata.level any more: that field is gone — 3 of the newest
+# 400 transcript files still carry it, and none of the newest 80 sessions do, so
+# the column it fed was empty for every session. Claude Code now writes the same
+# fact as a top-level `effort` on each assistant record, which is also why this
+# reads assistant turns where the old one read user turns.
+export def extract-effort []: table -> string {
+    pick-first $.effort
 }
 
 # First/last timestamp across all records that carry one — the session's
@@ -154,10 +174,13 @@ export def extract-file-operations []: table -> record {
 }
 
 # Extract agent info from tool calls
-# Why: 2.1.x renamed `Task` to `Agent`; both share input shape.
+# Why only `Agent`: 2.1.x renamed `Task` to `Agent`, and the old spelling is
+# gone from every recent transcript (0 of the newest 80 sessions), so carrying
+# it would be a branch nothing can reach. The drift check reports such a name as
+# `dead` precisely so it gets deleted rather than kept "just in case".
 # TaskCreate/Update/Stop are TODO-list ops with different schema, not agents.
 export def extract-agents []: table -> table {
-    where name? in ["Task" "Agent"]
+    where name? == "Agent"
     | each {
         {
             type: ($in.input?.subagent_type? | default "unknown")

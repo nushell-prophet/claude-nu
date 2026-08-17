@@ -67,7 +67,7 @@ claude-nu sessions | claude-nu messages 'regex' | claude-nu messages --include-r
 claude-nu sessions | claude-nu messages 'regex' | claude-nu export-session # markdown of matched sessions in the pipeline (one string per session)
 claude-nu sessions                     # Top-level (human) sessions with summaries and stats
 claude-nu sessions --subagents         # Also include subagent transcripts (parent_session_id set)
-claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, thinking level...
+claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, reasoning effort...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
 claude-nu export-session               # Markdown with YAML frontmatter; save is the shell's job: `| save file.md`
 claude-nu project-move ~/old ~/new     # Retarget Claude's state after a project directory moved: sessions dir name, `cwd` in every record, ~/.claude.json (`projects` + `githubRepoPaths`), history.jsonl. `--dry-run` reports the same rows without writing. Literal substring swap, never a JSON round trip. A store already standing at the destination is folded into, not refused — a project that moves twice comes back to a name Claude knows. A file in both stores is resolved by containment: transcripts are append-only, so the copy that contains the other wins (`keep-source` / `keep-destination`), and a pair where neither contains the other stops the run before anything is written. Only two `~/.claude.json` project entries are still refused — no rule picks a winner for `allowedTools` or a trust flag, so the error prints the two commands that show both records
