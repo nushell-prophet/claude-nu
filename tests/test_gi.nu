@@ -1020,7 +1020,11 @@ const FIXTURES_SESSIONS_DIR = path self fixtures/sessions
 def stage-session [home: path]: nothing -> nothing {
     let dir = $home | path join ".claude" "projects" "-tmp-proj"
     mkdir $dir
-    cp ($FIXTURES_SESSIONS_DIR | path join $"($FIXTURE_SESSION).jsonl") $dir
+    # Not `cp`: nutest runs tests in parallel and the builtin mixes concurrent
+    # copies up (see copy-file in gi.nu), which would stage a fixture holding
+    # some other file's bytes.
+    open --raw ($FIXTURES_SESSIONS_DIR | path join $"($FIXTURE_SESSION).jsonl")
+    | save --raw --force ($dir | path join $"($FIXTURE_SESSION).jsonl")
 }
 
 @test

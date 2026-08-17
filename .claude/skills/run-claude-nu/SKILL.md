@@ -118,10 +118,8 @@ nu toolkit.nu test              # 243 tests, JSON when piped, human view on a te
 nu toolkit.nu check             # static syntax check of every tracked .nu file
 ```
 
-`nu toolkit.nu test` is flaky, and it is not you.
-Across six full runs on 2026-08-17 it reported between 0 and 2 failures, always in `tests/test_gi.nu`, and never the same test twice: `the commit flag puts the import into git history`, `an imported canvas carries the full session id in its frontmatter`, `status reports seeds differing from the module as stale`.
-Those tests share a temp root, so they look order- or concurrency-dependent.
-Re-run before you believe a failure, and compare the failing name against that list.
+Until 2026-08-17 the suite failed a random `tests/test_gi.nu` test on most runs; the cause was nushell's builtin `cp` corrupting files when nutest copies from several threads at once, and gi no longer uses it (see `copy-file` in `claude-nu/gi.nu`).
+A random failure in that file again means the builtin came back somewhere.
 
 The driver itself is checked the same way as the rest of the repo:
 

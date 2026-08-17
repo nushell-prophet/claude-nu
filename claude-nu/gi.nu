@@ -205,6 +205,21 @@ def cwd-relative []: path -> path {
     }
 }
 
+# Copy one file, byte for byte. Every copy gi makes goes through here.
+# Not `cp`, because: nushell's builtin (0.115.0) mixes concurrent copies up —
+# two `cp` calls running in different threads write each other's bytes, so a
+# destination ends up the right length holding another file's content, and
+# nothing errors. Measured: 46 of 205 copies corrupted under `par-each`, 0 with
+# this, 0 with an external `cp`. That is what made `tests/test_gi.nu` fail a
+# different test on nearly every run — nutest runs tests in parallel, so several
+# `gi enable` seedings copy at once. It is not only a test problem: `gi open`
+# seeds and then launches `claude` against those very files.
+# --force because `gi enable --force` refreshes seeds that are already there;
+# the other two callers write a path they have just shown to be free.
+def copy-file [src: path, dst: path]: nothing -> nothing {
+    open --raw $src | save --raw --force $dst
+}
+
 # The canvas name minted when the user names none. A def and not a const: the
 # timestamp has to be read when the command runs, not when the module parses.
 def gi-default-doc []: nothing -> string {
@@ -256,7 +271,7 @@ export def gi-fork-canvas [src: path]: nothing -> path {
     gi-frontmatter-split $src | ignore
     let dir = $src | path dirname
     let dst = $dir | path join (gi-fork-name ($src | path basename) (ls $dir | get name | path basename))
-    cp $src $dst
+    copy-file $src $dst
     $dst
 }
 
@@ -295,7 +310,7 @@ def gi-seed [paths: record, --force, --no-gitignore]: nothing -> nothing {
     for seed in (gi-refresh-seeds $paths | insert overwrite $force) {
         if $seed.overwrite or not ($seed.dst | path exists) {
             mkdir ($seed.dst | path dirname)
-            cp $seed.src $seed.dst
+            copy-file $seed.src $seed.dst
         }
     }
     if not $no_gitignore {
@@ -785,7 +800,7 @@ def gi-launch [
     # with the id gi mints, and there must be a file to stamp.
     if not ($doc_abs | path exists) {
         mkdir ($doc_abs | path dirname)
-        cp $GI_HEADER_SRC $doc_abs
+        copy-file $GI_HEADER_SRC $doc_abs
     }
     # One canvas, one session, for life — and the canvas says which case this
     # is, so the caller does not. A `session:` in its frontmatter is one to
