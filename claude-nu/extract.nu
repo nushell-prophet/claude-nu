@@ -4,14 +4,19 @@ use render.nu [render-message-content render-content content-blocks]
 # System-generated message prefixes to filter out.
 # Why: `!`-command wrappers (<bash-input>/<bash-stdout>/<bash-stderr>) are NOT
 # here — they're a real user action, rendered as readable markdown by
-# render-bash-wrapper instead of dropped. Only Claude Code's synthesized
-# slash-command and caveat wrappers are filtered.
+# render-bash-wrapper instead of dropped. <selected-text> and <img> are absent
+# for the same reason though nothing renders them — they pass through as the
+# user's own text, an editor selection and a pasted image. Only what Claude
+# Code synthesizes on its own is filtered — slash-command and caveat wrappers,
+# and the <task-notification> a finished background agent injects in its own
+# voice under type: "user".
 const SYSTEM_PREFIXES = [
     "<command-name>"
     "<command-message>"
     "<local-command-caveat>"
     "<local-command-stdout>"
     "<local-command-stderr>"
+    "<task-notification>"
     "Caveat:"
 ]
 

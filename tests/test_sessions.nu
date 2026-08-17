@@ -48,6 +48,7 @@ def "messages drops every system/command wrapper prefix" [] {
         '{"type":"user","message":{"content":"<local-command-caveat>baz"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<local-command-stdout>out"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<local-command-stderr>err"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<task-notification>agent done"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"Caveat: heads up"},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
     $lines | str join "\n" | save --force $temp_file
