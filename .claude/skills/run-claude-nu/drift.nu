@@ -195,8 +195,6 @@ export def smoke [files: list<path>]: nothing -> table {
         ["sessions | messages" {|| claude-nu sessions ...$files | claude-nu messages | length }]
         ["messages --include-responses" {|| claude-nu sessions ...$few | claude-nu messages --include-responses | length }]
         ["export-session" {|| claude-nu sessions ...$few | claude-nu export-session | str length }]
-        ["commits --by-month" {|| cd $REPO; claude-nu commits --by-month | length }]
-        ["code-authorship" {|| cd $REPO; claude-nu code-authorship | get pct }]
         ["gi" {|| cd $REPO; claude-nu gi | columns | length }]
     ]
 

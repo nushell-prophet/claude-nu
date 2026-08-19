@@ -6,8 +6,6 @@
 #   messages        # Extract user messages from a session
 #   export-session  # Render a session's dialogue to markdown
 #   project-move    # Retarget Claude's stored state from a project's old path to its new one
-#   commits         # Per-commit Claude-authorship table; --by-month for the monthly share
-#   code-authorship # Claude's share of the lines living in the tree now (git blame)
 #   gi              # gi protocol: status on its own; gi enable seeds a repo, gi import turns a session into a canvas, gi open launches a session bound to one
 #
 # Usage:
@@ -28,7 +26,6 @@ export use sessions.nu [
 export use gi.nu [ main "gi enable" "gi import" "gi open" ]
 # `main` imports under the module's own name — this is `claude-nu project-move`.
 export use project-move.nu [ main ]
-export use attribution.nu [ commits code-authorship ]
 
 # Why the module keeps a `main` at all: without one the bare name `claude-nu`
 # falls through to an external-command lookup and answers "command not found" —
@@ -42,7 +39,7 @@ export def main []: nothing -> any {
         help: ([
             "search this project:  claude-nu messages 'regex'"
             "search every project: claude-nu sessions --all-projects | claude-nu messages 'regex'"
-            "subcommands: projects, sessions, messages, export-session, project-move, commits, code-authorship, gi"
+            "subcommands: projects, sessions, messages, export-session, project-move, gi"
         ] | str join "\n")
     }
 }

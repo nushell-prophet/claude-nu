@@ -27,8 +27,7 @@ claude-nu/
 │   ├── render.nu        # Record content -> markdown text
 │   ├── gi.nu            # gi protocol, as real subcommands (`gi enable`, `gi import`, `gi open`, bare `gi` for status): enable seeds the repo, import writes a canvas from a session's dialogue, open launches a session bound to one canvas (style + Stop hook travel with the launch)
 │   ├── project-move.nu  # Retarget stored state from a project's old path to its new one
-│   ├── gi-hook.nu       # Stop-hook entry point — `nu --stdin` runs this file; it imports `gi check` from gi.nu, which mod.nu deliberately does not re-export
-│   └── attribution.nu   # Claude-authorship of git history: commits (--by-month) and code-authorship (blame)
+│   └── gi-hook.nu       # Stop-hook entry point — `nu --stdin` runs this file; it imports `gi check` from gi.nu, which mod.nu deliberately does not re-export
 ├── completions/         # Completions for the two CLIs this repo is about; unrelated tools moved to ../dotfiles/nushell/completions/
 │   ├── claude.nu        # claude CLI (50+ flags, session picker, MCP/plugin subcommands)
 │   └── nu.nu            # nu CLI (dynamic: parses scripts for subcommands at tab-time)
@@ -88,10 +87,6 @@ claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, reas
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
 claude-nu export-session               # Markdown with YAML frontmatter; save is the shell's job: `| save file.md`
 claude-nu project-move ~/old ~/new     # Retarget Claude's state after a project directory moved: sessions dir name, `cwd` in every record, ~/.claude.json (`projects` + `githubRepoPaths`), history.jsonl. `--dry-run` reports the same rows without writing. Literal substring swap, never a JSON round trip. A store already standing at the destination is folded into, not refused — a project that moves twice comes back to a name Claude knows. A file in both stores is resolved by containment: transcripts are append-only, so the copy that contains the other wins (`keep-source` / `keep-destination`), and a pair where neither contains the other stops the run before anything is written. Only two `~/.claude.json` project entries are still refused — no rule picks a winner for `allowedTools` or a trust flag, so the error prints the two commands that show both records
-claude-nu commits                      # Per-commit table (sha, date, email, is_claude) for the repo at cwd
-claude-nu commits --by-month           # Claude's share of commits per month: { month, total, claude, pct }
-claude-nu commits | where is_claude | length # any other cut is a pipeline on the base table
-claude-nu code-authorship              # Claude's share of surviving lines (git blame): { total_lines, claude_lines, pct }
 claude-nu gi enable                    # Seed the Canvas style and the gi skills into this repo (writes no settings, turns nothing on, makes no canvas). Optional before `gi open`, which seeds for itself
 claude-nu gi enable --force            # Re-seed the style and skills from the module
 claude-nu gi enable --no-gitignore     # Seed without writing `.claude/.gitignore` — the seeds stay visible to git, to be committed. Only this verb can decline; `gi open` always writes it
