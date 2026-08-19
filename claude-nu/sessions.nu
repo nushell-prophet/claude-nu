@@ -631,7 +631,7 @@ export def export-session [
             }
             | str join "\n\n"
 
-        [$frontmatter "" $heading "" $body] | str join "\n"
+        [$frontmatter "" $heading "" $body] | str join "\n" | trim-line-ends
     }
 
     if $piped_files != null {

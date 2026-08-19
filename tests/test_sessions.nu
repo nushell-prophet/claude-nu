@@ -2293,6 +2293,27 @@ def "export-session gives a string for one session and a list for many" [] {
 # =============================================================================
 
 @test
+def "export-session strips trailing whitespace from every line" [] {
+    # Why: the user dictates by voice, so a message often ends in a space, and a
+    # line of the assistant reply can too. Invisible in the editor, real in a
+    # git diff — a canvas kept picking up whitespace-only changes.
+    let f = $nu.temp-dir | path join $"test-trailing-(random uuid).jsonl"
+    [
+        '{"type":"user","message":{"content":"asked something "},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"one\t\ntwo \n \nthree"}]},"timestamp":"2024-01-15T10:00:01Z"}'
+    ] | str join "\n" | save --force $f
+
+    let md = {path: $f} | export-session
+
+    rm $f
+
+    assert equal ($md | lines | where $it =~ '[ \t]+$' | length) 0
+    # Blank lines survive as blank lines — the paragraph breaks are not eaten.
+    assert ($md | str contains "one\ntwo\n\nthree")
+    assert ($md | str contains "asked something")
+}
+
+@test
 def "export-session merges consecutive same-role turns" [] {
     # Why: two user turns with no assistant between them collapse into one
     # "## User" section joined by a blank line, not two headers.

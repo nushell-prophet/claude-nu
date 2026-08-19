@@ -121,3 +121,15 @@ export def render-content [--tools --thinking]: record -> string {
         | str join "\n\n"
     }
 }
+
+# Strip trailing spaces and tabs from every line of a markdown document.
+# Why: transcripts carry them — the user dictates by voice, so a message often
+# ends in a space, and 26 of the 60 newest sessions exported with such lines.
+# They are invisible in the editor but real in a git diff, so a canvas or an
+# exported doc kept picking up whitespace-only changes.
+# Not per-turn, and not `str trim` on the text: a document-wide pass is the one
+# point that also covers the frontmatter and the headings, and trimming a turn
+# would eat the blank lines that separate its paragraphs.
+export def trim-line-ends []: string -> string {
+    str replace --all --regex '(?m)[ \t]+$' ''
+}
