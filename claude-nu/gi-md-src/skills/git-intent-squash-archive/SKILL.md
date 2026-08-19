@@ -4,20 +4,28 @@ description: Squash every commit on the current branch into one, keeping the ori
 allowed-tools: Bash(git *)
 ---
 
-A working branch's commits are rollback points while the work runs, and noise the moment it is done: an agent that later reads `git log` on the trunk wades through abandoned attempts and reversed decisions instead of history. So the branch lands as one commit. But those abandoned attempts are the record of *why* the surviving shape won, so the original stream is kept in a tag rather than dropped — squash for the reader, archive for the record.
+A working branch's commits are rollback points while the work runs, and noise the moment it is done: an agent that later reads `git log` on the trunk wades through abandoned attempts and reversed decisions instead of history.
+So the branch lands as one commit.
+But those abandoned attempts are the record of *why* the surviving shape won, so the original stream is kept in a tag rather than dropped — squash for the reader, archive for the record.
 
-This rewrites the branch (`git reset --soft`, `git tag -f`). That is why steps 1 and 6 stop instead of warning: on a trunk the reset would rewrite history other people have, and once it has run there is nothing left to confirm.
+This rewrites the branch (`git reset --soft`, `git tag -f`).
+That is why steps 1 and 6 stop instead of warning: on a trunk the reset would rewrite history other people have, and once it has run there is nothing left to confirm.
 
-Verify the working tree is clean (`git status --porcelain` returns empty). If not, stop and ask the user to commit or stash first.
+Verify the working tree is clean (`git status --porcelain` returns empty).
+If not, stop and ask the user to commit or stash first.
 
 Archive and squash all commits on the current branch:
 
-1. Get branch name: `git branch --show-current`. If `master` or `main` — **STOP immediately**, inform the user this command cannot run on the main branch, do not proceed with any further steps
+1. Get branch name: `git branch --show-current`.
+   If `master` or `main` — **STOP immediately**, inform the user this command cannot run on the main branch, do not proceed with any further steps
 2. Find base: `git merge-base main <branch>` (fall back to `master` if `main` doesn't exist)
 3. List all commits on the branch: `git log --oneline <base>..<branch>`
 4. If no commits — report and exit
-5. Check if tag `archive/<branch>` already exists (`git tag -l archive/<branch>`). If it does, show the user what it points to and warn that it will be overwritten
-6. Show the user: commit list, total count, tag overwrite warning (if applicable). **STOP.** Wait for confirmation before proceeding
+5. Check if tag `archive/<branch>` already exists (`git tag -l archive/<branch>`).
+   If it does, show the user what it points to and warn that it will be overwritten
+6. Show the user: commit list, total count, tag overwrite warning (if applicable).
+   **STOP.**
+   Wait for confirmation before proceeding
 7. `git tag -f archive/<branch> HEAD`
 8. `git reset --soft <base>`
 9. Generate commit message:
@@ -30,4 +38,5 @@ Archive and squash all commits on the current branch:
 ## Related
 
 - `/git-intent` — process commits as instructions and propagate choices before squashing
-- `/land-branch` — the general-development counterpart: same squash-and-archive, but it also merges to the trunk and drops `todo/`/`gi/`. Use it when the branch is not gi working material.
+- `/land-branch` — the general-development counterpart: same squash-and-archive, but it also merges to the trunk and drops `todo/`/`gi/`.
+  Use it when the branch is not gi working material.

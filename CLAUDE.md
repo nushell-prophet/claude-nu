@@ -4,11 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-claude-nu is a Nushell module providing utilities for working with Claude Code sessions and CLI completions. Work in progress — features added as needed.
+claude-nu is a Nushell module providing utilities for working with Claude Code sessions and CLI completions.
+Work in progress — features added as needed.
 
-The completions are a secondary feature, and more of a historical artifact. The main purpose of this repo is to build convenient Nushell tooling for interacting with Claude's sessions.
+The completions are a secondary feature, and more of a historical artifact.
+The main purpose of this repo is to build convenient Nushell tooling for interacting with Claude's sessions.
 
-Always think about CLI interface usability and ways to benefit from the pipelines architecture. If you see better ways to do what the user requests — mention that.
+Always think about CLI interface usability and ways to benefit from the pipelines architecture.
+If you see better ways to do what the user requests — mention that.
 
 Nushell's completions should be used when they add a real value.
 
@@ -40,12 +43,26 @@ Reference-doc fetchers (Claude Code + Nushell docs) moved to cozy: `cozy docs cl
 - `sessions` uses lazy evaluation — 25+ optional columns, only requested extractions run
 - `nu.nu` completions dynamically parse script AST to discover subcommands at tab-time
 - `claude.nu` session picker shows age, size, and summary alongside UUIDs
-- `claude-nu/gi-md-src/canvas-output-style.md` is the canonical Canvas style; `gi enable` seeds it into each repo's `.claude/output-styles/canvas.md`, and `gi open` turns it on for one launch via `claude --settings`. A public copy lives in `../my-claude-skills/plugins/canvas-output-style/output-styles/canvas.md` — edit here first, then sync there. That copy deliberately drops the sentence about the canvas path arriving with the launch (nothing launches it there) and the protected-branch bullet (it names a skill the plugin doesn't ship). Keep the style file itself comment-free: it is seeded verbatim and injected into every consumer session's system prompt.
-- The `chat:` aside has two halves that must stay in sync: `gi-off-canvas` in `gi.nu` (the hook reads the marker from the transcript's last authored user message and lets the turn end — message rule and branch guard both) and the matching bullet in the style (answer in chat, write nothing). The marker is only ever the user's: an agent-written one would be the agent lifting its own floor.
-- `gi enable` seeds only distributed text — the style and the skills — and is not a prerequisite for `gi open`, which seeds the same files itself (`gi-seed`, copy-if-absent) rather than refusing to launch without them. What `enable` still owns: `--force`, `--no-gitignore`, and getting the `gi-canvas` skill into a repo where the work starts inside a live session (that path launches nothing, so it never reaches `open`). Seeding also writes `.claude/.gitignore` (`gi-ignore-text`): exact paths, never `*` or a bare `skills/` — gi seeds into `.claude/` but does not own it — inside a marked block that is regenerated every run while lines outside it survive, and deliberately not listing itself, so `git status` keeps one `?? .claude/` line instead of the folder vanishing. Canvases come from the other two verbs: `gi open <doc>` creates one from `gi-md-src/canvas-header.md` and stamps the session it mints into its frontmatter, `gi import` writes one from a session's dialogue (export-session stamps the frontmatter there) — so no two verbs ever write the same file.
-- `gi import` is the only verb runnable from inside the session being captured: `enable` makes no canvas and `open` launches `claude`, which a live session cannot do for itself. Its session is a parameter with the `nu-complete claude sessions` picker, not a switch — a switch could only mean the live session, so the REPL case (import an older chat) had no spelling at all.
-- gi runs in one directory and every path is relative to it: `gi-run-dir` is `--root` when given, otherwise your cwd. The launch `cd`s there, a relative canvas is read there, and the one short form (`gi-doc-path`'s `rel`) — printed, pasted back as a command, handed to the agent, and used by the hook — is relative to it. `root` stays a separate value for the two repo-scoped things: seeding `.claude/` and the branch guard. Anchoring the canvas at the repo root instead was the bug: inside a monorepo the root is never where you work, so `gi open todo/x.md` from `mono/sub` made and bound `mono/todo/x.md`. The `cd` is not needed to find the style — Claude Code loads project output styles from every `.claude/output-styles/` between the working directory and the repository root (`../claude-code-docs/output-styles.md`), so one seed at the root serves every subdirectory. Cost accepted: a canvas opened from a subdirectory gets its own session store (`~/.claude/projects/` is keyed by cwd), so `claude-nu sessions` at the root will not list it without `--all-projects`; `claude --resume <id>` finds it anyway, since v2.1.223 searches every project on the machine.
-- `claude-nu/gi-md-src/skills/` holds the skills `gi enable` seeds into a repo's `.claude/skills/`. `gi-canvas` is the in-session entry point: it runs `gi import` and hands the user the command to launch the bound session, because a session cannot bind itself.
+- `claude-nu/gi-md-src/canvas-output-style.md` is the canonical Canvas style; `gi enable` seeds it into each repo's `.claude/output-styles/canvas.md`, and `gi open` turns it on for one launch via `claude --settings`.
+  A public copy lives in `../my-claude-skills/plugins/canvas-output-style/output-styles/canvas.md` — edit here first, then sync there.
+  That copy deliberately drops the sentence about the canvas path arriving with the launch (nothing launches it there) and the protected-branch bullet (it names a skill the plugin doesn't ship).
+  Keep the style file itself comment-free: it is seeded verbatim and injected into every consumer session's system prompt.
+- The `chat:` aside has two halves that must stay in sync: `gi-off-canvas` in `gi.nu` (the hook reads the marker from the transcript's last authored user message and lets the turn end — message rule and branch guard both) and the matching bullet in the style (answer in chat, write nothing).
+  The marker is only ever the user's: an agent-written one would be the agent lifting its own floor.
+- `gi enable` seeds only distributed text — the style and the skills — and is not a prerequisite for `gi open`, which seeds the same files itself (`gi-seed`, copy-if-absent) rather than refusing to launch without them.
+  What `enable` still owns: `--force`, `--no-gitignore`, and getting the `gi-canvas` skill into a repo where the work starts inside a live session (that path launches nothing, so it never reaches `open`).
+  Seeding also writes `.claude/.gitignore` (`gi-ignore-text`): exact paths, never `*` or a bare `skills/` — gi seeds into `.claude/` but does not own it — inside a marked block that is regenerated every run while lines outside it survive, and deliberately not listing itself, so `git status` keeps one `?? .claude/` line instead of the folder vanishing.
+  Canvases come from the other two verbs: `gi open <doc>` creates one from `gi-md-src/canvas-header.md` and stamps the session it mints into its frontmatter, `gi import` writes one from a session's dialogue (export-session stamps the frontmatter there) — so no two verbs ever write the same file.
+- `gi import` is the only verb runnable from inside the session being captured: `enable` makes no canvas and `open` launches `claude`, which a live session cannot do for itself.
+  Its session is a parameter with the `nu-complete claude sessions` picker, not a switch — a switch could only mean the live session, so the REPL case (import an older chat) had no spelling at all.
+- gi runs in one directory and every path is relative to it: `gi-run-dir` is `--root` when given, otherwise your cwd.
+  The launch `cd`s there, a relative canvas is read there, and the one short form (`gi-doc-path`'s `rel`) — printed, pasted back as a command, handed to the agent, and used by the hook — is relative to it.
+  `root` stays a separate value for the two repo-scoped things: seeding `.claude/` and the branch guard.
+  Anchoring the canvas at the repo root instead was the bug: inside a monorepo the root is never where you work, so `gi open todo/x.md` from `mono/sub` made and bound `mono/todo/x.md`.
+  The `cd` is not needed to find the style — Claude Code loads project output styles from every `.claude/output-styles/` between the working directory and the repository root (`../claude-code-docs/output-styles.md`), so one seed at the root serves every subdirectory.
+  Cost accepted: a canvas opened from a subdirectory gets its own session store (`~/.claude/projects/` is keyed by cwd), so `claude-nu sessions` at the root will not list it without `--all-projects`; `claude --resume <id>` finds it anyway, since v2.1.223 searches every project on the machine.
+- `claude-nu/gi-md-src/skills/` holds the skills `gi enable` seeds into a repo's `.claude/skills/`.
+  `gi-canvas` is the in-session entry point: it runs `gi import` and hands the user the command to launch the bound session, because a session cannot bind itself.
 
 ## Commands
 
@@ -90,7 +107,8 @@ claude-nu gi                           # { canvas, style, skills, stale } — ca
 
 Uses [nutest](https://github.com/vyadh/nutest) framework (expected at `../nutest`).
 
-Output mode is auto-detected via `is-terminal --stdout` (not `$nu.is-interactive`, which is false for any `nu toolkit.nu ...` script run and so can't tell agent from human): a terminal gets the human view — only the failing tests plus a `N passed, M failed` summary — while a pipe or redirect (agents, CI) gets machine-readable JSON with the flat schema `{type, name, status, file, message}` (`message` holds the assertion text on failure). Force with `--json` / `--pretty`; `--all` also lists passing tests.
+Output mode is auto-detected via `is-terminal --stdout` (not `$nu.is-interactive`, which is false for any `nu toolkit.nu ...` script run and so can't tell agent from human): a terminal gets the human view — only the failing tests plus a `N passed, M failed` summary — while a pipe or redirect (agents, CI) gets machine-readable JSON with the flat schema `{type, name, status, file, message}` (`message` holds the assertion text on failure).
+Force with `--json` / `--pretty`; `--all` also lists passing tests.
 
 ```nushell
 nu toolkit.nu test                     # Run all tests (60+ cases)
@@ -105,15 +123,20 @@ nu toolkit.nu vendor-sessions         # Obfuscate real sessions for safe sharing
 
 ## Commit messages
 
-**English, subject and body — including when the canvas session ran in Russian.** 19 of the 179 commits made since June are Russian and the rest English, so `git log --grep` in either language silently misses part of the history, and the README and this file are English anyway. Translating the reasoning at commit time is the cost; keeping one searchable history is what it buys.
+**English, subject and body — including when the canvas session ran in Russian.**
+19 of the 179 commits made since June are Russian and the rest English, so `git log --grep` in either language silently misses part of the history, and the README and this file are English anyway.
+Translating the reasoning at commit time is the cost; keeping one searchable history is what it buys.
 
-The prefix is the command or subsystem the change is about: `gi:`, `gi-hook:`, `gi-md-src:`, `sessions:`, `messages:`, `ask:`, `export-session:`, `completions:`, `canvas:`, `toolkit:`. Use a conventional type — `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `perf:`, `chore:` — when no single command owns the change.
+The prefix is the command or subsystem the change is about: `gi:`, `gi-hook:`, `gi-md-src:`, `sessions:`, `messages:`, `ask:`, `export-session:`, `completions:`, `canvas:`, `toolkit:`.
+Use a conventional type — `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `perf:`, `chore:` — when no single command owns the change.
 
-`gi:` commits that answer a canvas marker keep the canvas's own vocabulary in the body: a `Decision:` line for what was settled, `Why:` for the reasoning, `Propagation:` for what else had to move. That is what makes a canvas answer readable from the log without opening the canvas.
+`gi:` commits that answer a canvas marker keep the canvas's own vocabulary in the body: a `Decision:` line for what was settled, `Why:` for the reasoning, `Propagation:` for what else had to move.
+That is what makes a canvas answer readable from the log without opening the canvas.
 
 ## Code Style
 
-Follow the nushell-style skill (install via `/plugin install nushell-style@nushell-skills`). Key patterns:
+Follow the nushell-style skill (install via `/plugin install nushell-style@nushell-skills`).
+Key patterns:
 
 - Leading `|` on continuation lines, aligned with `let`
 - Empty `{ }` for pass-through branches: `| if $cond { } else { transform }`
