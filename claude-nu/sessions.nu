@@ -516,6 +516,9 @@ def expand-session-paths []: list<path> -> table {
 # to also include subagent transcripts (those rows carry a non-null parent_session_id).
 # Named `main` because a module can't export a command named the same as the
 # module — importing this file yields the `sessions` command.
+@example "sessions that touched a file" { claude-nu sessions --columns edited_files,session_id | where {|r| $r.edited_files | any {|f| $f =~ 'render.nu' } } }
+@example "which skills got used, across every project" { claude-nu sessions --all-projects --columns skill_invocations | get skill_invocations | flatten | uniq --count | sort-by count --reverse }
+@example "sessions by token spend" { claude-nu sessions --columns token_usage,session_id | insert total {|r| $r.token_usage.input_tokens + $r.token_usage.output_tokens } | sort-by total --reverse }
 export def main [
     ...paths: path # Session files or directories to parse (default: current project sessions)
     --session: string@"nu-complete claude sessions" # Single session UUID or path

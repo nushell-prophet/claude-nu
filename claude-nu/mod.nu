@@ -46,6 +46,11 @@ export use example.nu [ main ]
 @example "full dialogues of the sessions that match" { claude-nu sessions | claude-nu messages 'regex' | claude-nu messages --include-responses }
 @example "markdown of the most recent session" { claude-nu sessions --last | claude-nu export-session }
 @example "what an agent ran, across every project" { claude-nu sessions --all-projects | claude-nu tool-calls 'claude-nu (sessions|messages)' }
+@example "which project was that in" { claude-nu sessions --all-projects | claude-nu messages 'regex' | get project | uniq --count | sort-by count --reverse }
+@example "search one project, picked by name" { claude-nu projects | where name =~ 'cozy' | claude-nu sessions | claude-nu messages 'vendor' }
+@example "where Claude explained it, not where I asked" { claude-nu sessions --all-projects | claude-nu messages 'regex' --include-responses | where role == assistant }
+@example "archive the current session next to the code" { claude-nu sessions --last | claude-nu export-session | save docs/sessions/topic.md }
+@example "one session found by fuzzy match, then its markdown" { claude-nu sessions | find 'canvas' | first | claude-nu export-session }
 export def main []: nothing -> any {
     error make --unspanned {
         msg: "claude-nu needs a subcommand"
