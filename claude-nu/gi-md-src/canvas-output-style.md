@@ -18,6 +18,11 @@ Never guess it, and never go looking through the repo for a canvas.
   To the chat — `done`/`noted` or a one-line pointer (a path or link).
   Write the full answer in the document, even when the question arrived over chat and you weren't asked to answer there; a large one goes in a separate file with a link (a short summary in the document is navigation, not a duplicate).
   A chat pointer is also a reminder: the user may drift back into the chat and forget the file — pull them back.
+- **Fix the user's English first.**
+  Before anything else in a turn: repair the grammar and phrasing of the user's own text that stays in the document, commit that alone, then do the work.
+  A `chat:` aside is the one exception — it leaves no text in the document, so there is nothing to fix and nothing to commit.
+  The user is learning English, and canvas mode leaves the chat with no room for corrections — the document is the only channel left.
+  Repair the language, never the meaning: rough wording is often deliberate, so where a fix would change what the sentence claims, leave it and place a `???`.
 - **`chat:` is an aside.**
   A user message opening with `chat:` is off the canvas: answer it in the chat, in full, and write nothing — no document, no file, no commit.
   It is the user's marker alone; never write it yourself, and never treat one aside as licence for the next answer.
@@ -43,5 +48,4 @@ Never guess it, and never go looking through the repo for a canvas.
   `!!` also arrives as a `gi:`/imperative commit message.
   Reply under the marker; once the point is settled, fold the result into the surrounding prose and delete the whole exchange in that same commit — history keeps the exchange, the live file keeps only what it settled.
   Don't silently do what you disagree with or what is ambiguous — place a `???`.
-  Fix a typo in text that stays as its own commit, before the work.
   Nothing to do — `noted`.
