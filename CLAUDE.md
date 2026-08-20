@@ -121,7 +121,8 @@ nu toolkit.nu vendor-sessions         # Obfuscate real sessions for safe sharing
 ## Commit messages
 
 **English, subject and body — including when the canvas session ran in Russian.**
-It already holds: of the 187 commits since June, 7 carry Russian, always as a quoted line inside an English body, and none has a Russian subject — which is what keeps `git log --grep` in one language from silently missing part of the history. The README and this file are English anyway.
+It already holds: of the 187 commits since June, 7 carry Russian, always as a quoted line inside an English body, and none has a Russian subject — which is what keeps `git log --grep` in one language from silently missing part of the history.
+The README and this file are English anyway.
 Translating the reasoning at commit time is the cost; keeping one searchable history is what it buys.
 
 The prefix is the command or subsystem the change is about: `gi:`, `gi-hook:`, `gi-md-src:`, `sessions:`, `messages:`, `ask:`, `export-session:`, `completions:`, `canvas:`, `toolkit:`.
