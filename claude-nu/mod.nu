@@ -4,6 +4,7 @@
 #   projects        # List Claude Code projects, most recent first
 #   sessions        # Parse sessions into a structured table
 #   messages        # Extract user messages from a session
+#   tool-calls      # Extract the tool calls of a session — what the agent did
 #   export-session  # Render a session's dialogue to markdown
 #   project-move    # Retarget Claude's stored state from a project's old path to its new one
 #   gi              # gi protocol: status on its own; gi enable seeds a repo, gi import turns a session into a canvas, gi open launches a session bound to one
@@ -20,7 +21,7 @@
 # project, `sessions --all-projects | messages 'x'` for every project — and the
 # rg pre-filter that made `-f` fast moved into `messages`, where the scope is.
 export use sessions.nu [
-    projects messages main export-session
+    projects messages tool-calls main export-session
 ]
 # `gi check` is deliberately absent: it is the Stop hook's body, not a verb a
 # user types, and the hook imports it straight from gi.nu (see GI_COMMAND).
@@ -44,11 +45,12 @@ export use example.nu [ main ]
 @example "search every project" { claude-nu sessions --all-projects | claude-nu messages 'regex' }
 @example "full dialogues of the sessions that match" { claude-nu sessions | claude-nu messages 'regex' | claude-nu messages --include-responses }
 @example "markdown of the most recent session" { claude-nu sessions --last | claude-nu export-session }
+@example "what an agent ran, across every project" { claude-nu sessions --all-projects | claude-nu tool-calls 'claude-nu (sessions|messages)' }
 export def main []: nothing -> any {
     error make --unspanned {
         msg: "claude-nu needs a subcommand"
         help: ([
-            "subcommands: projects, sessions, messages, export-session, project-move, gi, example"
+            "subcommands: projects, sessions, messages, tool-calls, export-session, project-move, gi, example"
             "pipelines to try: claude-nu example <tab>"
         ] | str join "\n")
     }

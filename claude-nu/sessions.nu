@@ -240,6 +240,77 @@ export def messages [
     | flatten
 }
 
+# Extract the tool calls of Claude Code session files — what an agent did, as
+# `messages` is what was said. One row per tool_use block: {tool, input,
+# timestamp, session, project}, with `input` kept as the raw record so a caller
+# drills into it (`where tool == Bash | get input.command`).
+# Scoping and searching work exactly as in `messages`: no input reads every
+# top-level session of the current project, piped session rows narrow it, the
+# regex argument gets the same rg pre-filter over the raw JSONL, and `--no-rg`
+# turns that off.
+# Why a command and not another `sessions` column: `bash_commands` was the only
+# window onto agent actions, and it is Bash-only — mining this store for
+# `claude-nu` invocations, 82 of the 588 an agent made came through
+# `mcp__nushell__evaluate` and were invisible. It also aggregates per session,
+# so a matched command carries no timestamp and no row of its own, and the
+# columns path has no rg pre-filter: the same all-projects sweep costs 42s
+# through `sessions --columns bash_commands` against 2.4s once rg narrows the
+# files first.
+# Why the regex matches the input rendered as NUON, not just the tool name or
+# one preferred field: the interesting string sits in a different field per tool
+# (`command`, `prompt`, `skill`, an MCP tool's own schema), and a search that
+# has to know the field per tool cannot answer "who ran this" across tools.
+# Filtering by tool is `where tool == ...` downstream — no flag, because unlike
+# the regex it buys no pre-filter.
+export def tool-calls [
+    regex?: string # Filter tool calls by regex over the call's input (rendered as NUON)
+    --no-rg # Skip the ripgrep file pre-filter and match entirely in-engine (exact regex semantics, slower)
+]: [nothing -> table record -> table table -> table] {
+    let input = $in
+    let piped_files = resolve-piped-sessions $input
+
+    let scoped_files = if $piped_files != null {
+        $piped_files
+    } else {
+        top-level-session-files
+        | if ($in | is-empty) { error make "No session files found for the current project" } else { }
+    }
+
+    # Why here, before rg: same reason as in `messages` — rg's own "No such
+    # file" would mask this and discard the matches it did find.
+    let missing = $scoped_files | where not ($it | path exists)
+    if ($missing | is-not-empty) {
+        error make $"Session file not found: ($missing | str join ', ')"
+    }
+
+    let session_files = $scoped_files
+        | if $regex == null or $no_rg { } else { rg-filter-session-files $regex }
+
+    $session_files
+    | each {|session_file|
+        # Why the pre-screen: tool calls live only on assistant records, which
+        # are a minority of the lines — the rest never reach the JSON parser.
+        # The `where type?` below still runs, so this only narrows.
+        $session_file
+        | read-session-records --contains '"type":"assistant"'
+        | where type? == "assistant"
+        | each {|record|
+            $record
+            | extract-tool-calls
+            # Why $record.timestamp and not `?`: every assistant record in the
+            # store carries one (26498 of 26498 checked), so a missing field is
+            # a record shape that changed — it must fail here, not silently
+            # yield a null column downstream.
+            | each {|call| {tool: ($call.name? | default "") input: ($call.input? | default {}) timestamp: ($record.timestamp | into datetime)} }
+        }
+        | flatten
+        | if $regex == null { } else { where {|call| ($call.input | to nuon) =~ $regex } }
+        | insert session ($session_file | session-id-from-path)
+        | insert project ($session_file | project-dir-name)
+    }
+    | flatten
+}
+
 # Parse one session file, computing only the selected columns.
 # Lazy: each extraction group runs only when a selected column needs it.
 # Why: no empty-file special case — every extractor yields its typed default

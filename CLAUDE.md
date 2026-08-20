@@ -21,7 +21,7 @@ Nushell's completions should be used when they add a real value.
 claude-nu/
 ├── claude-nu/           # Main module
 │   ├── mod.nu           # Module entry point, exports public commands
-│   ├── sessions.nu      # User-facing session/message commands; re-exports the submodules below
+│   ├── sessions.nu      # User-facing session/message/tool-call commands; re-exports the submodules below
 │   ├── discovery.nu     # On-disk session layout: enumerate, resolve, read session files
 │   ├── extract.nu       # Session records -> text, dialogue, metrics
 │   ├── render.nu        # Record content -> markdown text
@@ -43,6 +43,7 @@ Reference-doc fetchers (Claude Code + Nushell docs) moved to cozy: `cozy docs cl
 **Key concepts:**
 - Session files: JSONL in `~/.claude/projects/<encoded-path>/` where path is `-` separated segments
 - `sessions` uses lazy evaluation — 25+ optional columns, only requested extractions run
+- `tool-calls` is the tool-call half of `messages`: `bash_commands` reads the Bash tool alone, so an invocation an agent made through the nushell MCP server was invisible (82 of 588 when mining this machine for `claude-nu` calls), and the `--columns` path has no rg pre-filter
 - `nu.nu` completions dynamically parse script AST to discover subcommands at tab-time
 - `claude.nu` session picker shows age, size, and summary alongside UUIDs
 - `claude-nu/gi-md-src/canvas-output-style.md` is the canonical Canvas style; `gi enable` seeds it into each repo's `.claude/output-styles/canvas.md`, and `gi open` turns it on for one launch via `claude --settings`.
@@ -88,6 +89,9 @@ claude-nu sessions                     # Top-level (human) sessions with summari
 claude-nu sessions --subagents         # Also include subagent transcripts (parent_session_id set)
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, reasoning effort...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
+claude-nu tool-calls                    # Every tool call of the current project: {tool, input, timestamp, session, project} — what the agent did, as `messages` is what was said
+claude-nu tool-calls 'claude-nu sessions' # ...narrowed by a regex over the whole input rendered as NUON (which field holds the string depends on the tool), with the same rg pre-filter and `--no-rg` escape as `messages`. Filtering by tool is a plain `where tool == Bash` — no flag, because unlike the regex it buys no pre-filter
+claude-nu sessions --all-projects | claude-nu tool-calls 'npm test' # ...scoped like `messages`, by session rows to the left of the pipe
 claude-nu export-session               # Markdown with YAML frontmatter; save is the shell's job: `| save file.md`
 claude-nu project-move ~/old ~/new     # Retarget Claude's state after a project directory moved: sessions dir name, `cwd` in every record, ~/.claude.json (`projects` + `githubRepoPaths`), history.jsonl. `--dry-run` reports the same rows without writing. Literal substring swap, never a JSON round trip. A store already standing at the destination is folded into, not refused — a project that moves twice comes back to a name Claude knows. A file in both stores is resolved by containment: transcripts are append-only, so the copy that contains the other wins (`keep-source` / `keep-destination`), and a pair where neither contains the other stops the run before anything is written. Only two `~/.claude.json` project entries are still refused — no rule picks a winner for `allowedTools` or a trust flag, so the error prints the two commands that show both records
 claude-nu gi enable                    # Seed the Canvas style and the gi skills into this repo (writes no settings, turns nothing on, makes no canvas). Optional before `gi open`, which seeds for itself
@@ -128,7 +132,7 @@ It already holds: of the 187 commits since June, 7 carry Russian, always as a qu
 The README and this file are English anyway.
 Translating the reasoning at commit time is the cost; keeping one searchable history is what it buys.
 
-The prefix is the command or subsystem the change is about: `gi:`, `gi-hook:`, `gi-md-src:`, `sessions:`, `messages:`, `ask:`, `export-session:`, `completions:`, `canvas:`, `toolkit:`.
+The prefix is the command or subsystem the change is about: `gi:`, `gi-hook:`, `gi-md-src:`, `sessions:`, `messages:`, `tool-calls:`, `ask:`, `export-session:`, `completions:`, `canvas:`, `toolkit:`.
 Use a conventional type — `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `perf:`, `chore:` — when no single command owns the change.
 
 `gi:` commits that answer a canvas marker keep the canvas's own vocabulary in the body: a `Decision:` line for what was settled, `Why:` for the reasoning, `Propagation:` for what else had to move.

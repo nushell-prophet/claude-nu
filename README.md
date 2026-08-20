@@ -9,6 +9,7 @@ Nushell utilities for working with [Claude Code](https://claude.ai/code) session
 
 - **Search past sessions** — Find what you asked Claude last week with `sessions --all-projects | messages 'pattern'`
 - **Session analytics** — See what Claude actually did: files touched, tools called, agents spawned, errors hit
+- **Search what the agent ran** — `tool-calls 'pattern'` searches the tool calls themselves, not only what was typed
 - **Smart session picker** — `claude --resume <TAB>` shows age, size, and summary instead of raw UUIDs
 - **Export to markdown** — Keep session history in git with YAML frontmatter
 - **Move a project** — `project-move <old> <new>` retargets sessions, permissions and prompt history after you move a directory
@@ -65,6 +66,33 @@ Rows come session by session — newest session first, chronological inside each
 - `project` — Project directory the session belongs to
 
 `--include-responses` adds `role`; `--raw` replaces `message` with the raw record's `type` and fields.
+
+### `claude-nu tool-calls`
+
+What an agent *did*, as `messages` is what was said: one row per tool call.
+Scoping and searching work exactly as in `messages` — no input reads every top-level session of the current project, piped session rows narrow it, the regex argument gets the same ripgrep pre-filter over the raw JSONL, and `--no-rg` turns that off.
+
+```nushell no-run
+claude-nu tool-calls                       # Every tool call of the current project
+claude-nu tool-calls 'claude-nu sessions'  # ...whose input matches a regex
+claude-nu sessions --all-projects | claude-nu tool-calls 'npm test' # ...across every project
+claude-nu tool-calls | where tool == Bash | get input.command # filtering by tool is a plain `where`
+```
+
+**Output:**
+- `tool` — Tool name (`Bash`, `Edit`, `Agent`, an MCP tool's full name, ...)
+- `input` — The call's arguments, as the raw record, so you drill in: `get input.command`
+- `timestamp` — When the call was made
+- `session` — Session UUID, the selector to pipe onward
+- `project` — Project directory the session belongs to
+
+The regex is applied to the whole input rendered as NUON, not to one field.
+Which field holds the interesting string depends on the tool — `command` for Bash, `prompt` for Agent, its own schema for an MCP tool — so a search that had to name the field could only answer "who ran this" for Bash.
+
+**Why this is not a `sessions` column.**
+`bash_commands` was the only other window onto agent actions and it reads the Bash tool alone.
+Mining this machine's whole session store for `claude-nu` invocations, 82 of the 588 an agent made came through the nushell MCP server and were invisible there.
+It also aggregates per session, so a matched command has no timestamp and no row of its own, and the `--columns` path has no ripgrep pre-filter: the same all-projects sweep took 42s through `sessions --columns bash_commands` against 2.4s once ripgrep narrowed the files first.
 
 ### `claude-nu sessions`
 

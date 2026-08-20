@@ -891,6 +891,112 @@ def "messages --no-rg matches an anchored pattern the rg pre-filter misses" [] {
     assert equal $no_rg.0.message "deploy to staging"
 }
 
+# =============================================================================
+# Tests for tool-calls
+# =============================================================================
+
+@test
+def "tool-calls yields one row per tool use block" [] {
+    let temp_file = $nu.temp-dir | path join $"test-toolcalls-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"go"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"running two things"},{"type":"tool_use","name":"Bash","input":{"command":"npm test"}},{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/a.txt"}}]},"timestamp":"2024-01-15T10:00:01Z"}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = {path: $temp_file} | tool-calls
+
+    rm $temp_file
+
+    assert equal ($result | get tool) ["Bash" "Read"]
+    assert equal $result.0.input.command "npm test"
+    assert equal $result.1.input.file_path "/tmp/a.txt"
+    assert equal ($result.0.timestamp | describe) "datetime"
+}
+
+@test
+def "tool-calls sees a tool call that bash commands cannot" [] {
+    # The gap this command closes: `sessions --columns bash_commands` is the only
+    # other window onto what an agent ran, and it reads the Bash tool alone — a
+    # nushell MCP call carrying the same command is invisible there.
+    let temp_file = $nu.temp-dir | path join $"test-toolcalls-mcp-(random uuid).jsonl"
+    let lines = [
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__nushell__evaluate","input":{"input":"claude-nu sessions --last"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let via_columns = sessions $temp_file --columns bash_commands | first | get bash_commands
+    let via_tool_calls = {path: $temp_file} | tool-calls 'claude-nu sessions'
+
+    rm $temp_file
+
+    assert equal $via_columns []
+    assert equal ($via_tool_calls | length) 1
+    assert equal $via_tool_calls.0.tool "mcp__nushell__evaluate"
+}
+
+@test
+def "tool-calls matches the regex over the whole input, not one preferred field" [] {
+    # Why: the searched string sits in a different field per tool — `command` for
+    # Bash, `prompt` for Agent, an MCP tool's own schema for the rest. Matching a
+    # short list of known fields would answer "who ran this" for Bash only.
+    let temp_file = $nu.temp-dir | path join $"test-toolcalls-fields-(random uuid).jsonl"
+    let lines = [
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"description":"mine sessions","prompt":"run claude-nu projects and report"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls /tmp"}}]},"timestamp":"2024-01-15T10:00:01Z"}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = {path: $temp_file} | tool-calls 'claude-nu projects'
+
+    rm $temp_file
+
+    assert equal ($result | length) 1
+    assert equal $result.0.tool "Agent"
+}
+
+@test
+def "tool-calls rows carry session and project" [] {
+    # Why: same self-describing contract as `messages` — the session column is a
+    # valid selector, so a filtered result pipes back into the other commands.
+    let temp_file = $nu.temp-dir | path join $"test-toolcalls-cols-(random uuid).jsonl"
+    '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
+    | save --force $temp_file
+
+    let result = {path: $temp_file} | tool-calls
+
+    rm $temp_file
+
+    assert equal ($result | columns) [tool input timestamp session project]
+    assert equal $result.0.session ($temp_file | path basename | str replace '.jsonl' '')
+}
+
+@test
+def "tool-calls with no input reads every session of the current project" [] {
+    # Why the fake HOME: the default scope is the current project's top-level
+    # sessions, and the rg pre-filter runs over exactly those files.
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+    mkdir $proj_dir
+    let encoded = $proj_dir | path expand | str replace --all '/' '-'
+    let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+    mkdir $sessions_dir
+
+    '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"claude-nu sessions --last"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force ($sessions_dir | path join "11111111-1111-1111-1111-111111111111.jsonl")
+    '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git status"}}]},"timestamp":"2024-01-15T10:00:01Z"}'
+        | save --force ($sessions_dir | path join "22222222-2222-2222-2222-222222222222.jsonl")
+
+    let all = with-env {HOME: $fake_home} { do { cd $proj_dir; tool-calls } }
+    let matched = with-env {HOME: $fake_home} { do { cd $proj_dir; tool-calls 'claude-nu sessions' } }
+
+    rm -rf $fake_home $proj_dir
+
+    assert equal ($all | length) 2
+    assert equal ($matched | length) 1
+    assert equal $matched.0.input.command "claude-nu sessions --last"
+}
+
 @test
 def "bare claude-nu answers with guidance, not command not found" [] {
     # Why: a directory module with no `main` makes the bare name fall through to
