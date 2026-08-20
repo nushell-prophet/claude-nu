@@ -328,6 +328,8 @@ As a switch it could also only ever mean the live session, so an older chat coul
 `enable` seeds the **Canvas** output style (the proactive half — the hook is the reactive floor) as `.claude/output-styles/canvas.md`, and the gi skills into `.claude/skills/`.
 That is all it writes: canvases come from `gi open`, which creates one from the template and binds a session to it in the same breath, or from `gi import`, which writes one from a dialogue — so no two verbs ever write the same file.
 Seeded files are never overwritten, so your edits are safe; `--force` refreshes the style and skills from the module, and `status.stale` lists seeds that have drifted from it.
+Drift is also reported where you meet it: `enable`, `import`, and every `gi open` launch print a note naming the seeds that differ, because copy-if-absent pins a repo to whatever the module held when it was first seeded and nobody polls status.
+A note, not an error — the seeded copy still works, and the difference may be your own edit, which `--force` would discard.
 
 ### `claude-nu example`
 

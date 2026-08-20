@@ -373,6 +373,22 @@ def gi-stale [paths: record]: nothing -> list {
     | get dst
 }
 
+# The drift note, printed by every verb the user reaches gi through: `enable`,
+# `import`, and each `gi open` launch. Why all three and not just status, which
+# already carries the list: copy-if-absent pins a repo to whatever the module
+# held at its first seed, nobody polls status, and a repo can then run months of
+# canvas sessions on a style the module has since rewritten — this change is how
+# the seed of a rewritten rule reaches a repo that was seeded before it.
+# A note, never an error: the seeded copy still works, and the difference may be
+# the user's own edit to it, which --force would discard.
+def gi-stale-note [paths: record]: nothing -> nothing {
+    let stale = gi-stale $paths
+    if ($stale | is-not-empty) {
+        print $"note: ($stale | length) seeded file\(s\) differ from the module — `gi enable --force` refreshes them:"
+        for f in $stale { print $"  ($f | cwd-relative)" }
+    }
+}
+
 # The UUID of the session this command runs inside — what `gi import` falls back
 # to when no session is named. Why the env var and not export-session's default
 # (newest session file by mtime): during a live session the newest file is just
@@ -533,13 +549,11 @@ export def "gi enable" [
     })
     print $"start a canvas:  claude-nu gi open [<doc>]"
     print $"...or from a session's dialogue:  claude-nu gi import [<session>]"
-    let status = gi-status --root $root
     # Surface drift at the moment the user is already touching gi — status
-    # carries the same list, but nobody polls it.
-    if not $force and ($status.stale | is-not-empty) {
-        print $"note: ($status.stale | length) seeded file\(s\) differ from the module — `gi enable --force` refreshes them."
-    }
-    $status
+    # carries the same list, but nobody polls it. --force just refreshed them,
+    # so there is nothing left to report.
+    if not $force { gi-stale-note $paths }
+    gi-status --root $root
 }
 
 # Why a verb of its own and not a flag on `gi enable` (which is what this
@@ -621,6 +635,7 @@ export def "gi import" [
     if not ($paths.style_dst | path exists) {
         print $"the gi skills are not in this repo yet:  claude-nu gi enable"
     }
+    gi-stale-note $paths
     print $"open a bound session on it:  claude-nu gi open ($paths_doc.rel)"
     if $session == null {
         # The log can never hold the turn that ran the import (Claude Code writes
@@ -787,7 +802,12 @@ def gi-launch [
     # cannot fail on anything the user typed; every check that can (the flags
     # above, the fork source below) either runs before it or before its own
     # write, so no failure leaves a canvas behind.
-    gi-seed (gi-paths $root)
+    let paths = gi-paths $root
+    gi-seed $paths
+    # Copy-if-absent leaves an already-seeded file alone, so seeding is exactly
+    # what cannot fix drift — say so here, where the session about to start is
+    # the one that will run on the older text.
+    gi-stale-note $paths
     let doc = $doc | default (gi-default-doc)
     # The copy is made here and not in `gi open` so everything below — the
     # session plan, the stamp, GI_CANVAS, --name — sees only the file being
