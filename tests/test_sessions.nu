@@ -896,11 +896,17 @@ def "bare claude-nu answers with guidance, not command not found" [] {
     # Why: a directory module with no `main` makes the bare name fall through to
     # an external-command lookup — "command not found" one line after `claude-nu
     # sessions` worked. The signpost takes no search term (scope lives left of
-    # the pipe now), so it can only name the two search shapes and the subcommands.
+    # the pipe now), so it can only name the subcommands and point at the examples.
     let err = try { claude-nu; null } catch {|e| $e }
     assert equal $err.msg "claude-nu needs a subcommand"
-    assert ($err.details.help | str contains "claude-nu messages 'regex'")
-    assert ($err.details.help | str contains "claude-nu sessions --all-projects | claude-nu messages 'regex'")
+    assert ($err.details.help | str contains "claude-nu example")
+
+    # The search shapes it used to spell out are `@example` blocks now, so they
+    # are asserted where they live — one copy, reachable from help, from
+    # `claude-nu example` and from `dotnu examples-update`.
+    let examples = scope commands | where name == "claude-nu" | get examples | first | get example
+    assert ($examples | any {|e| $e == "claude-nu messages 'regex'" })
+    assert ($examples | any {|e| $e == "claude-nu sessions --all-projects | claude-nu messages 'regex'" })
 }
 
 @test

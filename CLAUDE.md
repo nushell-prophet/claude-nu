@@ -28,6 +28,7 @@ claude-nu/
 │   ├── gi.nu            # gi protocol, as real subcommands (`gi enable`, `gi import`, `gi open`, bare `gi` for status): enable seeds the repo, import writes a canvas from a session's dialogue, open launches a session bound to one canvas (style + Stop hook travel with the launch)
 │   ├── project-move.nu  # Retarget stored state from a project's old path to its new one
 │   ├── ask.nu           # One-shot `claude --print` prompt; not re-exported by mod.nu — `use claude-nu/ask.nu *`
+│   ├── example.nu       # `claude-nu example`: the module's own `@example` blocks as a completion menu that pastes the picked pipeline into the command line
 │   ├── gi-md-src/       # Sources gi enable seeds into a repo: canvas-header.md, canvas-output-style.md, skills/
 │   └── gi-hook.nu       # Stop-hook entry point — `nu --stdin` runs this file; it imports `gi check` from gi.nu, which mod.nu deliberately does not re-export
 ├── completions/         # Completions for the two CLIs this repo is about; unrelated tools moved to ../dotfiles/nushell/completions/
@@ -98,6 +99,8 @@ claude-nu gi import --tools            # ...keeping tool calls as one-line place
 claude-nu gi import --commit           # ...and commit it; --gitignore keeps it out of git instead
 claude-nu gi open gi/plan.md           # Launch a session bound to that canvas: style + Stop hook via `claude --settings`, the canvas path stated to the agent via `--append-system-prompt` (an env var is not in the model's context, so GI_CANVAS alone left it hunting), $env.GI_CANVAS set for the hook. A canvas with no `session:` gets one minted and written in; one that has it is resumed. Created from the template if new; --no-hook drops the floor; --new-session overwrites the recorded id when that session is gone; --fork instead leaves the canvas bound and opens a copy at the next `_n` sibling (`plan.md` → `plan_1.md`, max+1 over the series) on a session of its own — plan in one conversation, implement in a fresh context; parallel canvases per repo. `--wrapped`: unknown flags (`--model`, ...) go straight to `claude` (`--dangerously-skip-permissions` is not one of them — `gi open` declares it itself, so that it cannot land in the doc's place), except the ones gi sets itself (`--settings`, `--session-id`, `--resume`/`-r`, `--continue`/`-c`, `--fork-session`, `--name`, `--append-system-prompt` — `claude` keeps only the last of two, which would drop the canvas line), and a flag in the doc's place is an error rather than a canvas named `--model`
 claude-nu gi                           # { canvas, style, skills, stale } — canvas comes from $env.GI_CANVAS, i.e. the asking session
+claude-nu example                      # The `@example` blocks of the loaded claude-nu commands as a table: slug, description, pipeline
+claude-nu example <slug>               # ...paste that pipeline into the command line (`commandline edit --replace`), for the user to run. Tab-completes, the menu showing the whole pipeline next to each slug. Source is `scope commands`, not a second list; cross-command pipelines hang on the module's `main`, which no longer spells them out in its help text. The completer returns `{options: {sort: false}, completions: ...}` — the menu order is authored (module pipelines first, then each command's, as declared), not alphabetical
 ```
 
 ## Development

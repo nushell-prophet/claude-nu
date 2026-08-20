@@ -12,6 +12,7 @@ Nushell utilities for working with [Claude Code](https://claude.ai/code) session
 - **Smart session picker** — `claude --resume <TAB>` shows age, size, and summary instead of raw UUIDs
 - **Export to markdown** — Keep session history in git with YAML frontmatter
 - **Move a project** — `project-move <old> <new>` retargets sessions, permissions and prompt history after you move a directory
+- **Try a pipeline** — `claude-nu example <TAB>` picks one of the module's own `@example` pipelines and pastes it into your command line
 - **Dynamic script completions** — `nu` completions that parse any .nu script's subcommands at tab-time
 - **Claude Code skills** — Opinionated Nushell style guide and completions guide, distributed via [plugin marketplace](https://github.com/nushell-prophet/nushell-skills)
 
@@ -283,6 +284,25 @@ As a switch it could also only ever mean the live session, so an older chat coul
 `enable` seeds the **Canvas** output style (the proactive half — the hook is the reactive floor) as `.claude/output-styles/canvas.md`, and the gi skills into `.claude/skills/`.
 That is all it writes: canvases come from `gi open`, which creates one from the template and binds a session to it in the same breath, or from `gi import`, which writes one from a dialogue — so no two verbs ever write the same file.
 Seeded files are never overwritten, so your edits are safe; `--force` refreshes the style and skills from the module, and `status.stale` lists seeds that have drifted from it.
+
+### `claude-nu example`
+
+Pick a pipeline from the menu and it lands in your command line, ready to read, edit and run.
+You run it — the command only writes the buffer, with `commandline edit --replace`.
+
+```nushell no-run
+claude-nu example                    # The examples as a table: slug, description, pipeline
+claude-nu example <TAB>              # ...as a menu, each slug next to the pipeline it stands for
+claude-nu example search-every-project # Paste that one into the command line
+```
+
+There is no second list to keep in sync: the rows are the `@example` attributes the module's own commands already carry, read at runtime from `scope commands`.
+Examples that cross commands — most pipelines do — hang on the module's `main`, the one place that covers all of them.
+`dotnu examples-update` runs those blocks and writes the real output back into `--result`, so a pipeline broken by a rename is caught at authoring time instead of being suggested here.
+
+Slugs come from the description, so they read as labels rather than as indexes.
+The menu is not sorted: it keeps the order the code declares — the module's own pipelines first, then each command's — because that order is authored, while alphabetical would follow whatever word a description happens to start with.
+The menu is REPL-only where it pastes: `commandline edit` has no buffer to write to in a script, which is why the bare form returns the table instead.
 
 ## CLI Completions
 
