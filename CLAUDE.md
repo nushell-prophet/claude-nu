@@ -27,12 +27,14 @@ claude-nu/
 │   ├── render.nu        # Record content -> markdown text
 │   ├── gi.nu            # gi protocol, as real subcommands (`gi enable`, `gi import`, `gi open`, bare `gi` for status): enable seeds the repo, import writes a canvas from a session's dialogue, open launches a session bound to one canvas (style + Stop hook travel with the launch)
 │   ├── project-move.nu  # Retarget stored state from a project's old path to its new one
+│   ├── ask.nu           # One-shot `claude --print` prompt; not re-exported by mod.nu — `use claude-nu/ask.nu *`
+│   ├── gi-md-src/       # Sources gi enable seeds into a repo: canvas-header.md, canvas-output-style.md, skills/
 │   └── gi-hook.nu       # Stop-hook entry point — `nu --stdin` runs this file; it imports `gi check` from gi.nu, which mod.nu deliberately does not re-export
 ├── completions/         # Completions for the two CLIs this repo is about; unrelated tools moved to ../dotfiles/nushell/completions/
 │   ├── claude.nu        # claude CLI (50+ flags, session picker, MCP/plugin subcommands)
 │   └── nu.nu            # nu CLI (dynamic: parses scripts for subcommands at tab-time)
-├── tests/               # 60+ tests (nutest framework)
-└── toolkit.nu           # Dev tools: test, vendor-sessions, check
+├── tests/               # 240+ tests (nutest framework)
+└── toolkit.nu           # Dev tools: test, test-unit, vendor-sessions, check, update-captures
 ```
 
 Reference-doc fetchers (Claude Code + Nushell docs) moved to cozy: `cozy docs claude` / `cozy docs nushell` (see `../cozy/cozy-module/docs.nu`).
@@ -94,7 +96,7 @@ claude-nu gi import                    # A canvas from a session's dialogue (gi/
 claude-nu gi import --to notes/plan.md # ...at a chosen path (a flag, not a positional: the in-session call names a path but no session)
 claude-nu gi import --tools            # ...keeping tool calls as one-line placeholders
 claude-nu gi import --commit           # ...and commit it; --gitignore keeps it out of git instead
-claude-nu gi open gi/plan.md           # Launch a session bound to that canvas: style + Stop hook via `claude --settings`, the canvas path stated to the agent via `--append-system-prompt` (an env var is not in the model's context, so GI_CANVAS alone left it hunting), $env.GI_CANVAS set for the hook. A canvas with no `session:` gets one minted and written in; one that has it is resumed. Created from the template if new; --no-hook drops the floor; --new-session overwrites the recorded id when that session is gone; --fork instead leaves the canvas bound and opens a copy at the next `_n` sibling (`plan.md` → `plan_1.md`, max+1 over the series) on a session of its own — plan in one conversation, implement in a fresh context; parallel canvases per repo. `--wrapped`: unknown flags (`--dangerously-skip-permissions`, `--model`, ...) go straight to `claude`, except the ones gi sets itself (`--settings`, `--session-id`, `--resume`/`-r`, `--continue`/`-c`, `--fork-session`, `--name`, `--append-system-prompt` — `claude` keeps only the last of two, which would drop the canvas line), and a flag in the doc's place is an error rather than a canvas named `--model`
+claude-nu gi open gi/plan.md           # Launch a session bound to that canvas: style + Stop hook via `claude --settings`, the canvas path stated to the agent via `--append-system-prompt` (an env var is not in the model's context, so GI_CANVAS alone left it hunting), $env.GI_CANVAS set for the hook. A canvas with no `session:` gets one minted and written in; one that has it is resumed. Created from the template if new; --no-hook drops the floor; --new-session overwrites the recorded id when that session is gone; --fork instead leaves the canvas bound and opens a copy at the next `_n` sibling (`plan.md` → `plan_1.md`, max+1 over the series) on a session of its own — plan in one conversation, implement in a fresh context; parallel canvases per repo. `--wrapped`: unknown flags (`--model`, ...) go straight to `claude` (`--dangerously-skip-permissions` is not one of them — `gi open` declares it itself, so that it cannot land in the doc's place), except the ones gi sets itself (`--settings`, `--session-id`, `--resume`/`-r`, `--continue`/`-c`, `--fork-session`, `--name`, `--append-system-prompt` — `claude` keeps only the last of two, which would drop the canvas line), and a flag in the doc's place is an error rather than a canvas named `--model`
 claude-nu gi                           # { canvas, style, skills, stale } — canvas comes from $env.GI_CANVAS, i.e. the asking session
 ```
 
@@ -106,11 +108,11 @@ Output mode is auto-detected via `is-terminal --stdout` (not `$nu.is-interactive
 Force with `--json` / `--pretty`; `--all` also lists passing tests.
 
 ```nushell
-nu toolkit.nu test                     # Run all tests (60+ cases)
+nu toolkit.nu test                     # Run all tests (240+ cases)
 nu toolkit.nu test --fail              # Exit non-zero on failures (for CI)
 nu toolkit.nu test --json              # Force JSON on a terminal; --pretty forces human view when piped
 nu toolkit.nu check                    # Static syntax check of every tracked .nu file
-nu toolkit.nu check claude-nu/gi.nu    # ...or of one file; rows carry file, line, severity, message, source
+nu toolkit.nu check claude-nu/gi.nu    # ...or of one file; rows carry file, line, severity, message, source, span
 
 # Test fixtures
 nu toolkit.nu vendor-sessions         # Obfuscate real sessions for safe sharing
@@ -119,7 +121,7 @@ nu toolkit.nu vendor-sessions         # Obfuscate real sessions for safe sharing
 ## Commit messages
 
 **English, subject and body — including when the canvas session ran in Russian.**
-19 of the 179 commits made since June are Russian and the rest English, so `git log --grep` in either language silently misses part of the history, and the README and this file are English anyway.
+It already holds: of the 187 commits since June, 7 carry Russian, always as a quoted line inside an English body, and none has a Russian subject — which is what keeps `git log --grep` in one language from silently missing part of the history. The README and this file are English anyway.
 Translating the reasoning at commit time is the cost; keeping one searchable history is what it buys.
 
 The prefix is the command or subsystem the change is about: `gi:`, `gi-hook:`, `gi-md-src:`, `sessions:`, `messages:`, `ask:`, `export-session:`, `completions:`, `canvas:`, `toolkit:`.
