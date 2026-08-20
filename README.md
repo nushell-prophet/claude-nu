@@ -46,6 +46,7 @@ claude-nu sessions --all-projects | claude-nu messages 'pattern' # ...across eve
 claude-nu sessions --last | claude-nu messages # Just the current session
 claude-nu sessions --session <uuid> | claude-nu messages # A named one (tab-completable)
 claude-nu messages 'pattern' | claude-nu export-session # Drill matched sessions into markdown
+claude-nu messages --since 1wk  # ...sent in the last week (see The time window)
 claude-nu messages --include-system # Include system/meta messages
 claude-nu messages --raw        # Get raw JSONL records
 ```
@@ -76,7 +77,7 @@ Scoping and searching work exactly as in `messages` — no input reads every top
 claude-nu tool-calls                       # Every tool call of the current project
 claude-nu tool-calls 'claude-nu sessions'  # ...whose input matches a regex
 claude-nu sessions --all-projects | claude-nu tool-calls 'npm test' # ...across every project
-claude-nu tool-calls | where tool == Bash | get input.command # filtering by tool is a plain `where`
+claude-nu tool-calls --since 1day | where tool == Bash | get input.command # filtering by tool is a plain `where`
 ```
 
 **Output:**
@@ -107,6 +108,7 @@ claude-nu sessions --session <uuid>               # Single session (tab-completa
 claude-nu sessions --last --columns token_usage   # Most recent session, just the requested column
 claude-nu sessions --columns version,cwd,git_branch  # Several columns, comma-separated
 claude-nu sessions --all-columns                  # All available columns
+claude-nu sessions --since 1wk                    # Active in the last week — see The time window
 ```
 
 **Default (overview) columns:**
@@ -144,6 +146,20 @@ Any `--columns` selection narrows output to `path`/`parent_session_id` plus the 
 - `assistant_msg_count` — Assistant messages
 - `tool_call_count` — Total tool invocations
 - `token_usage` — Token totals (input/output/cache)
+
+### The time window
+
+`--since` and `--until` are on `sessions`, `messages` and `tool-calls`.
+Each takes a duration meaning *ago* (`--since 1wk`, `--until 3day`), a date (`2026-08-01`), or a `datetime` value — so "what did I do last week" is a flag, not a filter you write afterwards.
+
+What the window is measured against is the row you are asking for.
+In `messages` and `tool-calls` a row is one message or one call, so the window is compared to its own timestamp.
+In `sessions` a row is a whole session, timed by its file's mtime — its last activity, the same clock that already orders every listing here.
+Deciding the window from a parsed `first_timestamp` instead would have to parse every session to find out which sessions to parse, which is the cost the window exists to avoid.
+
+`--since` also makes the work smaller before any file is opened: a session file untouched since before the bound cannot hold a message after it, so it is skipped unparsed.
+Over this repo's own project, `messages` took 1.12s and `messages --since 1day` 0.077s.
+`--until` gets no such shortcut — a file written today may have started months ago — so it filters rows after parsing.
 
 ### `claude-nu export-session`
 

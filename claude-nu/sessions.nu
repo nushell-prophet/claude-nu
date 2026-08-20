@@ -158,8 +158,14 @@ export def "nu-complete claude sessions" []: nothing -> record {
 # text either way, so the pre-scan can only cost recall, never add a wrong hit —
 # and --no-rg turns it off for a pattern rg's raw scan would under-match (a line
 # anchor, a JSON-escaped quote or backslash).
+# Why the time window is per message here and per session in `sessions`: a row
+# is what gets filtered, and here a row is one message with a timestamp of its
+# own — so `messages --since 1wk` returns last week's messages, not every
+# message of a session that happens to have been open last week.
 export def messages [
     regex?: string # Filter messages by regex pattern
+    --since: any # Only messages at or after this point — a duration means ago (`1wk`), or a datetime/date string
+    --until: any # Only messages at or before this point
     --include-system # Include system/meta messages (not just user-typed)
     --include-thinking # Include assistant thinking blocks (prefixed with [thinking])
     --raw # Return raw message records instead of just content
@@ -168,6 +174,10 @@ export def messages [
 ]: [nothing -> table record -> table table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
+
+    # Why up here: a misspelled bound must fail before any session is opened.
+    let since_at = if $since == null { null } else { $since | resolve-time-bound "--since" }
+    let until_at = if $until == null { null } else { $until | resolve-time-bound "--until" }
 
     let scoped_files = if $piped_files != null {
         $piped_files
@@ -185,6 +195,7 @@ export def messages [
     }
 
     let session_files = $scoped_files
+        | if $since_at == null { } else { mtime-filter-session-files $since_at }
         | if $regex == null or $no_rg { } else { rg-filter-session-files $regex }
 
     # Why: --include-thinking surfaces thinking-only assistant turns
@@ -219,6 +230,8 @@ export def messages [
         # so one sort here serves both the --raw and rendered branches.
         let filtered = $dialogue
             | if $regex == null { } else { where text =~ $regex }
+            | if $since_at == null { } else { where {|m| ($m.timestamp | into datetime) >= $since_at } }
+            | if $until_at == null { } else { where {|m| ($m.timestamp | into datetime) <= $until_at } }
             | sort-by timestamp
 
         if $raw {
@@ -264,10 +277,16 @@ export def messages [
 # the regex it buys no pre-filter.
 export def tool-calls [
     regex?: string # Filter tool calls by regex over the call's input (rendered as NUON)
+    --since: any # Only calls at or after this point — a duration means ago (`1wk`), or a datetime/date string
+    --until: any # Only calls at or before this point
     --no-rg # Skip the ripgrep file pre-filter and match entirely in-engine (exact regex semantics, slower)
 ]: [nothing -> table record -> table table -> table] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
+
+    # Why up here: same as in `messages` — a bad bound fails before any parsing.
+    let since_at = if $since == null { null } else { $since | resolve-time-bound "--since" }
+    let until_at = if $until == null { null } else { $until | resolve-time-bound "--until" }
 
     let scoped_files = if $piped_files != null {
         $piped_files
@@ -284,6 +303,7 @@ export def tool-calls [
     }
 
     let session_files = $scoped_files
+        | if $since_at == null { } else { mtime-filter-session-files $since_at }
         | if $regex == null or $no_rg { } else { rg-filter-session-files $regex }
 
     $session_files
@@ -304,6 +324,8 @@ export def tool-calls [
             | each {|call| {tool: ($call.name? | default "") input: ($call.input? | default {}) timestamp: ($record.timestamp | into datetime)} }
         }
         | flatten
+        | if $since_at == null { } else { where timestamp >= $since_at }
+        | if $until_at == null { } else { where timestamp <= $until_at }
         | if $regex == null { } else { where {|call| ($call.input | to nuon) =~ $regex } }
         | insert session ($session_file | session-id-from-path)
         | insert project ($session_file | project-dir-name)
@@ -502,7 +524,10 @@ def expand-session-paths []: list<path> -> table {
         if ($p | path type) == "dir" {
             discover-session-files $p
         } else {
-            [{path: $p parent_session_id: null}]
+            # Why the stat: discover-session-files already carries `modified`,
+            # and the --since/--until window filters on it — so a row made here
+            # has to carry it too, or a named file would drop out of every window.
+            [{path: $p parent_session_id: null modified: (ls $p | get 0.modified)}]
         }
     }
     | flatten
@@ -519,6 +544,7 @@ def expand-session-paths []: list<path> -> table {
 @example "sessions that touched a file" { claude-nu sessions --columns edited_files,session_id | where {|r| $r.edited_files | any {|f| $f =~ 'render.nu' } } }
 @example "which skills got used, across every project" { claude-nu sessions --all-projects --columns skill_invocations | get skill_invocations | flatten | uniq --count | sort-by count --reverse }
 @example "sessions by token spend" { claude-nu sessions --columns token_usage,session_id | insert total {|r| $r.token_usage.input_tokens + $r.token_usage.output_tokens } | sort-by total --reverse }
+@example "what I worked on last week" { claude-nu sessions --all-projects --since 1wk --columns summary,cwd }
 export def main [
     ...paths: path # Session files or directories to parse (default: current project sessions)
     --session: string@"nu-complete claude sessions" # Single session UUID or path
@@ -527,8 +553,13 @@ export def main [
     --subagents # Also list subagent transcripts (<uuid>/subagents/agent-*.jsonl); off by default
     --columns (-c): string@"nu-complete claude session-columns" # Comma-separated columns to include (default: overview set)
     --all-columns # Include all columns
+    --since: any # Only sessions last active at or after this point — a duration means ago (`1wk`), or a datetime/date string
+    --until: any # Only sessions last active at or before this point
 ]: [nothing -> table string -> table record -> table table -> table] {
     let input = $in
+    # Why up here: a misspelled bound must fail before any session is parsed.
+    let since_at = if $since == null { null } else { $since | resolve-time-bound "--since" }
+    let until_at = if $until == null { null } else { $until | resolve-time-bound "--until" }
     # Why: piped string is a target path (`"dir" | sessions`); piped table
     # carries path/session columns like the other commands accept.
     let piped_path = if ($input | describe) == "string" { $input } else { null }
@@ -589,6 +620,16 @@ export def main [
     if ($session_rows | is-empty) {
         error make "No session files found"
     }
+
+    # Why after that error and not before: "no sessions exist here" is a broken
+    # scope, but a window that matches nothing is a legitimate empty answer.
+    # Why the file mtime and not a parsed first/last timestamp: deciding which
+    # sessions fall in the window would then have to parse every session — the
+    # exact cost the window exists to avoid. mtime is the session's last
+    # activity, the same clock that already orders every listing here.
+    let session_rows = $session_rows
+        | if $since_at == null { } else { where modified >= $since_at }
+        | if $until_at == null { } else { where modified <= $until_at }
 
     let all_names = $SESSION_COLUMNS | get name
 

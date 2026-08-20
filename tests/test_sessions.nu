@@ -2444,3 +2444,146 @@ def "export-session merges consecutive same-role turns" [] {
     assert equal ($md | lines | where $it == "## Assistant" | length) 1
     assert ($md | str contains "first\n\nsecond")
 }
+
+# =============================================================================
+# Tests for the --since / --until time window
+# =============================================================================
+
+@test
+def "resolve-time-bound reads a duration as a point in the past" [] {
+    # Why ago and not a length: `--since 1wk` is only a window if the duration
+    # is measured back from now.
+    let bound = 1day | resolve-time-bound "--since"
+    let expected = (date now) - 1day
+
+    # Why a tolerance: both sides call `date now`, microseconds apart.
+    assert ($bound > ($expected - 1sec))
+    assert ($bound < ($expected + 1sec))
+}
+
+@test
+def "resolve-time-bound takes a date string and a datetime as given" [] {
+    assert equal ("2026-08-01" | resolve-time-bound "--since") ("2026-08-01" | into datetime)
+
+    let dt = "2026-08-01T10:00:00Z" | into datetime
+    assert equal ($dt | resolve-time-bound "--since") $dt
+}
+
+@test
+def "resolve-time-bound rejects a value that is neither a duration nor a date" [] {
+    let msg = try {
+        "sometime" | resolve-time-bound "--since"
+        ""
+    } catch {|e| $e.msg }
+    assert str contains $msg "--since"
+    assert str contains $msg "sometime"
+
+    let type_msg = try {
+        5 | resolve-time-bound "--until"
+        ""
+    } catch {|e| $e.msg }
+    assert str contains $type_msg "--until"
+    assert str contains $type_msg "int"
+}
+
+@test
+def "mtime-filter-session-files keeps only the files written since the bound" [] {
+    let dir = $nu.temp-dir | path join $"test-mtime-(random uuid)"
+    mkdir $dir
+    let fresh = $dir | path join "fresh.jsonl"
+    let stale = $dir | path join "stale.jsonl"
+    "" | save --force $fresh
+    "" | save --force $stale
+    touch --modified --timestamp ((date now) - 10day) $stale
+
+    let kept = [$stale $fresh] | mtime-filter-session-files ((date now) - 2day)
+    # Why the empty case: `ls` with no arguments lists the working directory, so
+    # an empty scope must not reach it.
+    let empty = [] | mtime-filter-session-files ((date now) - 2day)
+
+    rm --recursive $dir
+
+    assert equal $kept [$fresh]
+    assert equal $empty []
+}
+
+@test
+def "messages --since and --until filter by the timestamp of each message" [] {
+    # Why per message and not per file: a session open for a month holds
+    # messages from every week of it, so "what did I say last week" is about the
+    # messages. The file here is written now, so its mtime is no answer to
+    # --until — the message from 2024 still has to come back.
+    let f = $nu.temp-dir | path join $"test-window-(random uuid).jsonl"
+    let recent = (date now) - 1hr | format date "%+"
+    [
+        '{"type":"user","message":{"content":"old message"},"timestamp":"2024-01-15T10:00:00Z"}'
+        $'{"type":"user","message":{"content":"recent message"},"timestamp":"($recent)"}'
+    ] | str join "\n" | save --force $f
+
+    let since = {path: $f} | messages --since 1day | get message
+    let until = {path: $f} | messages --until 1day | get message
+    let window = {path: $f} | messages --since 1day --until 1min | get message
+
+    rm $f
+
+    assert equal $since ["recent message"]
+    assert equal $until ["old message"]
+    assert equal $window ["recent message"]
+}
+
+@test
+def "tool-calls --since filters by the timestamp of the call" [] {
+    let f = $nu.temp-dir | path join $"test-window-(random uuid).jsonl"
+    let recent = (date now) - 1hr | format date "%+"
+    [
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"old"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
+        $'{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"new"}}]},"timestamp":"($recent)"}'
+    ] | str join "\n" | save --force $f
+
+    let since = {path: $f} | tool-calls --since 1day | get input.command
+    let until = {path: $f} | tool-calls --until 1day | get input.command
+
+    rm $f
+
+    assert equal $since ["new"]
+    assert equal $until ["old"]
+}
+
+@test
+def "sessions --since filters by the mtime of the session file" [] {
+    # Why mtime: a window over sessions that parsed every session to decide
+    # which ones it wants would cost exactly what it saves.
+    let dir = $nu.temp-dir | path join $"test-window-(random uuid)"
+    mkdir $dir
+    let fresh = $dir | path join $"(random uuid).jsonl"
+    let stale = $dir | path join $"(random uuid).jsonl"
+    let line = '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+    $line | save --force $fresh
+    $line | save --force $stale
+    touch --modified --timestamp ((date now) - 10day) $stale
+
+    let since = sessions $dir --since 2day --columns session_id | get path
+    let until = sessions $dir --until 2day --columns session_id | get path
+
+    rm --recursive $dir
+
+    assert equal $since [$fresh]
+    assert equal $until [$stale]
+}
+
+@test
+def "a window that matches nothing is empty rather than an error" [] {
+    # Why: an empty scope is a broken command, but an empty window is a real
+    # answer. A file named on the command line also has to carry its mtime into
+    # the window, the way a discovered one does.
+    let f = $nu.temp-dir | path join $"test-window-(random uuid).jsonl"
+    '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+        | save --force $f
+    touch --modified --timestamp ((date now) - 10day) $f
+
+    let got = sessions $f --since 2day
+
+    rm $f
+
+    assert equal $got []
+}

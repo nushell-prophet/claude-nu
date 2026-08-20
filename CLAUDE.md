@@ -22,7 +22,7 @@ claude-nu/
 ├── claude-nu/           # Main module
 │   ├── mod.nu           # Module entry point, exports public commands
 │   ├── sessions.nu      # User-facing session/message/tool-call commands; re-exports the submodules below
-│   ├── discovery.nu     # On-disk session layout: enumerate, resolve, read session files
+│   ├── discovery.nu     # On-disk session layout: enumerate, resolve, read session files; also the --since/--until bound parsing and the mtime pre-filter
 │   ├── extract.nu       # Session records -> text, dialogue, metrics
 │   ├── render.nu        # Record content -> markdown text
 │   ├── gi.nu            # gi protocol, as real subcommands (`gi enable`, `gi import`, `gi open`, bare `gi` for status): enable seeds the repo, import writes a canvas from a session's dialogue, open launches a session bound to one canvas (style + Stop hook travel with the launch)
@@ -89,6 +89,7 @@ claude-nu sessions                     # Top-level (human) sessions with summari
 claude-nu sessions --subagents         # Also include subagent transcripts (parent_session_id set)
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, reasoning effort...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
+claude-nu sessions --since 1wk         # Sessions active in the last week. `--since`/`--until` are on `sessions`, `messages` and `tool-calls`; each takes a duration meaning ago (`1wk`), a date (`2026-08-01`), or a datetime value. What the window is compared to is the row you asked for: a message or a call by its own timestamp, a session by its file mtime — its last activity. Why that, and what `--since` saves by skipping files unparsed: the README section "The time window"
 claude-nu tool-calls                    # Every tool call of the current project: {tool, input, timestamp, session, project} — what the agent did, as `messages` is what was said
 claude-nu tool-calls 'claude-nu sessions' # ...narrowed by a regex over the whole input rendered as NUON (which field holds the string depends on the tool), with the same rg pre-filter and `--no-rg` escape as `messages`. Filtering by tool is a plain `where tool == Bash` — no flag, because unlike the regex it buys no pre-filter
 claude-nu sessions --all-projects | claude-nu tool-calls 'npm test' # ...scoped like `messages`, by session rows to the left of the pipe

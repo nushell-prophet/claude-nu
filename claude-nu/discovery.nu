@@ -219,3 +219,54 @@ export def rg-filter-session-files [pattern: string]: list<path> -> list<path> {
     # order and its own spelling of each path, whatever rg echoes back.
     $files | where $it in $matched
 }
+
+# A time bound as the caller typed it, turned into a datetime. A duration means
+# "ago" (`--since 1wk`), a datetime is taken as given, and a string is read as
+# either — so one flag accepts `1wk`, `2026-08-01`, and a `$start` variable.
+# Why one converter: --since/--until live on three commands, and each deciding
+# for itself what `1wk` means is how the same flag ends up meaning "a week ago"
+# in one place and "a week long" in another.
+export def resolve-time-bound [flag: string]: any -> datetime {
+    let value = $in
+    match ($value | describe | str replace --regex '<.*' '') {
+        "datetime" => $value
+        "duration" => ((date now) - $value)
+        # Why duration first: `into datetime` rejects "1wk" and `into duration`
+        # rejects "2026-08-01", so the two parses never both succeed.
+        "string" => (
+            try {
+                (date now) - ($value | into duration)
+            } catch {
+                try { $value | into datetime } catch {
+                    error make {
+                        msg: $"($flag): cannot read '($value)' as a duration or a date"
+                        help: "try a duration meaning ago \(1wk, 3day\) or a date \(2026-08-01\)"
+                    }
+                }
+            }
+        )
+        $other => (error make {msg: $"($flag): expected a duration, a datetime, or a date string — got ($other)"})
+    }
+}
+
+# Narrow session files to those last written at or after `since`, keeping the
+# given order. Sound, not exact — the same deal as the rg pre-filter: a file is
+# written when its last record is appended, so one untouched since before the
+# bound cannot hold a message after it, while one written today may well have
+# started months ago. That asymmetry is why there is no `until` twin: no cheap
+# fact about a file rules out its *first* record being early. The caller still
+# filters rows by their own timestamps; this only avoids opening files that
+# cannot contribute one.
+export def mtime-filter-session-files [since: datetime]: list<path> -> list<path> {
+    let files = $in
+    # Why the guard: `ls` with no arguments lists the working directory, so an
+    # empty scope would come back as whatever happens to sit in it.
+    if ($files | is-empty) { return $files }
+    # Why one `ls ...$files`: it stats the whole scope in a single call, and a
+    # string variable in a glob position is taken literally, so a `[` in a
+    # project path cannot turn into a pattern.
+    let kept = ls ...$files | where modified >= $since | get name
+    # Why match against the input list: it keeps the caller's order and its own
+    # spelling of each path (same reason as in rg-filter-session-files).
+    $files | where $it in $kept
+}
