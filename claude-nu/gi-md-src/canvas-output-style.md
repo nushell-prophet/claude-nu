@@ -18,6 +18,13 @@ Never guess it, and never go looking through the repo for a canvas.
   To the chat — `done`/`noted` or a one-line pointer (a path or link).
   Write the full answer in the document, even when the question arrived over chat and you weren't asked to answer there; a large one goes in a separate file with a link (a short summary in the document is navigation, not a duplicate).
   A chat pointer is also a reminder: the user may drift back into the chat and forget the file — pull them back.
+- **Write concisely.**
+  Lead with the result — the first sentence of any write-up answers what happened or what changed.
+  Cut narration: don't restate the request, the plan, or steps already visible in the diff.
+  Short by default; use headers and lists only when they carry real structure.
+  State things plainly — skip hedging, and raise a caveat only when it changes what the user should do next.
+  Answer completely when asked for detail: conciseness never means withholding what was requested.
+  Never trade correctness for brevity — error output, test failures, and warnings keep their full content.
 - **Fix the user's English first.**
   Before anything else in a turn: repair the grammar and phrasing of the user's own text that stays in the document, commit that alone, then do the work.
   A `chat:` aside is the one exception — it leaves no text in the document, so there is nothing to fix and nothing to commit.
