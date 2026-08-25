@@ -29,6 +29,9 @@
         queue-operation: {status: ignored note: "queued-prompt bookkeeping"}
         agent-name: {status: ignored note: "display name of a background agent"}
         relocated: {status: ignored note: "records a cwd move; project-move rewrites cwd itself and does not read this"}
+        atis-latch: {status: ignored note: "session heartbeat/latch record with an atis field; empty in every occurrence checked (1446 machine-wide) — an unpopulated feature-flag channel, not dialogue"}
+        worktree-state: {status: ignored note: "EnterWorktree/ExitWorktree bookkeeping (originalCwd, worktreePath, worktreeName); editor state, not dialogue"}
+        fork-context-ref: {status: ignored note: "written into the parent's transcript when Agent(subagent_type: fork) spawns a child — agentId, parentSessionId, parentLastUuid, contextLength, the point the fork branched off. Bookkeeping, not dialogue"}
     }
 
     content_blocks: {
@@ -58,6 +61,8 @@
         WebFetch: {status: ignored note: "no metric asks for it; tool_call_count counts it generically"}
         WebSearch: {status: ignored note: "no metric asks for it; tool_call_count counts it generically"}
         "mcp__*": {status: ignored note: "every MCP tool, collapsed to one class by observe. The real names are mcp__<server>__<tool> and depend on which servers the user connected, so listing them one by one would never settle"}
+        ListAgents: {status: ignored note: "lists reachable agents/sessions; no metric asks for it, and tool_call_count counts it generically"}
+        Workflow: {status: ignored note: "spawns a background multi-agent workflow; no metric asks for it, and tool_call_count counts it generically"}
     }
 
     usage_fields: {
@@ -88,12 +93,13 @@
         local-command-stdout: {status: handled drops: true note: "slash-command wrapper"}
         local-command-stderr: {status: rare drops: true note: "slash-command wrapper; present only when the command wrote to stderr"}
         task-notification: {status: handled drops: true note: "a finished background agent reporting in its own voice, filed under type: user"}
-        system-reminder: {status: handled drops: true note: "Claude Code injects it. Dropped only when it leads the text — that is a turn nobody typed. A reminder appended after the user's own words leaves those words first, so the message survives the str-starts-with check whole"}
+        system-reminder: {status: rare drops: true note: "Claude Code injects it. Dropped only when it leads the text — that is a turn nobody typed. A reminder appended after the user's own words leaves those words first, so the message survives the str-starts-with check whole. Leading occurrences are genuinely rare: 6 of 4690 user records in the newest 150 sessions, and 0 in a 40-session window — most reminders are appended mid-message, not leading, so a default-window run reports this dead. Rare, not dead"}
         selected-text: {status: ignored drops: false note: "the user handing over an editor selection — real user content, kept on purpose"}
         img: {status: rare drops: false note: "the user pasting an image — real user content, kept on purpose"}
         bash-input: {status: rare drops: false note: "a `!` command the user ran; render-bash-wrapper renders it instead of dropping it"}
         bash-stdout: {status: rare drops: false note: "output of a `!` command; render-bash-wrapper renders it"}
         bash-stderr: {status: rare drops: false note: "stderr of a `!` command; render-bash-wrapper renders it"}
+        fork-boilerplate: {status: todo drops: false note: "wraps a fork subagent's first message: <fork-boilerplate>...</fork-boilerplate> followed by the real directive on the next line, in the same record. Unlike system-reminder the directive never stands alone, so adding this tag to SYSTEM_PREFIXES would drop the fork's actual instruction along with the framing, not just the framing. Needs a block-strip (open tag to close tag), not a str-starts-with drop — not yet implemented"}
     }
 
     # `sessions` columns that are blank across a whole window without anything
