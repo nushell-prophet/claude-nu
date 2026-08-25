@@ -137,6 +137,7 @@ Any `--columns` selection narrows output to `path`/`parent_session_id` plus the 
 - `cwd` — Working directory
 - `git_branch` — Branch at session start
 - `effort` — Reasoning effort the session ran at
+- `models` — Models the session ran on, in first-appearance order; more than one means `/model` was used mid-session
 - `bash_commands` — List of bash commands run
 - `bash_count` — Number of bash commands
 - `skill_invocations` — Skills used

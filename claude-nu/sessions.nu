@@ -31,6 +31,7 @@ const SESSION_COLUMNS = [
     [cwd false]
     [git_branch false]
     [effort false]
+    [models false]
     [bash_commands false]
     [bash_count false]
     [skill_invocations false]
@@ -406,6 +407,10 @@ def parse-session-columns [selected: list<string>]: path -> record {
         $assistant_records | extract-effort
     } else { "" }
 
+    let models = if ("models" in $selected) {
+        $assistant_records | extract-models
+    } else { [] }
+
     let tool_stats = if (do $need [
         bash_commands bash_count skill_invocations tool_errors ask_user_count
         plan_mode_used tool_counts
@@ -447,6 +452,7 @@ def parse-session-columns [selected: list<string>]: path -> record {
         cwd: $meta.cwd?
         git_branch: $meta.git_branch?
         effort: $effort
+        models: $models
         bash_commands: $tool_stats.bash_commands?
         bash_count: $tool_stats.bash_count?
         skill_invocations: $tool_stats.skill_invocations?

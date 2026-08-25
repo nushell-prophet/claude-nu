@@ -1217,6 +1217,68 @@ def "sessions handles a session with no effort recorded" [] {
 }
 
 # =============================================================================
+# Tests for sessions command - model extraction
+# =============================================================================
+
+@test
+def "sessions lists every model of a session in first-appearance order" [] {
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"model":"claude-sonnet-5","content":[{"type":"text","text":"Hi"}]},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"assistant","message":{"model":"claude-sonnet-5","content":[{"type":"text","text":"Still me"}]},"timestamp":"2024-01-15T10:00:02Z"}'
+        '{"type":"assistant","message":{"model":"claude-opus-5","content":[{"type":"text","text":"Switched"}]},"timestamp":"2024-01-15T10:00:03Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = sessions $temp_file --columns models | first
+
+    rm $temp_file
+
+    assert equal $result.models ["claude-sonnet-5" "claude-opus-5"]
+}
+
+@test
+def "sessions handles a session with no model recorded" [] {
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = sessions $temp_file --columns models | first
+
+    rm $temp_file
+
+    assert equal $result.models []
+}
+
+# Why this is pinned: Claude Code stamps `<synthetic>` on messages it writes
+# itself, so counting it as a model would report a switch that never happened.
+@test
+def "sessions drops the synthetic placeholder from the model list" [] {
+    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
+
+    let lines = [
+        '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"model":"claude-opus-5","content":[{"type":"text","text":"Hi"}]},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"assistant","message":{"model":"<synthetic>","content":[{"type":"text","text":"You have hit your session limit"}]},"timestamp":"2024-01-15T10:00:02Z"}'
+    ]
+
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = sessions $temp_file --columns models | first
+
+    rm $temp_file
+
+    assert equal $result.models ["claude-opus-5"]
+}
+
+# =============================================================================
 # Tests for sessions command - Tool statistics
 # =============================================================================
 

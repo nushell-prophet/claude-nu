@@ -146,6 +146,20 @@ export def extract-effort []: table -> string {
     pick-first $.effort
 }
 
+# Models the session ran on, in first-appearance order, from assistant records.
+# Why a list and not a single value like `version`/`effort`: `/model` mid-session
+# is ordinary, and a single value reports only the first — so the one fact worth
+# having the column for, that the model changed, is the fact it cannot show.
+# Why `<synthetic>` is dropped: Claude Code stamps it on messages it writes
+# itself (session-limit notices, API errors), so it names no model the session
+# ran on and would otherwise fake a switch in a single-model session.
+export def extract-models []: table -> list<string> {
+    get message.model --optional
+    | compact
+    | where $it != "<synthetic>"
+    | uniq
+}
+
 # First/last timestamp across all records that carry one — the session's
 # activity span.
 # Why: not user records only — a session can have zero user turns (e.g. the
