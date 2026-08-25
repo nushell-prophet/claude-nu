@@ -956,6 +956,22 @@ def "tool-calls matches the regex over the whole input, not one preferred field"
 }
 
 @test
+def "tool-calls project_name is the readable cwd, not the encoded dir" [] {
+    # Why: `project` is the `-`-encoded directory name (lossy, unjoinable by
+    # hand); `project_name` is the same shape `projects.name` shows, so a
+    # cross-project search can be grouped or joined without decoding.
+    let temp_file = $nu.temp-dir | path join $"test-toolcalls-projname-(random uuid).jsonl"
+    '{"type":"assistant","cwd":"/Users/test/work/demo","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
+    | save --force $temp_file
+
+    let result = {path: $temp_file} | tool-calls
+
+    rm $temp_file
+
+    assert equal $result.0.project_name "work/demo"
+}
+
+@test
 def "tool-calls rows carry session and project" [] {
     # Why: same self-describing contract as `messages` — the session column is a
     # valid selector, so a filtered result pipes back into the other commands.
@@ -967,7 +983,7 @@ def "tool-calls rows carry session and project" [] {
 
     rm $temp_file
 
-    assert equal ($result | columns) [tool input timestamp session project]
+    assert equal ($result | columns) [tool input timestamp session project project_name]
     assert equal $result.0.session ($temp_file | path basename | str replace '.jsonl' '')
 }
 
@@ -1041,6 +1057,32 @@ def "messages keys subagent rows by real project, not the subagents folder" [] {
     let all = $result | get message
     assert ("top-level msg" in $all)
     assert ("subagent msg" in $all)
+}
+
+@test
+def "messages project_name is the readable cwd, not the encoded dir" [] {
+    let temp_file = $nu.temp-dir | path join $"test-messages-projname-(random uuid).jsonl"
+    '{"type":"user","cwd":"/Users/test/work/demo","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+    | save --force $temp_file
+
+    let result = {path: $temp_file} | messages
+
+    rm $temp_file
+
+    assert equal $result.0.project_name "work/demo"
+}
+
+@test
+def "messages project_name is empty, not an error, when the session carries no cwd" [] {
+    let temp_file = $nu.temp-dir | path join $"test-messages-nocwd-(random uuid).jsonl"
+    '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+    | save --force $temp_file
+
+    let result = {path: $temp_file} | messages
+
+    rm $temp_file
+
+    assert equal $result.0.project_name ""
 }
 
 # =============================================================================

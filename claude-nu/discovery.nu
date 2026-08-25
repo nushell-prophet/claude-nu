@@ -44,6 +44,16 @@ export def project-dir-name []: path -> string {
     }
 }
 
+# The readable counterpart to project-dir-name: a session's real `cwd`,
+# shortened to its last two path segments — the same form `projects` shows as
+# `name`. Single source of truth so `project-dir-name` (encoded, lossy) and
+# this (real, legible) stay the only two ways a project is named; "" when
+# there is no cwd to shorten, so a caller can join without a null check.
+export def project-display-name []: string -> string {
+    let cwd = $in
+    if $cwd == "" { "" } else { $cwd | path split | last 2 | path join }
+}
+
 # Resolve session file path from UUID, path, or default to most recent
 export def resolve-session-file [
     session?: string # Session UUID or path (null = most recent)

@@ -93,7 +93,7 @@ claude-nu sessions --subagents         # Also include subagent transcripts (pare
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, reasoning effort...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
 claude-nu sessions --since 1wk         # Sessions active in the last week. `--since`/`--until` are on `sessions`, `messages` and `tool-calls`; each takes a duration meaning ago (`1wk`), a date (`2026-08-01`), or a datetime value. What the window is compared to is the row you asked for: a message or a call by its own timestamp, a session by its file mtime — its last activity. Why that, and what `--since` saves by skipping files unparsed: the README section "The time window"
-claude-nu tool-calls                    # Every tool call of the current project: {tool, input, timestamp, session, project} — what the agent did, as `messages` is what was said
+claude-nu tool-calls                    # Every tool call of the current project: {tool, input, timestamp, session, project, project_name} — what the agent did, as `messages` is what was said
 claude-nu tool-calls 'claude-nu sessions' # ...narrowed by a regex over the whole input rendered as NUON (which field holds the string depends on the tool), with the same rg pre-filter and `--no-rg` escape as `messages`. Filtering by tool is a plain `where tool == Bash` — no flag, because unlike the regex it buys no pre-filter
 claude-nu sessions --all-projects | claude-nu tool-calls 'npm test' # ...scoped like `messages`, by session rows to the left of the pipe
 claude-nu export-session               # Markdown with YAML frontmatter; save is the shell's job: `| save file.md`

@@ -64,7 +64,8 @@ Rows come session by session — newest session first, chronological inside each
 - `message` — User message content
 - `timestamp` — When message was sent
 - `session` — Session UUID, the selector to pipe onward
-- `project` — Project directory the session belongs to
+- `project` — Project directory the session belongs to, encoded (`/` turned into `-`) — a display name, not a real path
+- `project_name` — The same project, readable: its `cwd`'s last two path segments, same form as `projects.name`. `""` when the session carries no `cwd`
 
 `--include-responses` adds `role`; `--raw` replaces `message` with the raw record's `type` and fields.
 
@@ -85,7 +86,8 @@ claude-nu tool-calls --since 1day | where tool == Bash | get input.command # fil
 - `input` — The call's arguments, as the raw record, so you drill in: `get input.command`
 - `timestamp` — When the call was made
 - `session` — Session UUID, the selector to pipe onward
-- `project` — Project directory the session belongs to
+- `project` — Project directory the session belongs to, encoded (`/` turned into `-`) — a display name, not a real path
+- `project_name` — The same project, readable: its `cwd`'s last two path segments, same form as `projects.name`. `""` when the session carries no `cwd`
 
 The regex is applied to the whole input rendered as NUON, not to one field.
 Which field holds the interesting string depends on the tool — `command` for Bash, `prompt` for Agent, its own schema for an MCP tool — so a search that had to name the field could only answer "who ran this" for Bash.
