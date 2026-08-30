@@ -32,6 +32,8 @@
         atis-latch: {status: ignored note: "session heartbeat/latch record with an atis field; empty in every occurrence checked (1446 machine-wide) — an unpopulated feature-flag channel, not dialogue"}
         worktree-state: {status: ignored note: "EnterWorktree/ExitWorktree bookkeeping (originalCwd, worktreePath, worktreeName); editor state, not dialogue"}
         fork-context-ref: {status: ignored note: "written into the parent's transcript when Agent(subagent_type: fork) spawns a child — agentId, parentSessionId, parentLastUuid, contextLength, the point the fork branched off. Bookkeeping, not dialogue"}
+        cost-state: {status: ignored note: "a running cost snapshot for the session (2.1.250+): totalCostUSD, totalAPIDuration, totalToolDuration, totalDuration, totalLinesAdded/Removed, and modelUsage keyed by model id. A session may hold several; the last one is current. Not read: token_usage already carries the cost/effort signal from message.usage, and totalCostUSD is 0 with an empty modelUsage in half a 40-session window — a snapshot written before any billed call, so it is not a signal every session has. modelUsage is where real dollars per model live if a cost column is ever wanted"}
+        bridge-session: {status: ignored note: "cloud-bridge bookkeeping written when a session is bridged to a remote one (2.1.250+): bridgeSessionId (cse_*), lastSequenceNum, ownerAccountUuid, ownerOrganizationUuid. Plumbing, not dialogue"}
     }
 
     content_blocks: {
