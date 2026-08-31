@@ -553,7 +553,7 @@ def parse-session-columns [selected: list<string>]: path -> record {
 # True when a value is a record (which is a 1-row table once piped). Strips the
 # `<...>` type detail so `record<a: int>` and a bare `record` both match.
 def is-record []: any -> bool {
-    ($in | describe | str replace --regex '<.*' '') == "record"
+    peek | metadata access {|md| $md.peek.type == "record" }
 }
 
 # Extract session file paths from piped input

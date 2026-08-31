@@ -45,7 +45,7 @@ export def render-bash-wrapper []: string -> string {
 
 # Content value as a list of blocks; [] when it isn't one (string/null content).
 export def content-blocks []: any -> table {
-    if ($in | describe) =~ '^(list|table)' { } else { [] }
+    peek | metadata access {|md| if $md.peek.type == "list" { } else { [] } }
 }
 
 # Shared dispatch on message content shape: string content passes through

@@ -320,25 +320,27 @@ export def rg-filter-session-files [
 # for itself what `1wk` means is how the same flag ends up meaning "a week ago"
 # in one place and "a week long" in another.
 export def resolve-time-bound [flag: string]: any -> datetime {
-    let value = $in
-    match ($value | describe | str replace --regex '<.*' '') {
-        "datetime" => $value
-        "duration" => ((date now) - $value)
-        # Why duration first: `into datetime` rejects "1wk" and `into duration`
-        # rejects "2026-08-01", so the two parses never both succeed.
-        "string" => (
-            try {
-                (date now) - ($value | into duration)
-            } catch {
-                try { $value | into datetime } catch {
-                    error make {
-                        msg: $"($flag): cannot read '($value)' as a duration or a date"
-                        help: "try a duration meaning ago \(1wk, 3day\) or a date \(2026-08-01\)"
+    peek | metadata access {|md|
+        let value = $in
+        match $md.peek.type {
+            "datetime" => $value
+            "duration" => ((date now) - $value)
+            # Why duration first: `into datetime` rejects "1wk" and `into duration`
+            # rejects "2026-08-01", so the two parses never both succeed.
+            "string" => (
+                try {
+                    (date now) - ($value | into duration)
+                } catch {
+                    try { $value | into datetime } catch {
+                        error make {
+                            msg: $"($flag): cannot read '($value)' as a duration or a date"
+                            help: "try a duration meaning ago \(1wk, 3day\) or a date \(2026-08-01\)"
+                        }
                     }
                 }
-            }
-        )
-        $other => (error make {msg: $"($flag): expected a duration, a datetime, or a date string — got ($other)"})
+            )
+            $other => (error make {msg: $"($flag): expected a duration, a datetime, or a date string — got ($other)"})
+        }
     }
 }
 
