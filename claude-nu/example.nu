@@ -22,6 +22,7 @@ const MODULE = 'claude-nu'
 # That last step is REPL-only: `commandline edit` has no buffer to write to
 # anywhere else, so a script should take the table and do its own thing with it.
 @category claude-nu
+@search-terms "recipes" "pipelines" "cheatsheet" "suggest"
 export def main [
     slug?: string@"nu-complete claude-nu examples" # Which example to paste; omit to get the table
 ]: nothing -> any {
