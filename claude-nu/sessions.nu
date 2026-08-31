@@ -49,7 +49,6 @@ const SESSION_COLUMNS = [
 # `name` is the last two segments of the real project path; `path` is the
 # sessions directory, so rows pipe straight into `sessions`.
 @category claude-nu
-@search-terms "workspaces" "repos" "directories" "cwd"
 export def projects []: nothing -> table {
     let projects_root = projects-root
     if not ($projects_root | path exists) { return [] }
@@ -166,7 +165,6 @@ export def "nu-complete claude sessions" []: nothing -> record {
 # own — so `messages --since 1wk` returns last week's messages, not every
 # message of a session that happens to have been open last week.
 @category claude-nu
-@search-terms "search" "grep" "prompts" "turns" "dialogue"
 export def messages [
     regex?: string # Filter messages by regex pattern
     --since: any # Only messages at or after this point — a duration means ago (`1wk`), or a datetime/date string
@@ -282,7 +280,6 @@ export def messages [
 # Filtering by tool is `where tool == ...` downstream — no flag, because unlike
 # the regex it buys no pre-filter.
 @category claude-nu
-@search-terms "actions" "agent" "bash" "invocations"
 export def tool-calls [
     regex?: string # Filter tool calls by regex over the call's input (rendered as NUON)
     --since: any # Only calls at or after this point — a duration means ago (`1wk`), or a datetime/date string
@@ -633,7 +630,6 @@ def expand-session-paths []: list<path> -> table {
 # Named `main` because a module can't export a command named the same as the
 # module — importing this file yields the `sessions` command.
 @category claude-nu
-@search-terms "transcripts" "jsonl" "columns" "history"
 @example "sessions that touched a file" { claude-nu sessions --columns edited_files,session_id | where {|r| $r.edited_files | any {|f| $f =~ 'render.nu' } } }
 @example "which skills got used, across every project" { claude-nu sessions --all-projects --columns skill_invocations | get skill_invocations | flatten | uniq --count | sort-by count --reverse }
 @example "sessions by token spend" { claude-nu sessions --columns token_usage,session_id | insert total {|r| $r.token_usage.input_tokens + $r.token_usage.output_tokens } | sort-by total --reverse }
@@ -780,7 +776,6 @@ export def main [
 # and the record only repeated what the markdown already carries — session and
 # date in the frontmatter, the title in the H1.
 @category claude-nu
-@search-terms "markdown" "transcript" "archive" "dialogue"
 export def export-session [
     title?: string # Title for the exported doc, used as given (default: session summary)
     --tools # Keep tool calls: each tool_use input in full as a fenced NUON block, each result as a char count (default: drop)

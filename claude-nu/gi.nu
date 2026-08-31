@@ -346,7 +346,6 @@ def gi-session-key [session: string]: nothing -> string {
 # Where the gi protocol comes from, and the canvas this session is bound to.
 # The verbs: `gi new`, `gi import`, `gi open`.
 @category claude-nu
-@search-terms "canvas" "git-intent" "status"
 export def main []: nothing -> record {
     gi-status
 }
@@ -484,7 +483,6 @@ export def --wrapped "gi new" [
 # template when it does not exist and continuing the session it already records
 # when it has one.
 @category claude-nu
-@search-terms "canvas" "launch" "start" "fork"
 export def --wrapped "gi open" [
     doc?: path # The canvas, relative to where you are (default: gi/canvas-<timestamp>.md); with --fork, the canvas to fork FROM
     --root: path # Run gi in this directory instead of here: the canvas is read there and the session starts there (default: your cwd)
@@ -549,7 +547,6 @@ export def --wrapped "gi open" [
 # then the user's messages and Claude's visible replies. The doc records that
 # session, so `gi open <doc>` resumes it instead of minting a new one.
 @category claude-nu
-@search-terms "canvas" "session" "transcript" "convert"
 export def "gi import" [
     session?: string@"nu-complete claude sessions" # Session UUID, /rename name, or .jsonl path (default: the session this runs inside)
     --to: path # Where the canvas lands, relative to where you are (default: gi/session-<key>.md)
