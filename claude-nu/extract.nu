@@ -339,11 +339,13 @@ export def sum-or-zero []: list -> int {
 # top-level fields already hold the per-message totals.
 export def extract-token-usage []: table -> record {
     let usages = get message.usage --optional | compact
-    let sum = {|field| $usages | get $field --optional | compact | sum-or-zero }
+    # Cell-path, not a string, so this closure reads like `last-of`/`pick-first`
+    # above — one spelling for "a field of a record" across the file.
+    let sum = {|field: cell-path| $usages | get $field --optional | compact | sum-or-zero }
     {
-        input_tokens: (do $sum "input_tokens")
-        output_tokens: (do $sum "output_tokens")
-        cache_creation_input_tokens: (do $sum "cache_creation_input_tokens")
-        cache_read_input_tokens: (do $sum "cache_read_input_tokens")
+        input_tokens: (do $sum $.input_tokens)
+        output_tokens: (do $sum $.output_tokens)
+        cache_creation_input_tokens: (do $sum $.cache_creation_input_tokens)
+        cache_read_input_tokens: (do $sum $.cache_read_input_tokens)
     }
 }
