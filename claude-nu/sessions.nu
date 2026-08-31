@@ -737,7 +737,14 @@ export def main [
         | uniq
 
     if $all_columns and ($requested | is-not-empty) {
-        error make "--columns and --all-columns are mutually exclusive"
+        error make {
+            msg: "--columns and --all-columns are mutually exclusive"
+            labels: [
+                {text: "these columns" span: (metadata $columns).span}
+                {text: "...and every column" span: (metadata $all_columns).span}
+            ]
+            help: "drop one — --all-columns already covers every name --columns could ask for"
+        }
     }
 
     let selected = if $all_columns {
@@ -751,6 +758,7 @@ export def main [
         if ($unknown | is-not-empty) {
             error make {
                 msg: $"Unknown session column\(s): ($unknown | str join ', ')"
+                label: {text: "not a session column" span: (metadata $columns).span}
                 help: $"valid columns: ($all_names | str join ', ')"
             }
         }
@@ -781,7 +789,14 @@ export def export-session [
     let piped_files = resolve-piped-sessions $input
 
     if $piped_files != null and $title != null {
-        error make "Piped input conflicts with title argument"
+        error make {
+            msg: "Piped input conflicts with title argument"
+            label: {
+                text: "a title names one document, but the pipe may carry several sessions"
+                span: (metadata $title).span
+            }
+            help: "drop the title, or pipe one session at a time"
+        }
     }
 
     let export_one = {|session_file|

@@ -350,7 +350,14 @@ export def main [
     let old = $from | normalize-project-path
     let new = $to | normalize-project-path
     if $old == $new {
-        error make {msg: $"Nothing to move: both paths normalize to ($old)"}
+        error make {
+            msg: $"Nothing to move: both paths normalize to ($old)"
+            labels: [
+                {text: "this path" span: (metadata $from).span}
+                {text: "...and this one name the same project" span: (metadata $to).span}
+            ]
+            help: "give the old location first and the new one second; a project already at its new path has nothing to retarget"
+        }
     }
 
     let src = projects-root | path join ($old | encode-project-dir)
@@ -392,7 +399,11 @@ export def main [
     ] | flatten
 
     if ($plan | is-empty) {
-        error make {msg: $"No Claude Code state found for ($old)"}
+        error make {
+            msg: $"No Claude Code state found for ($old)"
+            label: {text: "no sessions, history or config entry under this path" span: (metadata $from).span}
+            help: "Claude stores state per project cwd, so the old path has to be spelled as the project was opened"
+        }
     }
     if $dry_run {
         return ($plan | reject source needle replacement)

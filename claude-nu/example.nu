@@ -30,8 +30,9 @@ export def main [
 
     let found = example-table | where slug == $slug
     if ($found | is-empty) {
-        error make --unspanned {
+        error make {
             msg: $"no example named '($slug)'"
+            label: {text: "no example carries this slug" span: (metadata $slug).span}
             help: "run `claude-nu example` with no argument to see them all"
         }
     }
