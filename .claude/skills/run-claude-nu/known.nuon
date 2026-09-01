@@ -52,7 +52,7 @@
         Read: {status: handled note: "read_files"}
         Agent: {status: handled note: "extract-agents"}
         Skill: {status: handled note: "skill_invocations"}
-        AskUserQuestion: {status: handled note: "ask_user_count"}
+        AskUserQuestion: {status: rare note: "ask_user_count — the reader is live, the tool is just infrequent: counted on 2026-09-01 over the newest sessions, 0 calls in a 40-file window, 2 in 150, 10 in 300. A default-window run therefore reports it dead. Same pair as EnterPlanMode/plan_mode_used. Re-check at --window 300 before believing it died"}
         EnterPlanMode: {status: rare note: "plan_mode_used — only present when the session used plan mode"}
         ToolSearch: {status: handled note: "tool_counts"}
         Monitor: {status: rare note: "tool_counts — long-running sessions only"}
@@ -65,6 +65,7 @@
         "mcp__*": {status: ignored note: "every MCP tool, collapsed to one class by observe. The real names are mcp__<server>__<tool> and depend on which servers the user connected, so listing them one by one would never settle"}
         ListAgents: {status: ignored note: "lists reachable agents/sessions; no metric asks for it, and tool_call_count counts it generically"}
         Workflow: {status: ignored note: "spawns a background multi-agent workflow; no metric asks for it, and tool_call_count counts it generically"}
+        SendFeedback: {status: ignored note: "drafts Claude Code feedback, queued locally for the user to approve; no metric asks for it, and tool_call_count counts it generically. 1 call in the newest 300 session files on 2026-09-01"}
     }
 
     usage_fields: {
@@ -110,5 +111,6 @@
     expected_blank_columns: {
         parent_session_id: {note: "null for top-level sessions; only subagent rows carry a parent"}
         plan_mode_used: {note: "false unless the session used plan mode"}
+        ask_user_count: {note: "0 unless the session asked the user a question; AskUserQuestion is rare enough to be absent from a 40-file window (2 calls in 150 files, 10 in 300, on 2026-09-01)"}
     }
 }
