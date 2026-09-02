@@ -1056,11 +1056,12 @@ def "the import note claims a missing tail only for the live session" [] {
 }
 
 @test
-def "import text with the tools flag keeps one-line tool placeholders" [] {
+def "import text with the tools flag keeps tool calls in full" [] {
     let body = gi-import-text ($FIXTURES_SESSIONS_DIR | path join $"($FIXTURE_SESSION).jsonl") --tools
 
-    assert str contains $body "> [Bash:"
-    assert str contains $body "tool calls are one-line placeholders" # the note matches the content
+    assert str contains $body "> [Bash]"
+    assert str contains $body "```nuon"
+    assert str contains $body "tool results are a char count" # the note matches the content
 }
 
 @test

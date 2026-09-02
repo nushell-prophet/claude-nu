@@ -46,7 +46,7 @@ You do not have to tell them apart.
 
 ```nushell
 nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi import'                     # → gi/session-<id>.md
-nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi import --tools'             # ...keeping tool calls as one-line placeholders
+nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi import --tools'             # ...keeping tool calls, each input rendered whole
 nu -c 'use ~/repos/claude-nu/claude-nu/; claude-nu gi import --to notes/x.md'     # ...at a chosen path
 ```
 

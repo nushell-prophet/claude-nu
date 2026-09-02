@@ -408,7 +408,7 @@ def gi-session-id []: nothing -> string {
 
 # A canvas's starting content for `gi import`: the canvas header, an
 # import note, then the session's dialogue — user messages and Claude's visible
-# replies; tool calls dropped, or kept as one-line placeholders with --tools.
+# replies; tool calls dropped, or kept in full with --tools.
 # Why a note carrying the .jsonl path: everything left out is one `open` away,
 # so the gap is stated in the file rather than only in the terminal, where it
 # scrolls away. Why --live is a parameter and not "compare against
@@ -418,11 +418,11 @@ def gi-session-id []: nothing -> string {
 # for tests, which drive it with a fixture session.
 export def gi-import-text [
     session_id: string # UUID, or a .jsonl path (what the tests pass)
-    --tools # Keep tool calls as one-line placeholders instead of dropping them
+    --tools # Keep tool calls instead of dropping them: each input in full, each result as a char count
     --live # This is the session running the import: its log cannot hold the current turn
 ]: nothing -> string {
     let file = resolve-session-file $session_id
-    let left_out = if $tools { "Thinking is dropped here; tool calls are one-line placeholders" } else { "Tool calls, results, and thinking are dropped here" }
+    let left_out = if $tools { "Thinking is dropped here; tool results are a char count" } else { "Tool calls, results, and thinking are dropped here" }
     let source = if $live {
         "Imported from the live session"
     } else {
@@ -571,7 +571,7 @@ export def "gi import" [
     session?: string@"nu-complete claude sessions" # Session UUID or .jsonl path (default: the session this runs inside)
     --to: path # Where the canvas lands, relative to where you are (default: gi/session-<key>.md)
     --root: path # Run gi in this directory instead of here: --to is read there (default: your cwd)
-    --tools # Keep tool calls as one-line placeholders instead of dropping them
+    --tools # Keep tool calls instead of dropping them: each input in full, each result as a char count
     --commit # Commit the imported doc
     --gitignore # Keep the imported doc out of git
 ]: nothing -> record {

@@ -210,12 +210,31 @@ claude-nu export-session                    # Uses session summary as title
 claude-nu export-session "Auth refactor"    # Custom title, used as given
 claude-nu sessions --session <uuid> | claude-nu export-session # Specific session
 claude-nu export-session | save session.md  # Saving is the shell's job
+claude-nu export-session --tools            # ...keeping tool calls, each input rendered whole
 ```
 
 The output is the markdown itself — one string per session, with the session id and date in the YAML frontmatter.
 Saving is ordinary `save`, not a flag.
 
 Filters out system-generated messages, keeping only user prompts and assistant responses.
+
+**Tool calls.**
+They are dropped by default.
+`--tools` keeps them, and keeps them whole: each call arrives as a `> [Bash]` header followed by its entire input record in a fenced NUON block.
+
+```nuon
+{
+  command: "wc -l claude-nu/render.nu && cat claude-nu/render.nu",
+  description: "Read render.nu"
+}
+```
+
+Nothing is cut and nothing is picked.
+That is the point of the format: NUON is lossless and reads back with `from nuon`, so a rendered call is still data.
+A shell command does arrive with its quotes escaped, and a `Write` of a long file becomes one very long line.
+
+Tool *results* are the exception, and stay a char count: `> [result: 6151 chars]`.
+A single `cat` in a working session runs to thousands of characters, so folding results in would bury the dialogue the export exists for.
 
 ### `claude-nu project-move`
 
@@ -274,7 +293,7 @@ claude-nu gi enable --no-gitignore # ...leaving the seeds visible to git, to com
 claude-nu gi import            # a canvas from the dialogue of the session this runs inside (gi/session-<id>.md)
 claude-nu gi import <TAB>      # ...or of any session: the picker shows age, size, summary
 claude-nu gi import --to notes/x.md # ...at a chosen path
-claude-nu gi import --tools    # ...keeping tool calls as one-line placeholders
+claude-nu gi import --tools    # ...keeping tool calls, each input rendered whole
 claude-nu gi import --commit   # ...and commit it
 claude-nu gi import --gitignore # ...or keep it out of git
 claude-nu gi open              # new canvas + a session bound to it
@@ -336,7 +355,7 @@ Numbering is max+1 over the series, never the first free gap: `gi/` is untracked
 
 **Switching into gi mid-chat:** `gi import` starts the canvas from a session's dialogue instead of the empty template, so the discussion that led you to gi is the canvas's first content.
 With no session named it takes the one it runs inside (`$env.CLAUDE_CODE_SESSION_ID` — not "the newest session file", which during a live session is as likely a subagent transcript); name one — with a completer showing age, size and summary — to import an older chat from the REPL, where there is no live session to fall back on.
-It keeps user messages and Claude's visible replies, and drops tool calls and thinking behind a note pointing at the raw `.jsonl` (`--tools` keeps tool calls as one-line placeholders — useful when the session's value is in what was tried, not only what was said).
+It keeps user messages and Claude's visible replies, and drops tool calls and thinking behind a note pointing at the raw `.jsonl` (`--tools` keeps tool calls, each input rendered whole — useful when the session's value is in what was tried, not only what was said).
 Importing the live session, the turn that runs the import is never in it: Claude Code writes the session log as the turn runs, so the last exchange is still missing.
 The doc is named for the session (`gi/session-<id>.md`, or `--to <path>`) and is never overwritten — delete it to re-import.
 It lands in the working tree untracked; `--commit` puts it in git, `--gitignore` keeps it out (they are mutually exclusive).

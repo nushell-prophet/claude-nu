@@ -134,7 +134,7 @@ export def is-user-text []: string -> bool {
 # Build a dialogue table from raw session records: the user and assistant turns
 # with their visible text. Drops meta turns, empty-text turns, and the user-side
 # system/command wrappers Claude Code synthesizes. `extract` renders each record's
-# text, so callers pick plain text, +thinking, or tool placeholders. Pass
+# text, so callers pick plain text, +thinking, or +tool calls. Pass
 # --keep-system to retain meta and system-wrapper turns (messages --include-system).
 # Why: messages and export-session both built this same dialogue+filter pass; one
 # source keeps the system-prefix rule from drifting between them.

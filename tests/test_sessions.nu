@@ -2336,22 +2336,24 @@ def "export-session default omits tool blocks" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
     let md = {path: $p} | export-session
 
-    # No blockquote placeholders should leak when --tools is absent
+    # No tool block should leak when --tools is absent
     assert not ($md | str contains "> [")
-    # Tool names from the fixture must not appear as headings or placeholders
-    assert not ($md | str contains "> [Bash:")
-    assert not ($md | str contains "> [Read:")
+    # Tool names from the fixture must not appear as headers, nor their inputs
+    assert not ($md | str contains "> [Bash]")
+    assert not ($md | str contains "> [Read]")
     assert not ($md | str contains "> [result")
+    assert not ($md | str contains "```nuon")
 }
 
 @test
-def "export-session --tools renders tool_use as one-line blockquote" [] {
+def "export-session --tools renders tool_use as a header and a NUON block" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
     let md = {path: $p} | export-session --tools
 
     # Real fixture has Bash and Read tool calls
-    assert ($md | str contains "> [Bash:")
-    assert ($md | str contains "> [Read:")
+    assert ($md | str contains "> [Bash]")
+    assert ($md | str contains "> [Read]")
+    assert ($md | str contains "```nuon")
 }
 
 @test
@@ -2360,25 +2362,6 @@ def "export-session --tools renders tool_result placeholder with char count" [] 
     let md = {path: $p} | export-session --tools
 
     assert ($md =~ '> \[result(?: error)?: \d+ chars\]')
-}
-
-@test
-def "export-session --tools truncates long tool inputs to ~120 chars" [] {
-    let temp_file = $nu.temp-dir | path join $"test-export-(random uuid).jsonl"
-    let long_cmd = "echo " + (0..200 | each { "x" } | str join "")
-    let lines = [
-        ('{"type":"user","message":{"content":"do thing"},"timestamp":"2024-01-15T10:00:00Z"}')
-        ('{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"' + $long_cmd + '"}}]}}')
-    ]
-    $lines | str join "\n" | save --force $temp_file
-
-    let md = {path: $temp_file} | export-session --tools
-    rm $temp_file
-
-    # The placeholder line shouldn't blow past ~130 chars including marker
-    let placeholder = $md | lines | where { $in | str starts-with "> [Bash:" } | first
-    assert (($placeholder | str length) < 140)
-    assert ($placeholder | str ends-with "...]")
 }
 
 @test
@@ -2397,19 +2380,76 @@ def "export-session --tools renders tool_result error marker" [] {
     assert ($md =~ '> \[result error: \d+ chars\]')
 }
 
+# =============================================================================
+# Tests for the whole tool_use input --tools renders
+# =============================================================================
+
 @test
-def "export-session --tools picks file_path for Read tool placeholder" [] {
+def "export-session --tools keeps every field of the input record" [] {
     let temp_file = $nu.temp-dir | path join $"test-export-(random uuid).jsonl"
     let lines = [
-        '{"type":"user","message":{"content":"read it"},"timestamp":"2024-01-15T10:00:00Z"}'
-        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/src/main.rs"}}]}}'
+        '{"type":"user","message":{"content":"edit it"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/src/main.rs","old_string":"fn old","new_string":"fn new"}}]}}'
     ]
     $lines | str join "\n" | save --force $temp_file
 
     let md = {path: $temp_file} | export-session --tools
     rm $temp_file
 
-    assert ($md | str contains "> [Read: /src/main.rs]")
+    assert ($md | str contains "> [Edit]")
+    assert ($md | str contains "file_path")
+    assert ($md | str contains "old_string")
+    assert ($md | str contains "new_string")
+}
+
+@test
+def "export-session --tools emits a NUON block that reads back" [] {
+    let temp_file = $nu.temp-dir | path join $"test-export-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"edit it"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/src/main.rs","old_string":"fn old","new_string":"fn new"}}]}}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let md = {path: $temp_file} | export-session --tools
+    rm $temp_file
+
+    let nuon = $md | split row "```nuon\n" | get 1 | split row "\n```" | get 0
+    assert equal ($nuon | from nuon) {file_path: "/src/main.rs" old_string: "fn old" new_string: "fn new"}
+}
+
+@test
+def "export-session --tools does not truncate a long command" [] {
+    let temp_file = $nu.temp-dir | path join $"test-export-(random uuid).jsonl"
+    let long_cmd = "echo " + (0..200 | each { "x" } | str join "")
+    let lines = [
+        '{"type":"user","message":{"content":"do thing"},"timestamp":"2024-01-15T10:00:00Z"}'
+        ('{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"' + $long_cmd + '"}}]}}')
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let md = {path: $temp_file} | export-session --tools
+    rm $temp_file
+
+    assert ($md | str contains $long_cmd)
+    assert not ($md | str contains "...]")
+}
+
+@test
+def "export-session --tools does not inline tool_result content" [] {
+    let temp_file = $nu.temp-dir | path join $"test-export-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"do thing"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"false"}}]}}'
+        '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"x","content":"command not found"}]}}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let md = {path: $temp_file} | export-session --tools
+    rm $temp_file
+
+    assert ($md =~ '> \[result: \d+ chars\]')
+    assert not ($md | str contains "command not found")
 }
 
 # =============================================================================

@@ -60,44 +60,33 @@ export def render-message-content [render: closure]: record -> string {
     }
 }
 
-# Collapse whitespace (newlines, tabs, runs of spaces) to single spaces
-# and truncate to a max length, appending an ellipsis on truncation.
-export def to-one-line [max: int]: string -> string {
-    str replace --all --regex '\s+' ' '
-    | str trim
-    | if ($in | str length) > $max {
-        $"($in | str substring 0..<$max)..."
-    } else { }
+# Render a tool_use block with its whole input, as a fenced NUON block under a
+# blockquote header naming the tool.
+# Not the one-line summary this replaced: that one collapsed the input to a
+# single field cut at 120 chars, so an Edit showed file_path and dropped
+# old_string/new_string, and a Write dropped content — with nothing in the
+# output marking the loss, unlike the cut, which at least ended in an ellipsis.
+# Why NUON: lossless, reads back with `from nuon`, and needs no per-tool case.
+# Cost accepted: a Bash command arrives with its quotes escaped, where a fenced
+# sh block would read better — one special case per tool is the higher price.
+export def render-tool-input []: record -> string {
+    let block = $in
+    let header = $"> [($block.name? | default 'tool')]"
+    $"($header)\n\n```nuon\n($block.input? | to nuon --pretty)\n```"
 }
 
-# One-line summary of a tool_use input record for placeholder rendering.
-# Picks the most informative scalar field (command, file_path, query, etc.)
-# and falls back to a compact NUON dump.
-export def summarize-tool-input [input: any]: nothing -> string {
-    if not (($input | describe) | str starts-with "record") { return "" }
-    let cols = $input | columns
-    let preferred = ["command" "file_path" "path" "pattern" "query" "url" "skill" "subagent_type" "description"]
-    let key = $preferred | where {|k| $k in $cols } | get 0?
-    if $key != null {
-        let v = $input | get $key
-        if ($v | describe) == "string" { $v } else { $v | to nuon }
-    } else {
-        $input | to nuon
-    }
-}
-
-# Render a single content block as one line of markdown.
+# Render a single content block as markdown.
 # text -> text as-is; with --thinking, thinking -> `[thinking]`-prefixed text;
-# with --tools, tool_use/tool_result -> blockquote placeholder; else "".
+# with --tools, tool_use -> its whole input, tool_result -> a char count; else "".
+# Why the result stays a count while the input is rendered whole: a single `cat`
+# in a working session runs to thousands of characters, so folding results in
+# would bury the dialogue the export exists for.
 export def render-block [--tools --thinking]: record -> string {
     let block = $in
     match $block.type? {
         "text" => ($block.text? | default "")
         "thinking" if $thinking => $"[thinking] ($block.thinking? | default '')"
-        "tool_use" if $tools => {
-            let summary = summarize-tool-input $block.input? | to-one-line 120
-            $"> [($block.name? | default 'tool'): ($summary)]"
-        }
+        "tool_use" if $tools => ($block | render-tool-input)
         "tool_result" if $tools => {
             let raw = $block.content?
             let txt = if ($raw | describe) == "string" { $raw } else {
@@ -112,8 +101,8 @@ export def render-block [--tools --thinking]: record -> string {
 }
 
 # Render a record's content blocks as markdown text, one block per paragraph.
-# Flags pass through to render-block: --tools renders tool_use/tool_result as
-# one-line blockquote placeholders, --thinking renders thinking blocks.
+# Flags pass through to render-block: --tools renders tool_use inputs in full
+# and tool_result as a char count, --thinking renders thinking blocks.
 export def render-content [--tools --thinking]: record -> string {
     render-message-content {
         each { render-block --tools=$tools --thinking=$thinking }

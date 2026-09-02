@@ -764,7 +764,7 @@ export def main [
 # date in the frontmatter, the title in the H1.
 export def export-session [
     title?: string # Title for the exported doc, used as given (default: session summary)
-    --tools # Render tool_use/tool_result blocks as one-line blockquote placeholders (default: drop)
+    --tools # Keep tool calls: each tool_use input in full as a fenced NUON block, each result as a char count (default: drop)
 ]: [nothing -> string record -> string table -> list<string>] {
     let input = $in
     let piped_files = resolve-piped-sessions $input
