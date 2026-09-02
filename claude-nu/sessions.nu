@@ -338,6 +338,80 @@ export def tool-calls [
     | flatten
 }
 
+# Extract the slash commands invoked in Claude Code session files — what you
+# typed, as `messages` is what you said and `tool-calls` is what the agent did.
+# One row per invocation: {command, args, timestamp, session, project,
+# project_name}. Scoping works exactly as in `messages`: no input reads every
+# top-level session of the current project, piped session rows narrow it,
+# `--since`/`--until` cut the window per invocation.
+# Why a command and not a `sessions` column: the question it answers is "which
+# commands do I actually use", which is a ranking over invocations — a per
+# session list would have to be flattened before it could be counted, and a
+# count aggregated per session cannot be re-aggregated across projects.
+# Why it reads the transcripts and not ~/.claude/history.jsonl: the history file
+# is every project at once and cannot be narrowed by a session row, so it could
+# not scope like its siblings. What it uniquely holds — the built-in commands
+# that never reach the model — is what `--all` covers here, and what the
+# default drops anyway.
+# Why no existence check against the installed skills: a command counts under
+# the name it was typed with, so a skill since renamed or deleted keeps its
+# history instead of vanishing from it.
+# A `Skill` tool call is not a slash command — that is the agent choosing a
+# skill on its own, and it is already `tool-calls | where tool == Skill`.
+@example "the commands I use most" { claude-nu slash-commands | histogram command }
+@example "...across every project" { claude-nu sessions --all-projects | claude-nu slash-commands | histogram command }
+@example "including the built-ins Claude Code handles itself" { claude-nu slash-commands --all | histogram command | select command count }
+@example "what I passed to a command" { claude-nu slash-commands | where command == '/land-branch' | select timestamp args }
+export def slash-commands [
+    --since: any # Only invocations at or after this point — a duration means ago (`1wk`), or a datetime/date string
+    --until: any # Only invocations at or before this point
+    --all # Keep the built-in commands Claude Code handles itself (/clear, /model, /exit ...)
+]: [nothing -> table record -> table table -> table] {
+    let input = $in
+    let piped_files = resolve-piped-sessions $input
+
+    # Why up here: same as in `messages` — a bad bound fails before any parsing.
+    let since_at = if $since == null { null } else { $since | resolve-time-bound "--since" }
+    let until_at = if $until == null { null } else { $until | resolve-time-bound "--until" }
+
+    let scoped_files = if $piped_files != null {
+        $piped_files
+    } else {
+        top-level-session-files
+        | if ($in | is-empty) { error make "No session files found for the current project" } else { }
+    }
+
+    let missing = $scoped_files | where not ($it | path exists)
+    if ($missing | is-not-empty) {
+        error make $"Session file not found: ($missing | str join ', ')"
+    }
+
+    $scoped_files
+    | if $since_at == null { } else { mtime-filter-session-files $since_at }
+    | each {|session_file|
+        # Why the pre-screen: an invocation is a handful of lines in a session,
+        # and every one of them carries the tag — a file with no match never
+        # reaches the JSON parser. `extract-slash-command` re-reads the tag, so
+        # this only narrows.
+        let records = $session_file | read-session-records --contains "<command-name>"
+
+        $records
+        | each {|record|
+            let invocation = $record | extract-slash-command
+            if $invocation == null { } else {
+                $invocation | insert timestamp ($record.timestamp | into datetime)
+            }
+        }
+        | if $all { } else { where {|row| not ($row.command | is-builtin-slash-command) } }
+        | if $since_at == null { } else { where timestamp >= $since_at }
+        | if $until_at == null { } else { where timestamp <= $until_at }
+        | insert session ($session_file | session-id-from-path)
+        | insert project ($session_file | project-dir-name)
+        | insert project_name ($records | pick-first $.cwd | project-display-name)
+    }
+    | flatten
+}
+
 # Parse one session file, computing only the selected columns.
 # Lazy: each extraction group runs only when a selected column needs it.
 # Why: no empty-file special case — every extractor yields its typed default

@@ -10,6 +10,7 @@ Nushell utilities for working with [Claude Code](https://claude.ai/code) session
 - **Search past sessions** — Find what you asked Claude last week with `sessions --all-projects | messages 'pattern'`
 - **Session analytics** — See what Claude actually did: files touched, tools called, agents spawned, errors hit
 - **Search what the agent ran** — `tool-calls 'pattern'` searches the tool calls themselves, not only what was typed
+- **Rank your slash commands** — `slash-commands` counts what you actually invoked, skills and custom commands, built-ins left out
 - **Smart session picker** — `claude --resume <TAB>` shows age, size, and summary instead of raw UUIDs
 - **Export to markdown** — Keep session history in git with YAML frontmatter
 - **Move a project** — `project-move <old> <new>` retargets sessions, permissions and prompt history after you move a directory
@@ -150,13 +151,49 @@ Any `--columns` selection narrows output to `path`/`parent_session_id` plus the 
 - `tool_call_count` — Total tool invocations
 - `token_usage` — Token totals (input/output/cache)
 
+### `claude-nu slash-commands`
+
+What you *typed*, as `messages` is what you said and `tool-calls` is what the agent did: one row per slash-command invocation.
+Scoping works exactly as in `messages` — no input reads every top-level session of the current project, piped session rows narrow it, `--since`/`--until` cut the window per invocation.
+
+```nushell no-run
+claude-nu slash-commands | histogram command   # the commands you use most, sorted, with the share of each
+claude-nu sessions --all-projects | claude-nu slash-commands | histogram command # ...across every project
+claude-nu slash-commands --all      # keep the built-ins Claude Code handles itself
+claude-nu slash-commands | where command == '/land-branch' | select timestamp args
+```
+
+`histogram` is the ranking: it sorts by count, keeps the column name, and adds each command's share and a bar.
+
+**Output:**
+- `command` — The name as typed, leading slash included (`/land-branch`, `/skill-creator:skill-creator`)
+- `args` — What followed the command, `""` when it took none
+- `timestamp` — When it was invoked
+- `session` — Session UUID, the selector to pipe onward
+- `project` — Project directory the session belongs to, encoded (`/` turned into `-`) — a display name, not a real path
+- `project_name` — The same project, readable: its `cwd`'s last two path segments, same form as `projects.name`. `""` when the session carries no `cwd`
+
+**What counts.**
+Skills and custom commands.
+The built-ins Claude Code handles itself — `/clear`, `/model`, `/exit`, `/usage` and their kin — are housekeeping, not work, and `--all` keeps them in.
+Claude Code's own prompt-skills (`/init`, `/simplify`, `/code-review`, `/schedule`) stay counted: the model runs those like any other skill.
+The list of built-ins is maintained by hand in `extract.nu`, because the two automatic rules both fail — resolving a name against the installed skills would drop every command since renamed or deleted, and the record's own layout (a built-in written name-first with `<command-args>`, a skill message-first without) tracks the Claude Code version rather than the kind of command.
+
+A command counts under the name it was typed with, so a skill you deleted keeps its history instead of vanishing from it.
+
+A `Skill` tool call is a different question — that is the agent choosing a skill on its own, and it is `tool-calls | where tool == Skill`.
+
+**Why the transcripts and not `~/.claude/history.jsonl`.**
+The history file holds every project at once and cannot be narrowed by a session row, so it could not scope like its siblings.
+The one thing it uniquely holds is the built-in commands that never reach the model — which is what the default drops anyway.
+
 ### The time window
 
-`--since` and `--until` are on `sessions`, `messages` and `tool-calls`.
+`--since` and `--until` are on `sessions`, `messages`, `tool-calls` and `slash-commands`.
 Each takes a duration meaning *ago* (`--since 1wk`, `--until 3day`), a date (`2026-08-01`), or a `datetime` value — so "what did I do last week" is a flag, not a filter you write afterwards.
 
 What the window is measured against is the row you are asking for.
-In `messages` and `tool-calls` a row is one message or one call, so the window is compared to its own timestamp.
+In `messages`, `tool-calls` and `slash-commands` a row is one message, one call or one invocation, so the window is compared to its own timestamp.
 In `sessions` a row is a whole session, timed by its file's mtime — its last activity, the same clock that already orders every listing here.
 Deciding the window from a parsed `first_timestamp` instead would have to parse every session to find out which sessions to parse, which is the cost the window exists to avoid.
 

@@ -1013,6 +1013,130 @@ def "tool-calls with no input reads every session of the current project" [] {
     assert equal $matched.0.input.command "claude-nu sessions --last"
 }
 
+# =============================================================================
+# Tests for slash-commands
+# =============================================================================
+
+@test
+def "extract-slash-command reads both record layouts" [] {
+    # Why both: Claude Code writes a built-in name-first with <command-args> and
+    # used to write a skill message-first without, and 2.1.243 writes the
+    # /land-branch skill in the built-in layout — the layout tracks the version,
+    # not the kind, so neither may be assumed.
+    let name_first = {message: {content: "<command-name>/clear</command-name>\n            <command-message>clear</command-message>\n            <command-args></command-args>"}}
+    let message_first = {message: {content: "<command-message>land-branch</command-message>\n<command-name>/land-branch</command-name>"}}
+
+    assert equal ($name_first | extract-slash-command) {command: "/clear" args: ""}
+    assert equal ($message_first | extract-slash-command) {command: "/land-branch" args: ""}
+}
+
+@test
+def "extract-slash-command reads a local command record and its args" [] {
+    # A purely local command (/fork, /skills) is logged as type system,
+    # subtype local_command, whose text sits at the top level, not under message.
+    let record = {type: "system" subtype: "local_command" content: "<command-name>/fork</command-name>\n            <command-message>fork</command-message>\n            <command-args>add the gi guard</command-args>"}
+
+    assert equal ($record | extract-slash-command) {command: "/fork" args: "add the gi guard"}
+}
+
+@test
+def "extract-slash-command ignores a transcript quoted inside a tool result" [] {
+    # The reason the record test is structural and not a text search: this
+    # project's own sessions quote transcripts back, so the tag appears inside
+    # tool results in files where nothing was invoked.
+    let quoted = {type: "user" message: {content: [{type: "tool_result" content: "<command-name>/usage</command-name>"}]}}
+    let plain = {type: "user" message: {content: "just a message"}}
+
+    assert equal ($quoted | extract-slash-command) null
+    assert equal ($plain | extract-slash-command) null
+}
+
+@test
+def "extract-slash-command keeps args that contain a left angle bracket" [] {
+    # Why: args are free text the user typed — a <selected-text> block pasted
+    # into a command is in this store, and stopping at the next `<` (which the
+    # name does, to survive a truncated record) would have kept only "fix the".
+    let record = {type: "system" subtype: "local_command" content: "<command-name>/fork</command-name>\n<command-args>fix the <div> rendering</command-args>"}
+
+    assert equal ($record | extract-slash-command).args "fix the <div> rendering"
+}
+
+@test
+def "a prompt-skill Claude Code ships is not a built-in" [] {
+    # The grey zone, decided one way: /init, /simplify, /code-review, /schedule
+    # are skills the model runs like any other, so they are work and get
+    # counted. Only what Claude Code handles locally is housekeeping.
+    assert equal ("/schedule" | is-builtin-slash-command) false
+    assert equal ("/init" | is-builtin-slash-command) false
+    assert equal ("/clear" | is-builtin-slash-command) true
+}
+
+@test
+def "slash-commands drops the built-ins unless --all" [] {
+    let temp_file = $nu.temp-dir | path join $"test-slash-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"<command-name>/clear</command-name>\n<command-args></command-args>"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<command-message>land-branch</command-message>\n<command-name>/land-branch</command-name>"},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"user","message":{"content":"just a message"},"timestamp":"2024-01-15T10:00:02Z"}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let default = {path: $temp_file} | slash-commands
+    let with_builtins = {path: $temp_file} | slash-commands --all
+
+    rm $temp_file
+
+    assert equal ($default | get command) ["/land-branch"]
+    assert equal ($with_builtins | get command) ["/clear" "/land-branch"]
+}
+
+@test
+def "slash-commands counts a command that no longer exists" [] {
+    # Why: the ranking is a record of what was used, so a skill since renamed or
+    # deleted keeps its rows — nothing is resolved against what is installed now.
+    let temp_file = $nu.temp-dir | path join $"test-slash-gone-(random uuid).jsonl"
+    '{"type":"user","message":{"content":"<command-message>gone</command-message>\n<command-name>/a-skill-deleted-long-ago</command-name>"},"timestamp":"2024-01-15T10:00:00Z"}'
+    | save --force $temp_file
+
+    let result = {path: $temp_file} | slash-commands
+
+    rm $temp_file
+
+    assert equal ($result | get command) ["/a-skill-deleted-long-ago"]
+}
+
+@test
+def "slash-commands rows carry args, session and project" [] {
+    let temp_file = $nu.temp-dir | path join $"test-slash-cols-(random uuid).jsonl"
+    '{"type":"user","message":{"content":"<command-message>land-branch</command-message>\n<command-name>/land-branch</command-name>\n<command-args>--grouped</command-args>"},"timestamp":"2024-01-15T10:00:00Z"}'
+    | save --force $temp_file
+
+    let result = {path: $temp_file} | slash-commands
+
+    rm $temp_file
+
+    assert equal ($result | columns) [command args timestamp session project project_name]
+    assert equal $result.0.args "--grouped"
+    assert equal ($result.0.timestamp | describe) "datetime"
+    assert equal $result.0.session ($temp_file | path basename | str replace '.jsonl' '')
+}
+
+@test
+def "slash-commands honours the time window" [] {
+    let temp_file = $nu.temp-dir | path join $"test-slash-window-(random uuid).jsonl"
+    let lines = [
+        '{"type":"user","message":{"content":"<command-name>/old-skill</command-name>"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"user","message":{"content":"<command-name>/new-skill</command-name>"},"timestamp":"2024-03-15T10:00:00Z"}'
+    ]
+    $lines | str join "\n" | save --force $temp_file
+
+    let result = {path: $temp_file} | slash-commands --since 2024-02-01
+
+    rm $temp_file
+
+    assert equal ($result | get command) ["/new-skill"]
+}
+
 @test
 def "bare claude-nu answers with guidance, not command not found" [] {
     # Why: a directory module with no `main` makes the bare name fall through to

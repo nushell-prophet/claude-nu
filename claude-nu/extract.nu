@@ -14,9 +14,17 @@ use render.nu [render-message-content render-content content-blocks]
 # a real message: the check is str starts-with, so it only drops a record whose
 # text *begins* with the tag — a turn nobody typed. A reminder appended after
 # the user's own words leaves those words first, and the message survives whole.
-const SYSTEM_PREFIXES = [
+# The two tags Claude Code wraps around a typed slash command. They are one
+# definition serving two opposite readers: SYSTEM_PREFIXES below drops these
+# records so `messages` stays human text, and `slash-commands` — that filter's
+# complement — reads nothing else.
+const COMMAND_PREFIXES = [
     "<command-name>"
     "<command-message>"
+]
+
+const SYSTEM_PREFIXES = [
+    ...$COMMAND_PREFIXES
     "<local-command-caveat>"
     "<local-command-stdout>"
     "<local-command-stderr>"
@@ -24,6 +32,81 @@ const SYSTEM_PREFIXES = [
     "<system-reminder>"
     "Caveat:"
 ]
+
+# Commands Claude Code runs itself — the ones `slash-commands` leaves out by
+# default. Kept as a hand-written list, and that is the cheaper of the three
+# ways to tell a built-in from a skill. Resolving the name against what is
+# installed now would drop every command that has since been renamed or
+# deleted, which is exactly the history the ranking is for. Reading the
+# record's own layout looked automatic — a built-in is written name-first with
+# <command-args>, a skill message-first without — but 2.1.243 writes the
+# /land-branch skill in the built-in layout, so the layout tracks the version,
+# not the kind.
+# Not here on purpose: Claude Code's own prompt-skills (/init, /simplify,
+# /code-review, /security-review). The model runs those like any other skill,
+# so they are work, not housekeeping.
+const BUILTIN_SLASH_COMMANDS = [
+    "/add-dir" "/advisor" "/agents" "/background" "/branch" "/btw" "/bug"
+    "/cd" "/clear" "/compact" "/config" "/context" "/copy" "/cost" "/diff"
+    "/doctor" "/effort" "/exit" "/export" "/extra-usage" "/fast" "/feedback"
+    "/fork" "/goal" "/help" "/hooks" "/ide" "/insights" "/install-github-app"
+    "/keybindings" "/login" "/logout" "/mcp" "/memory" "/model" "/output-style"
+    "/permissions" "/plan" "/plugin" "/privacy-settings" "/rate-limit-options"
+    "/release-notes" "/reload-plugins" "/reload-skills" "/remote-control"
+    "/remote-env" "/rename" "/resume" "/sandbox" "/skills"
+    "/status" "/statusline" "/tasks" "/terminal-setup" "/todos" "/tui"
+    "/upgrade" "/usage" "/usage-credits" "/vim" "/voice"
+]
+
+# True when the piped command name is one Claude Code handles itself.
+export def is-builtin-slash-command []: string -> bool {
+    $in in $BUILTIN_SLASH_COMMANDS
+}
+
+# One typed slash command out of a session record: {command, args}, or null
+# when the record is not an invocation.
+# Why it reads the tags wherever they sit instead of anchoring on the start:
+# the layout moved between Claude Code versions (name-first with
+# <command-args>, message-first without), and the kind of command does not
+# decide which one is written — see BUILTIN_SLASH_COMMANDS.
+# Why both `message.content` and `content`: a command the model sees lands as a
+# user record, while a purely local one (/skills, /fork) lands as
+# `type: "system", subtype: "local_command"`, whose text sits one level up.
+# Both are skipped unless the content is a string — a tool result quoting a
+# transcript is a list of blocks, and this project's own sessions are full of
+# them (the text `<command-name>/usage` appears 15 times here in files where it
+# was invoked 0 times).
+export def extract-slash-command []: record -> any {
+    let record = $in
+    let text = [$record.message?.content? $record.content?]
+        | where {|c| ($c | describe) == "string" }
+        | get 0?
+        | default ""
+
+    if not ($text | str contains "<command-name>") { return null }
+
+    {
+        # Why the name stops at the next `<` instead of at its closing tag: a
+        # record whose text was cut off mid-tag still yields the name, and a
+        # command name cannot contain `<` anyway.
+        command: ($text | capture-first '<command-name>(?<value>[^<]*)')
+        # Why args are read to the closing tag instead: they are free text the
+        # user typed, `<` included — an <selected-text> block pasted into a
+        # command is in this store, and `[^<]*` would have kept only what came
+        # before it.
+        args: ($text | capture-first '(?s)<command-args>(?<value>.*?)</command-args>')
+    }
+}
+
+# The `value` capture of `$pattern` in the piped text, trimmed; "" when it does
+# not match.
+def capture-first [pattern: string]: string -> string {
+    $in
+    | parse --regex $pattern
+    | get value.0?
+    | default ""
+    | str trim
+}
 
 # Helper to extract text content from a message
 export def extract-text-content []: record -> string {
