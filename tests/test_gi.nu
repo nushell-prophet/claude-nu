@@ -1096,6 +1096,34 @@ def "import takes a named session, with no live session in the environment" [] {
     assert str contains $body "## User"
 }
 
+# The third spelling: the name /rename gave the session. The doc key and the
+# commit subject come from the resolved file, so they name the session, not
+# the first 8 characters of the name.
+@test
+def "import takes a session by its /rename name and keys the doc on the session" [] {
+    let root = temp-root
+    let home = temp-root
+    stage-session $home
+    let file = $home | path join ".claude" "projects" "-tmp-proj" $"($FIXTURE_SESSION).jsonl"
+    open --raw $file
+    | lines
+    | append '{"type":"custom-title","customTitle":"my-plan"}'
+    | str join "\n"
+    | save --force $file
+    mkdir $root
+    git -C $root init --quiet
+    git -C $root config user.email "test@example.com"
+    git -C $root config user.name "test"
+    let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
+        gi import my-plan --root $root --commit
+    }
+    let subject = git -C $root log -1 --format=%s
+    rm -rf $root $home
+
+    assert equal ($status.doc | path basename) $"session-($FIXTURE_SESSION | str substring 0..7).md"
+    assert str contains $subject ($FIXTURE_SESSION | str substring 0..7)
+}
+
 # The other spelling the signature promises: a .jsonl path, which the default
 # doc name has to key on the same way it keys on a UUID.
 @test

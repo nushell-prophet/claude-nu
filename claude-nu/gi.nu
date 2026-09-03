@@ -417,7 +417,7 @@ def gi-session-id []: nothing -> string {
 # exactly that second case — a named older session's log is complete. Exported
 # for tests, which drive it with a fixture session.
 export def gi-import-text [
-    session_id: string # UUID, or a .jsonl path (what the tests pass)
+    session_id: string # UUID, /rename name, or a .jsonl path (what the tests pass)
     --tools # Keep tool calls instead of dropping them: each input in full, each result as a char count
     --live # This is the session running the import: its log cannot hold the current turn
 ]: nothing -> string {
@@ -568,7 +568,7 @@ export def "gi enable" [
 # then the user's messages and Claude's visible replies. The doc records that
 # session, so `gi open <doc>` resumes it instead of minting a new one.
 export def "gi import" [
-    session?: string@"nu-complete claude sessions" # Session UUID or .jsonl path (default: the session this runs inside)
+    session?: string@"nu-complete claude sessions" # Session UUID, /rename name, or .jsonl path (default: the session this runs inside)
     --to: path # Where the canvas lands, relative to where you are (default: gi/session-<key>.md)
     --root: path # Run gi in this directory instead of here: --to is read there (default: your cwd)
     --tools # Keep tool calls instead of dropping them: each input in full, each result as a char count
@@ -584,6 +584,10 @@ export def "gi import" [
     # Not `| default (gi-session-id)`: default evaluates its argument eagerly,
     # so the live-session lookup would error even when a session was named.
     let sid = if $session == null { gi-session-id } else { $session }
+    # Why resolve here, once: a /rename name is accepted, so the doc key and the
+    # commit subject must come from the session file, not from the argument —
+    # keyed on the name they would read `session-<first 8 chars of the name>`.
+    let file = resolve-session-file $sid
     # Read the run directory off the flag before the next line shadows it.
     let dir = gi-run-dir $root
     let root = $root | default (gi-repo-root) | path expand
@@ -592,7 +596,7 @@ export def "gi import" [
     # and leaves the repo's other canvases alone.
     # Why --to and not a second positional: the common in-session call names a
     # path but no session, and a positional cannot be skipped.
-    let paths_doc = gi-doc-path $dir ($to | default $"gi/session-(gi-session-key $sid).md")
+    let paths_doc = gi-doc-path $dir ($to | default $"gi/session-(gi-session-key $file).md")
     # Check before reading the session: a doc that already holds work must not
     # be reported as a near-miss after a long export.
     if ($paths_doc.abs | path exists) {
@@ -603,7 +607,7 @@ export def "gi import" [
     }
     # Build the import before anything is written: a session that can't be read
     # must leave no half-written canvas behind.
-    let imported = gi-import-text $sid --tools=$tools --live=($session == null)
+    let imported = gi-import-text $file --tools=$tools --live=($session == null)
     mkdir ($paths_doc.abs | path dirname)
     $imported | save --force $paths_doc.abs
 
@@ -625,7 +629,7 @@ export def "gi import" [
     }
     if $commit {
         ^git -C $root add -- $paths_doc.abs
-        ^git -C $root commit --quiet -m $"gi: import session (gi-session-key $sid) as the working doc" -m "Dialogue up to the import; the full session log stays outside the repo." -- $paths_doc.abs
+        ^git -C $root commit --quiet -m $"gi: import session (gi-session-key $file) as the working doc" -m "Dialogue up to the import; the full session log stays outside the repo." -- $paths_doc.abs
     }
 
     print $"canvas: ($paths_doc.rel)"

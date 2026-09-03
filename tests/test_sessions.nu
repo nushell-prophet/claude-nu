@@ -1992,6 +1992,41 @@ def "nu-complete claude sessions shows latest ai-title in description" [] {
 }
 
 @test
+def "nu-complete claude sessions shows the /rename name over the ai-title" [] {
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+    mkdir $proj_dir
+    let encoded = $proj_dir | path expand | str replace --all '/' '-'
+    let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+    mkdir $sessions_dir
+
+    # Why: the completer pre-filters raw lines by record type, and a rename
+    # lands in a custom-title record beyond any fixed head window
+    let lines = [
+        '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+        '{"type":"assistant","message":{"content":"hello"},"timestamp":"2024-01-15T10:00:01Z"}'
+        '{"type":"user","message":{"content":"more"},"timestamp":"2024-01-15T10:00:02Z"}'
+        '{"type":"assistant","message":{"content":"sure"},"timestamp":"2024-01-15T10:00:03Z"}'
+        '{"type":"user","message":{"content":"go on"},"timestamp":"2024-01-15T10:00:04Z"}'
+        '{"type":"ai-title","aiTitle":"Generated title"}'
+        '{"type":"custom-title","customTitle":"my-rename"}'
+    ]
+    $lines | str join "\n"
+        | save --force ($sessions_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl")
+
+    let result = with-env {HOME: $fake_home} {
+        do {
+            cd $proj_dir
+            nu-complete claude sessions
+        }
+    }
+
+    rm -rf $fake_home $proj_dir
+
+    assert ($result.completions.0.description | str contains "my-rename")
+}
+
+@test
 def "projects recovers name from session cwd and counts sessions" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let sessions_dir = $fake_home | path join ".claude" "projects" "-some-encoded-dir"
@@ -2555,6 +2590,95 @@ def "resolve-session-file errors when a UUID exists nowhere" [] {
     rm -rf $fake_home $empty_dir
 
     assert str contains $err "not found in any project"
+}
+
+# A session file named by /rename: the last custom-title record is the current
+# name; an earlier one is a name it no longer has.
+def named-session-lines [...names: string]: nothing -> string {
+    [
+        '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+        ...($names | each {|n| $"{\"type\":\"custom-title\",\"customTitle\":($n | to json --raw)}" })
+    ]
+    | str join "\n"
+}
+
+@test
+def "resolve-session-file resolves a name against the sessions dir" [] {
+    let dir = $nu.temp-dir | path join $"test-resolve-(random uuid)"
+    mkdir $dir
+    let uuid = "12345678-1234-1234-1234-123456789abc"
+    named-session-lines "old name" "auth (refactor)" | save --force ($dir | path join $"($uuid).jsonl")
+    named-session-lines "other" | save --force ($dir | path join "abcdabcd-1234-1234-1234-123456789abc.jsonl")
+
+    # Why the parens in the name: the rg pre-filter must take a name as a
+    # literal, not a regex
+    let result = resolve-session-file "auth (refactor)" --sessions-dir $dir
+
+    rm -rf $dir
+
+    assert equal ($result | path basename) $"($uuid).jsonl"
+}
+
+@test
+def "resolve-session-file does not resolve a name a session was renamed away from" [] {
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    mkdir ($fake_home | path join ".claude" "projects")
+    let dir = $nu.temp-dir | path join $"test-resolve-(random uuid)"
+    mkdir $dir
+    named-session-lines "old name" "new name" | save --force ($dir | path join "12345678-1234-1234-1234-123456789abc.jsonl")
+
+    let err = with-env {HOME: $fake_home} {
+        try {
+            resolve-session-file "old name" --sessions-dir $dir
+            ""
+        } catch {|e| $e.msg }
+    }
+
+    rm -rf $fake_home $dir
+
+    assert str contains $err "not found in any project"
+}
+
+@test
+def "resolve-session-file finds a name in another project" [] {
+    let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let proj = $fake_home | path join ".claude" "projects" "-proj-x"
+    mkdir $proj
+    let uuid = "abcdabcd-1234-1234-1234-123456789abc"
+    named-session-lines "todo/plan.md" | save --force ($proj | path join $"($uuid).jsonl")
+    let empty_dir = $nu.temp-dir | path join $"empty-(random uuid)"
+    mkdir $empty_dir
+
+    let result = with-env {HOME: $fake_home} {
+        resolve-session-file "todo/plan.md" --sessions-dir $empty_dir
+    }
+
+    rm -rf $fake_home $empty_dir
+
+    assert equal ($result | path basename) $"($uuid).jsonl"
+}
+
+@test
+def "resolve-session-file errors on an ambiguous name and lists both sessions" [] {
+    # Why: a name is unique only among live sessions, so two files can carry it;
+    # picking one silently would read the wrong session
+    let dir = $nu.temp-dir | path join $"test-resolve-(random uuid)"
+    mkdir $dir
+    let first = "12345678-1234-1234-1234-123456789abc"
+    let second = "abcdabcd-1234-1234-1234-123456789abc"
+    named-session-lines "twice" | save --force ($dir | path join $"($first).jsonl")
+    named-session-lines "twice" | save --force ($dir | path join $"($second).jsonl")
+
+    let err = try {
+        resolve-session-file "twice" --sessions-dir $dir
+        ""
+    } catch {|e| $e.msg }
+
+    rm -rf $dir
+
+    assert str contains $err "ambiguous"
+    assert str contains $err $first
+    assert str contains $err $second
 }
 
 # =============================================================================

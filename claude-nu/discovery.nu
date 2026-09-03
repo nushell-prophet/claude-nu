@@ -5,6 +5,10 @@
 # UUID pattern for session files
 export const UUID_JSONL_PATTERN = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
 
+# A bare session UUID, the whole string. Why the whole string: this decides
+# whether a selector is an id or a name, and `claude --name` accepts anything.
+export const UUID_PATTERN = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
 # Subagent JSONL pattern (Claude Code 2.1.138+ layout:
 # `<project>/<session-uuid>/subagents/agent-<id>.jsonl`)
 export const AGENT_JSONL_PATTERN = 'agent-[0-9a-f]+\.jsonl$'
@@ -54,9 +58,12 @@ export def project-display-name []: string -> string {
     if $cwd == "" { "" } else { $cwd | path split | last 2 | path join }
 }
 
-# Resolve session file path from UUID, path, or default to most recent
+# Resolve session file path from UUID, name, path, or default to most recent.
+# Why by shape: a `.jsonl` suffix is a path, a UUID is an id, anything else is
+# the name `/rename` or `claude --name` gave a session — so a name never reaches
+# the id lookup, and the id lookup never pays the name scan.
 export def resolve-session-file [
-    session?: string # Session UUID or path (null = most recent)
+    session?: string # Session UUID, name (as set by /rename or `claude --name`), or path (null = most recent)
     --sessions-dir: path # Override sessions directory
 ]: nothing -> path {
     let dir = $sessions_dir | default (get-sessions-dir)
@@ -64,6 +71,9 @@ export def resolve-session-file [
     if $session != null {
         if ($session | str ends-with '.jsonl') {
             return $session
+        }
+        if $session !~ $UUID_PATTERN {
+            return (resolve-session-name $session --sessions-dir $dir)
         }
         let candidate = $dir | path join $"($session).jsonl"
         if ($candidate | path exists) {
@@ -93,6 +103,60 @@ export def resolve-session-file [
     }
 
     $files | first | get path
+}
+
+# The session file carrying `name` as its current name — the same two tiers as
+# a UUID: this project's sessions first, then every project. Unlike a UUID a
+# name is not unique (Claude only keeps it unique among live sessions, and only
+# since 2.1.232), so two matches in a tier are an error naming both, which is
+# what `/resume <name>` does with an ambiguous name — not a silent pick.
+def resolve-session-name [
+    name: string
+    --sessions-dir: path
+]: nothing -> path {
+    let local = if ($sessions_dir | path exists) {
+        discover-session-files $sessions_dir | where parent_session_id == null | get path
+    } else { [] }
+    let found = $local
+        | sessions-named $name
+        | if ($in | is-empty) {
+            glob (projects-root | path join "*/*.jsonl")
+            | where $it =~ $UUID_JSONL_PATTERN
+            | sessions-named $name
+        } else { }
+    match ($found | length) {
+        0 => (error make $"Session not found in any project: ($name)")
+        1 => ($found | first)
+        _ => {
+            let rows = $found
+                | each {|file|
+                    let age = ls $file | get 0.modified | date humanize
+                    $"  ($file | session-id-from-path)  ($age)  ($file | project-dir-name)"
+                }
+                | str join "\n"
+            error make $"Session name is ambiguous, pick a UUID: ($name)\n($rows)"
+        }
+    }
+}
+
+# The files among the input whose current name is `name`. Current = the last
+# `custom-title` record: a rename appends one, so an earlier record still holds
+# the old name and a substring hit on it is not a match. The rg pre-filter looks
+# for the JSON-encoded pair, fixed string, so a `(` or `.` in a name is data.
+def sessions-named [name: string]: list<path> -> list<path> {
+    let files = $in
+    let marker = $'"customTitle":($name | to json --raw)'
+    $files
+    | rg-filter-session-files $marker --fixed-strings
+    | where {
+        read-session-records --contains '"custom-title"'
+        | where type? == "custom-title"
+        | get --optional customTitle
+        | compact
+        | last
+        | default ""
+        | $in == $name
+    }
 }
 
 # Session UUID from a session file path
@@ -201,9 +265,13 @@ def batch-by-argv-bytes [budget: int]: list<path> -> list<list<path>> {
 # not as a bare arg. rg exit 1 means "no match" (empty); only a real failure
 # (exit 2+) errors — fail fast on a broken pattern instead of silently returning
 # nothing.
-export def rg-filter-session-files [pattern: string]: list<path> -> list<path> {
+export def rg-filter-session-files [
+    pattern: string
+    --fixed-strings # Match `pattern` as a literal substring, not a regex
+]: list<path> -> list<path> {
     let files = $in
     if ($files | is-empty) or (which rg | is-empty) { return $files }
+    let mode = if $fixed_strings { ["--fixed-strings"] } else { [] }
     # Why chunked: the paths travel through argv, so one call over a large enough
     # corpus dies with a bare "I/O error" — a limit the old directory-scoped call
     # never had. The limit is bytes, not files: measured here, 3012 paths are
@@ -216,7 +284,7 @@ export def rg-filter-session-files [pattern: string]: list<path> -> list<path> {
         | batch-by-argv-bytes $RG_ARGV_BUDGET
         | each {|chunk|
             let res = with-env {RIPGREP_CONFIG_PATH: null} {
-                rg --no-ignore --hidden --files-with-matches --regexp $pattern -- ...$chunk | complete
+                rg --no-ignore --hidden --files-with-matches ...$mode --regexp $pattern -- ...$chunk | complete
             }
             match $res.exit_code {
                 0 => ($res.stdout | lines)

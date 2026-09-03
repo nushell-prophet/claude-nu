@@ -45,7 +45,7 @@ claude-nu messages              # Every message of the current project
 claude-nu messages 'pattern'    # ...matching a regex — the project-wide search
 claude-nu sessions --all-projects | claude-nu messages 'pattern' # ...across every project
 claude-nu sessions --last | claude-nu messages # Just the current session
-claude-nu sessions --session <uuid> | claude-nu messages # A named one (tab-completable)
+claude-nu sessions --session <uuid|name> | claude-nu messages # A named one (tab-completable; name = what /rename or `claude --name` set)
 claude-nu messages 'pattern' | claude-nu export-session # Drill matched sessions into markdown
 claude-nu messages --since 1wk  # ...sent in the last week (see The time window)
 claude-nu messages --include-system # Include system/meta messages
@@ -107,7 +107,7 @@ Parse session files into structured data.
 claude-nu sessions                                # All sessions in current project (overview columns)
 claude-nu sessions ~/other/project                # Sessions from another path
 claude-nu sessions --all-projects                 # Every project under ~/.claude/projects
-claude-nu sessions --session <uuid>               # Single session (tab-completable)
+claude-nu sessions --session <uuid|name>          # Single session, by UUID or the name /rename gave it (tab-completable)
 claude-nu sessions --last --columns token_usage   # Most recent session, just the requested column
 claude-nu sessions --columns version,cwd,git_branch  # Several columns, comma-separated
 claude-nu sessions --all-columns                  # All available columns
@@ -208,7 +208,7 @@ Export session dialogue to markdown.
 ```nushell no-run
 claude-nu export-session                    # Uses session summary as title
 claude-nu export-session "Auth refactor"    # Custom title, used as given
-claude-nu sessions --session <uuid> | claude-nu export-session # Specific session
+claude-nu sessions --session <uuid|name> | claude-nu export-session # Specific session
 claude-nu export-session | save session.md  # Saving is the shell's job
 claude-nu export-session --tools            # ...keeping tool calls, each input rendered whole
 ```

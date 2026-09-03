@@ -84,7 +84,7 @@ claude-nu projects | where name =~ nu | claude-nu sessions | claude-nu messages 
 claude-nu messages                     # Every user message of the current project (empty input = current project)
 claude-nu messages 'regex'             # Search this project's user messages (rg pre-scan; --no-rg for exact regex semantics)
 claude-nu sessions --last | claude-nu messages # Just the current session
-claude-nu sessions --session <uuid> | claude-nu messages # One named session — `sessions` is the only place selection lives
+claude-nu sessions --session <uuid|name> | claude-nu messages # One named session, by UUID or the name /rename gave it — `sessions` is the only place selection lives
 claude-nu sessions --all-projects | claude-nu messages 'regex' # search across all projects
 claude-nu sessions | claude-nu messages 'regex' | claude-nu messages --include-responses # full dialogues of matched sessions
 claude-nu sessions | claude-nu messages 'regex' | claude-nu export-session # markdown of matched sessions in the pipeline (one string per session)

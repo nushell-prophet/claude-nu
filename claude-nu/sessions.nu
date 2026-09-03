@@ -104,12 +104,12 @@ export def "nu-complete claude sessions" []: nothing -> record {
         | each {|file|
             let uuid = $file.name | session-id-from-path
             let raw_lines = try { open --raw $file.name | lines } catch { [] }
-            # Why: the title lives in summary/ai-title records anywhere in the
-            # file. String-match first so a Tab press never JSON-parses whole
+            # Why: the title lives in custom-title/summary/ai-title records
+            # anywhere in the file. String-match first so a Tab press never JSON-parses whole
             # session files; extract-summary then filters false-positive lines
             # (e.g. messages quoting the pattern) by record type.
             let summary = $raw_lines
-                | where $it =~ '"type":"(summary|ai-title)"'
+                | where $it =~ '"type":"(custom-title|summary|ai-title)"'
                 | each { try { from json } catch { {} } }
                 | extract-summary
                 | if ($in | is-empty) { "No summary" } else { }
@@ -631,7 +631,7 @@ def expand-session-paths []: list<path> -> table {
 @example "what I worked on last week" { claude-nu sessions --all-projects --since 1wk --columns summary,cwd }
 export def main [
     ...paths: path # Session files or directories to parse (default: current project sessions)
-    --session: string@"nu-complete claude sessions" # Single session UUID or path
+    --session: string@"nu-complete claude sessions" # Single session: UUID, the name set by /rename or `claude --name`, or path
     --last # Only the most recent session of the current project
     --all-projects # Enumerate sessions across every project under ~/.claude/projects
     --subagents # Also list subagent transcripts (<uuid>/subagents/agent-*.jsonl); off by default
