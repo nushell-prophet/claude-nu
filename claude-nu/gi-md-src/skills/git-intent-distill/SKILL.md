@@ -32,6 +32,8 @@ So weigh each candidate rather than sweeping.
 **Cut — dead process material:**
 
 - Resolved `!!` / `!!!`, `??` / `???`, `%%` / `%%%` markers and the scaffolding around them.
+- A spent `AA:` entry — one that reported a change or answered a point the user has since read and moved past.
+  The git-intent loop leaves it standing when the marker closes so the answer is visible under his line; once read, it is process material like a `## Readback` section.
 - A `## Readback` section (from `/git-intent-readback`) once the work it confirmed has started — its job ended at the confirmation.
 - Working-list numbering gaps and half-formed notes the final state superseded.
 - Deliberation a later decision made moot — the settled outcome stays, the weighing goes.
@@ -40,7 +42,10 @@ So weigh each candidate rather than sweeping.
 **Keep — live constraints:**
 
 - `## Open decisions` and anything still unresolved: live, not dead.
+- An `AA:` entry that still carries meaning: the one naming the sibling file with the long answer (cut it and the file loses its only link from the canvas), or a summary that is the current state of the point.
 - Protective why-nots — a rejected path documented to prevent re-litigation — stay inline unless the user says otherwise.
+  A long one may be cut down to one line plus a pointer at the commit that holds the reasoning — the why-not stays visible, the weighing goes to history.
+  The pointer is the commit's short `Change-Id` (the first 8 characters) where it carries one, by sha only where the repo stamps none: `git log --all --grep='^Change-Id: <id>'` still resolves it through the `archive/<branch>` tag after squash-archive, while a working-branch sha dies at the first rebase.
 - Current-state contracts and any caveat that still binds behavior.
 
 When a cut is judgment-heavy, do less: leaving a live constraint in costs a few lines; distilling one into archaeology costs a re-litigated decision.

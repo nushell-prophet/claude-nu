@@ -49,6 +49,7 @@ Reference-doc fetchers (Claude Code + Nushell docs) moved to cozy: `cozy docs cl
 - `claude-nu/gi-md-src/canvas-output-style.md` is the canonical Canvas style; `gi enable` seeds it into each repo's `.claude/output-styles/canvas.md`, and `gi open` turns it on for one launch via `claude --settings`.
   A public copy lives in `../my-claude-skills/plugins/canvas-output-style/output-styles/canvas.md` — edit here first, then sync there.
   That copy deliberately drops the sentence about the canvas path arriving with the launch (nothing launches it there), the protected-branch bullet (it names a skill the plugin doesn't ship), and the whole `chat:` aside — the marker's other half is `gi-off-canvas` in the Stop hook, and the plugin ships no hook, so there is no floor for an aside to be excused from.
+  It also drops the `cozy git install-change-id-hook` pointer from the Change-Id sentence — the plugin ships no cozy — and says only that a `commit-msg` hook stamps the ids.
   Dropping the aside takes one more sentence with it: the line in the English-first bullet that carves `chat:` out of "before anything else in a turn" has nothing to carve out there.
   Keep the style file itself comment-free: it is seeded verbatim and injected into every consumer session's system prompt.
 - The `chat:` aside has two halves that must stay in sync: `gi-off-canvas` in `gi.nu` (the hook reads the marker from the transcript's last authored user message and lets the turn end — message rule and branch guard both) and the matching bullet in the style (answer in chat, write nothing).

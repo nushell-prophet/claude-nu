@@ -30,10 +30,12 @@ Archive and squash all commits on the current branch:
 8. `git reset --soft <base>`
 9. Generate commit message:
    - **Subject**: one line — what the branch accomplished
-   - **Body**: summarize the decisions made on this branch, preserving the user's reasoning from original commit bodies where present, then an `Archive: archive/<branch>` trailer
+   - **Body**: summarize the decisions made on this branch, preserving the user's reasoning from original commit bodies where present, then an `Archive:` trailer naming the archived tip: its `Change-Id`, read with `git log -1 --format='%(trailers:key=Change-Id,valueonly)' archive/<branch>`, or the tag name `archive/<branch>` when that prints nothing
+   - Strip every `Change-Id:` trailer from the bodies you fold in: the `commit-msg` hook adds an id only to a message that has none, so a copied trailer would become this commit's id — the same id as an archived commit
+   - No hash and no short `Change-Id` of a commit inside `<base>..<branch>` in the body, the `Archive:` trailer aside: those name commits the trunk will not have, and the trailer names the archived tip on purpose
    - No diff restating; no listing of things you checked and didn't find
 10. `git commit`
-11. Show `git log --oneline -5` and remind about `git log archive/<branch>` for the full history
+11. Show `git log --oneline -5`, name the new commit by its short `Change-Id` where it carries one (by sha only where the repo stamps none), and remind about `git log archive/<branch>` for the full history
 
 ## Related
 

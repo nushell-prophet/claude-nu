@@ -31,6 +31,7 @@ Nothing is dropped silently — a question you forgot you asked is the same fail
   Say which two, at the spot they belong.
 - **Conflicting** — the answer collides with another answer, with the document, or with a decision already in git history or in the code.
   Name the collision; never reconcile it on your own.
+  A decision in git history is named by its commit's short `Change-Id` (the first 8 characters) where it carries one, by sha only where the repo stamps none — the id survives the rebases the sha does not.
 
 Completeness runs both ways.
 An answer can open a decision nobody asked about yet, and your plan for the work can need a choice no answer covers.
