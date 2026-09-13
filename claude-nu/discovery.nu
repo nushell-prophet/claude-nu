@@ -175,9 +175,24 @@ export def session-id-from-path []: path -> string {
 # wants user turns — only ~30% of lines) never parses the rest; the caller still
 # re-filters the decoded `type`, so a line merely quoting the marker can't slip in.
 export def read-session-records [--contains: string]: path -> table {
-    open --raw $in
-    | if $contains == null { } else { lines | where ($it | str contains $contains) | str join "\n" }
-    | from json --objects
+    let file = $in
+    # Why: `from json --objects` is lazy, so its error surfaces wherever the
+    # caller consumes the table — pointing at some pipeline in discovery.nu and
+    # naming no file (a transcript padded with NUL bytes after a crash cost a
+    # scan of every session on the machine to find). Collect inside the try so
+    # the failure lands here, and rethrow it with the path and serde's own line.
+    try {
+        open --raw $file
+        | if $contains == null { } else { lines | where ($it | str contains $contains) | str join "\n" }
+        | from json --objects
+        | collect
+    } catch {|e|
+        let detail = $e.details.inner? | get --optional 0.labels.0.text | default $e.msg
+        error make --unspanned {
+            msg: $"Session file is not valid JSONL: ($file)\n($detail)"
+            help: "one line per JSON record; a run of NUL bytes at the end means the file was cut by an unclean shutdown"
+        }
+    }
 }
 
 # Discover session files in a directory, newest first. Returns rows

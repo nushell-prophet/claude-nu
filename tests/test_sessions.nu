@@ -2979,3 +2979,23 @@ def "a window that matches nothing is empty rather than an error" [] {
 
     assert equal $got []
 }
+
+# =============================================================================
+# Tests for read-session-records
+# =============================================================================
+
+@test
+def "read-session-records names the file when a line is not JSON" [] {
+    # Why: a transcript cut by an unclean shutdown ends in NUL bytes; nushell
+    # trims whitespace only, so that tail reaches serde and fails. The lazy
+    # stream used to surface that error at the consumer, naming no file.
+    let f = $nu.temp-dir | path join $"test-nul-tail-(random uuid).jsonl"
+    let tail = 0x[00 00 00 00 00 00 00 00]
+    ('{"type":"user","message":{"role":"user","content":"hi"}}' + "\n" | into binary) ++ $tail | save --force --raw $f
+
+    let msg = try { $f | read-session-records; "" } catch {|e| $e.msg }
+    rm $f
+
+    assert ($msg | str contains $f) $"error names the file: ($msg)"
+    assert ($msg | str contains "EOF while parsing a value") $"error keeps the serde detail: ($msg)"
+}
