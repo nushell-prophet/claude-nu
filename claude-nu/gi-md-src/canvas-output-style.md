@@ -19,18 +19,12 @@ Never guess it, and never go looking through the repo for a canvas.
   Write the full answer in the document, even when the question arrived over chat and you weren't asked to answer there.
   A short answer is one `AA:` entry under the user's point; a large one goes in a sibling file, `<canvas stem>-<mnemonic>.md` next to the canvas, and the `AA:` entry names it (the entry is navigation, not a duplicate, and there is no separate abstract to keep in sync).
   A chat pointer is also a reminder: the user may drift back into the chat and forget the file — pull them back.
-- **Write concisely.**
-  Lead with the result — the first sentence of any write-up answers what happened or what changed.
-  Cut narration: don't restate the request, the plan, or steps already visible in the diff.
-  Short by default; use headers and lists only when they carry real structure.
-  State things plainly — skip hedging, and raise a caveat only when it changes what the user should do next.
-  Answer completely when asked for detail: conciseness never means withholding what was requested.
-  Never trade correctness for brevity — error output, test failures, and warnings keep their full content.
 - **Spend his reading budget, not yours.**
   Text is free for you and expensive for him: he reads every line under load, in a second language,
   and what he needs from it is a compact, correct model of the tooling, not a finished project.
   Default caps: an `AA:` entry is one to three lines; a `???` is at most three lines; at most three open `???` per turn, the rest wait.
   What does not fit goes to the commit body or a sibling file, named in the entry.
+  Never trade correctness for brevity — error output, test failures, and warnings keep their full content.
   He lifts a cap by asking (`in full`, `подробно`), for that answer only.
 - **The user's text is his.**
   Rewrite his lines only when he asks for it, or to fix grammar; otherwise he edits them himself, so his model of the document and yours stay in sync.
@@ -38,8 +32,7 @@ Never guess it, and never go looking through the repo for a canvas.
   The entry is rewritten in place to the current state on every turn, never appended to: a stack of `AA:` lines is the journal git already keeps, and the canvas is an interface, so its space is saved by leaning on history.
   Proof and step logs go to the commit body, not the entry.
   A blank line separates the entry from his text, and under a list item it is indented to the item, so his lines and yours never read as one paragraph.
-  An `AA:` entry that reports a change names the commit that made it by the short `Change-Id` (the first 8 characters of the trailer) when the commit carries one, and by sha only when it does not: a sha changes under rebase, the id travels with the commit.
-  A repo carries ids only once its `commit-msg` hook is installed — `cozy git install-change-id-hook <repo>`, once per clone — and some repos cannot have it (an upstream clone), so read the trailer before naming a commit, and fall back to the sha where there is none.
+  An `AA:` entry that reports a change names the commit that made it, as CLAUDE.md names a commit: by its `Change-Id`, by sha only where the repo carries none.
   The sibling file is the one place you write freely, and it is where your English lives: his language stays as he wrote it.
   The frontmatter (`status`, `updated`, `session`) is yours: keep it current, he does not maintain it.
   A change of `session` is its own commit, or at least its own line in the body: `gi open` resumes whatever that field names, so a switch hidden inside another edit sends the next launch to the wrong conversation.
@@ -55,14 +48,15 @@ Never guess it, and never go looking through the repo for a canvas.
 - **Commit atomically and right away.**
   A step is a commit is a rollback point.
   One exception: an answer to his uncommitted draft (a pasted `git diff`) stays uncommitted, like the draft, until he asks for the commit.
-  Body: Decision / Why / Propagation (omit a line if empty); don't retell the diff.
+  The subject says what changed; the body is Why (his reasoning, and what was rejected) / Propagation / Not requested, each only when non-empty.
+  A grammar fix gets a subject and no body.
   Name what he did not ask for: a choice you made to fill a gap, a thing you added on your own, gets one line in the `AA:` entry and in the body, `Not requested: <the choice>`.
   He updates his model of the task from his own description, which is often imprecise, so filling gaps is your job; a gap filled silently leaves his model wrong, and a page of reasoning overflows it, so name the choice, not the argument.
   Propagate the decision to stale references; if a symbol, path, or key is named, grep across the whole repo, not just the file.
-  Commit code changes and canvas-file changes separately, so the code-only commits can be cherry-picked into `main`.
-- **Work on a disposable branch, never `main`/`master`.**
+  Commit code changes and canvas-file changes separately, so the code-only commits can be cherry-picked into the trunk.
+- **A canvas lives on a disposable branch.**
   gi history is internal working material — to an outside reader of a public branch it is noise that puts them off.
-  It reaches `main` only squashed, after finalization (the git-intent-squash-archive skill); if you find yourself on a protected branch, switch first (`git switch -c <topic>`), moving any commits already made.
+  It reaches the trunk only squashed, after finalization (the git-intent-squash-archive skill); finding yourself on the trunk is handled as in CLAUDE.md.
 - **History is self-sufficient.**
   A direct edit by the user is a decision: honor it and propagate it, don't restore what was removed.
   A rejected path is recorded by its deletion commit — no separate note needed; to recover one (or why the current state is what it is), read `git log -p -- <doc>`, the ordered file-scoped journal, with `git log --oneline -- <doc>` as its index.
