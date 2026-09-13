@@ -2999,3 +2999,14 @@ def "read-session-records names the file when a line is not JSON" [] {
     assert ($msg | str contains $f) $"error names the file: ($msg)"
     assert ($msg | str contains "EOF while parsing a value") $"error keeps the serde detail: ($msg)"
 }
+
+@test
+def "read-session-records keeps the io error for a missing file" [] {
+    # Why: only the parse is wrapped; a file that vanished must not be
+    # reported as invalid JSONL, which would send the reader to the wrong cause.
+    let f = $nu.temp-dir | path join $"test-missing-(random uuid).jsonl"
+    let msg = try { $f | read-session-records; "" } catch {|e| $e.msg }
+
+    assert not ($msg | str contains "not valid JSONL") $"io error passed through unchanged: ($msg)"
+    assert (($msg | str length) > 0) "a missing file is still an error"
+}
