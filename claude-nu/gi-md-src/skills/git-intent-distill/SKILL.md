@@ -61,7 +61,8 @@ With no instruction, apply the taxonomy above conservatively.
 ## Procedure
 
 1. **Clean-tree check** — `git status --porcelain`.
-   Non-empty → stop, ask the user to commit or stash.
+   Non-empty → stop, ask the user to commit or stash: this pass rewrites the whole file, so his uncommitted lines would be lost in it.
+   (The sibling skills accept a dirty tree; this one cannot.)
 2. **Read the canvas in full** — a session launched by `gi open` was told its canvas path in its own instructions; if you were given no such path, ask which document.
 3. **Classify** — mark each section cut/keep per the taxonomy and any `$ARGUMENTS` / `!!` instructions.
    Anything genuinely ambiguous between dead and protective: keep it, add a `???`.

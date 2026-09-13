@@ -6,7 +6,7 @@ allowed-tools: Bash(git *), Read, Edit, Write, Grep, Glob
 ---
 
 Git is the instruction interface between human and agent.
-The human delivers intent through commit messages and inline markers in any file type.
+The human delivers intent through inline markers in any file type, commit messages, direct edits, and the `#` comment on a git command he pastes.
 The agent reads the diff, executes the instructions, and commits the results.
 Every change is reviewable in git history.
 
@@ -24,13 +24,16 @@ The iterative history is preserved on archival (see `/git-intent-squash-archive`
 
 ## Instruction channels
 
-Three channels carry user intent into a commit:
+Four channels carry user intent:
 
 - **User markers** in any file — pinpoint instructions next to the target: `!!` do this, `??` a question, `%%` a remark.
 - **Commit message** — explanation/context for the committed edit, optionally prefixed `gi:` (git intent).
   If the message reads as an imperative ("rename foo to bar", "expand this section"), treat it as actionable.
 - **Direct edit** — the user's edit itself, with no marker and no commit-message text, is also an instruction.
   The edit *is* the decision; the agent's job is to honor and propagate it.
+- **The `#` comment on a pasted git command** — the user hands you a commit or a diff as `git log -p -1 # propagate`, `git show -p X # is all answered?`, `git diff # is it sound?`.
+  It combines with the markers: the instructions sit in the canvas, and the comment adds the last one or two at the moment he runs the command, so you read the paste and the comment together.
+  A paste with no comment asks for the default pipeline below.
 
 ## Commit patterns
 
@@ -50,7 +53,7 @@ The subject prefix is `gi:` (quiet — the commit *is* the unit, no surrounding 
 - Place on the line above or beside the target code
 - **Marker length says who wrote it: two characters — the user, you act; three — you, the user acts.**
   So `!!` do it, `??` answer it, `%%` a remark to take into account — "nothing to change" is a valid outcome.
-  Leave your own `!!!` / `???` / `%%%` standing until the user clears them.
+  Leave your own `!!!` / `???` / `%%%` standing until the user clears them, or until his `go` accepts the default a `???` carries; then fold it in the same commit as the work.
 - Removed after processing — in code, fold the result into the surrounding text and remove the whole comment, including any closing delimiters (`*/`, `-->`), not just the marker token.
   In a document the user writes in — a canvas, a note of his — the text is his: reply under the marker as one `AA:` entry — your summary, prefixed so a reader and `git blame` both see whose line it is — delete the marker line in that same commit, and leave the entry standing under his prose, which stays as written.
   A large answer goes in a sibling file, `<doc stem>-<mnemonic>.md`, and the `AA:` entry names it.
@@ -63,12 +66,14 @@ The subject prefix is `gi:` (quiet — the commit *is* the unit, no surrounding 
 - **Clean up broken surroundings** — if the user's edit left a dangling sentence, stale list numbering, or broken syntax, fix it.
   Never re-add content the user removed
 - **Surface contradictions** — when markers/edits conflict or scope is unclear, name the conflict in the commit body if you can resolve it, ask the user if you can't
-- **The user's prose is his** — in a document he writes in, rewrite his lines only when he asks for it or to fix grammar; a stale reference inside them gets an `AA:` or `???` under it, not a silent rewrite, so his model of the document and yours stay in sync
+- **The user's prose is his** — in a document he writes in, rewrite his lines only when he asks for it or to fix grammar (the changed words marked in *italics*); a stale reference inside them gets an `AA:` or `???` under it, not a silent rewrite, so his model of the document and yours stay in sync
 
 ## Procedure
 
-1. **Clean-tree check** — run `git status --porcelain`.
-   If non-empty, stop and ask the user to commit or stash.
+1. **Tree check** — run `git status --porcelain`.
+   Uncommitted lines are the user's draft, lighter than what he commits: read them when he points at them (a pasted `git diff`, a `<selected-text>`), never write over them, and never sweep them into a commit of yours.
+   A pasted `git diff` is answered in kind: write the answer, leave it uncommitted; commit only when he asks.
+   A dirty tree stops nothing else — say in one line what you left uncommitted and whose it is.
 
 2. **Get the diff** — run `git log -p -N --reverse` where `N = $ARGUMENTS`, or `1` when `$ARGUMENTS` is empty or is not a positive integer.
    If the patch is very large (>500 lines), prefer `git log -N --stat` plus targeted `git show` per file to avoid filling context.
