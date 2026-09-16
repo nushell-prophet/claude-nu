@@ -2381,6 +2381,15 @@ def "export-session default omits tool blocks" [] {
 }
 
 @test
+def "export-session ends with exactly one newline" [] {
+    let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
+    for md in [({path: $p} | export-session) ({path: $p} | export-session --tools)] {
+        assert ($md | str ends-with "\n")
+        assert not ($md | str ends-with "\n\n")
+    }
+}
+
+@test
 def "export-session --tools renders tool_use as a header and a NUON block" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
     let md = {path: $p} | export-session --tools

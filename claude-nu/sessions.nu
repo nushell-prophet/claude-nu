@@ -830,7 +830,9 @@ export def export-session [
             }
             | str join "\n\n"
 
-        [$frontmatter "" $heading "" $body] | str join "\n" | trim-line-ends
+        # Why the trailing "": the doc ends with a newline, as text files do —
+        # `save` writes the string as is, and `gi import` builds on it unchanged.
+        [$frontmatter "" $heading "" $body ""] | str join "\n" | trim-line-ends
     }
 
     if $piped_files != null {
