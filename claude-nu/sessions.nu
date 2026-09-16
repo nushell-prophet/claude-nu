@@ -48,6 +48,7 @@ const SESSION_COLUMNS = [
 # List Claude Code projects under ~/.claude/projects, most recent first.
 # `name` is the last two segments of the real project path; `path` is the
 # sessions directory, so rows pipe straight into `sessions`.
+@category claude-nu
 export def projects []: nothing -> table {
     let projects_root = projects-root
     if not ($projects_root | path exists) { return [] }
@@ -163,6 +164,7 @@ export def "nu-complete claude sessions" []: nothing -> record {
 # is what gets filtered, and here a row is one message with a timestamp of its
 # own — so `messages --since 1wk` returns last week's messages, not every
 # message of a session that happens to have been open last week.
+@category claude-nu
 export def messages [
     regex?: string # Filter messages by regex pattern
     --since: any # Only messages at or after this point — a duration means ago (`1wk`), or a datetime/date string
@@ -277,6 +279,7 @@ export def messages [
 # has to know the field per tool cannot answer "who ran this" across tools.
 # Filtering by tool is `where tool == ...` downstream — no flag, because unlike
 # the regex it buys no pre-filter.
+@category claude-nu
 export def tool-calls [
     regex?: string # Filter tool calls by regex over the call's input (rendered as NUON)
     --since: any # Only calls at or after this point — a duration means ago (`1wk`), or a datetime/date string
@@ -358,6 +361,7 @@ export def tool-calls [
 # history instead of vanishing from it.
 # A `Skill` tool call is not a slash command — that is the agent choosing a
 # skill on its own, and it is already `tool-calls | where tool == Skill`.
+@category claude-nu
 @example "the commands I use most" { claude-nu slash-commands | histogram command }
 @example "...across every project" { claude-nu sessions --all-projects | claude-nu slash-commands | histogram command }
 @example "including the built-ins Claude Code handles itself" { claude-nu slash-commands --all | histogram command | select command count }
@@ -625,6 +629,7 @@ def expand-session-paths []: list<path> -> table {
 # to also include subagent transcripts (those rows carry a non-null parent_session_id).
 # Named `main` because a module can't export a command named the same as the
 # module — importing this file yields the `sessions` command.
+@category claude-nu
 @example "sessions that touched a file" { claude-nu sessions --columns edited_files,session_id | where {|r| $r.edited_files | any {|f| $f =~ 'render.nu' } } }
 @example "which skills got used, across every project" { claude-nu sessions --all-projects --columns skill_invocations | get skill_invocations | flatten | uniq --count | sort-by count --reverse }
 @example "sessions by token spend" { claude-nu sessions --columns token_usage,session_id | insert total {|r| $r.token_usage.input_tokens + $r.token_usage.output_tokens } | sort-by total --reverse }
@@ -762,6 +767,7 @@ export def main [
 # Why markdown out, not a record: saving is the shell's job (`| save file.md`),
 # and the record only repeated what the markdown already carries — session and
 # date in the frontmatter, the title in the H1.
+@category claude-nu
 export def export-session [
     title?: string # Title for the exported doc, used as given (default: session summary)
     --tools # Keep tool calls: each tool_use input in full as a fenced NUON block, each result as a char count (default: drop)

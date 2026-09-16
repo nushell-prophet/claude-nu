@@ -131,14 +131,14 @@ def comma-list [context: string]: table -> table {
     | if ($prefix | is-empty) { } else { update value {|it| $"($prefix),($it.value)" } }
 }
 
-def "nu-complete claude output-formats" [] { $output_formats | ordered }
-def "nu-complete claude autocompact" [] { $autocompact_sizes | ordered }
-def "nu-complete claude input-formats" [] { $input_formats | ordered }
-def "nu-complete claude effort" [] { $effort_levels | ordered }
-def "nu-complete claude models" [] { $models | ordered }
+def "nu-complete claude output-formats" []: nothing -> record { $output_formats | ordered }
+def "nu-complete claude autocompact" []: nothing -> record { $autocompact_sizes | ordered }
+def "nu-complete claude input-formats" []: nothing -> record { $input_formats | ordered }
+def "nu-complete claude effort" []: nothing -> record { $effort_levels | ordered }
+def "nu-complete claude models" []: nothing -> record { $models | ordered }
 
-def "nu-complete claude tools" [context: string] { $tools | comma-list $context }
-def "nu-complete claude setting-sources" [context: string] { $setting_sources | comma-list $context }
+def "nu-complete claude tools" [context: string]: nothing -> table { $tools | comma-list $context }
+def "nu-complete claude setting-sources" [context: string]: nothing -> table { $setting_sources | comma-list $context }
 
 # Free-text argument: suppress Nushell's file-path fallback
 def "nu-complete claude freetext" []: nothing -> list<string> { [] }
@@ -168,14 +168,14 @@ def "nu-complete claude mcp servers" []: nothing -> list<string> {
     # Why: transpose + where instead of `get $env.PWD` because get parses
     # string keys as cell paths and would split a path containing dots
     let local = $user_cfg
-        | get -o projects
+        | get --optional projects
         | default {}
         | transpose path cfg
         | where path == $env.PWD
-        | get -o 0.cfg.mcpServers
+        | get --optional 0.cfg.mcpServers
         | default {}
-    let project = try { open .mcp.json | get -o mcpServers | default {} } catch { {} }
-    [($user_cfg | get -o mcpServers | default {}) $project $local]
+    let project = try { open .mcp.json | get --optional mcpServers | default {} } catch { {} }
+    [($user_cfg | get --optional mcpServers | default {}) $project $local]
     | each { columns }
     | flatten
     | uniq
@@ -202,7 +202,7 @@ def "nu-complete claude marketplace-plugins" []: nothing -> table {
                 | get plugins
                 | each {|p| {
                     value: $"($p.name)@($m.name)"
-                    description: ($p | get -o description | default '' | str replace -r '(?s)(.{80}).+' '$1…')
+                    description: ($p | get --optional description | default '' | str replace --regex '(?s)(.{80}).+' '$1…')
                 } }
             } catch { [] }
         }
@@ -214,7 +214,7 @@ def "nu-complete claude marketplaces" []: nothing -> table {
     try {
         open ~/.claude/plugins/known_marketplaces.json
         | transpose name cfg
-        | each {|m| {value: $m.name description: ($m.cfg | get -o source.repo | default '')} }
+        | each {|m| {value: $m.name description: ($m.cfg | get --optional source.repo | default '')} }
     } catch { [] }
 }
 

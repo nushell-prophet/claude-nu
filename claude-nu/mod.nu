@@ -42,6 +42,7 @@ export use example.nu [ main ]
 # a pipeline crosses commands, so no single subcommand owns it, and the module's
 # own `main` is the one place that covers all of them. They reach `help
 # claude-nu`, `claude-nu example` and `dotnu examples-update` from this one copy.
+@category claude-nu
 @example "search this project's messages" { claude-nu messages 'regex' }
 @example "search every project" { claude-nu sessions --all-projects | claude-nu messages 'regex' }
 @example "full dialogues of the sessions that match" { claude-nu sessions | claude-nu messages 'regex' | claude-nu messages --include-responses }

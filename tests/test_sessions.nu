@@ -607,7 +607,7 @@ def "piping top-level sessions into messages excludes subagents" [] {
 
     let msgs = sessions $sessions_dir | where parent_session_id == null | messages | get message
 
-    rm -rf $fake_home
+    rm --recursive --force $fake_home
 
     assert ("alpha top message" in $msgs)
     assert ("beta top message" in $msgs)
@@ -637,7 +637,7 @@ def "sessions --all-projects piped into messages covers every session" [] {
         sessions --all-projects | where parent_session_id == null | messages
     }
 
-    rm -rf $fake_home
+    rm --recursive --force $fake_home
 
     let all = $result | get message
     assert ("a-old" in $all)
@@ -667,7 +667,7 @@ def "messages with no input reads every session of the current project" [] {
     let all = with-env {HOME: $fake_home} { do { cd $proj_dir; messages } }
     let found = with-env {HOME: $fake_home} { do { cd $proj_dir; messages 'needle' } }
 
-    rm -rf $fake_home $proj_dir
+    rm --recursive --force $fake_home $proj_dir
 
     # Both sessions with no argument — the older one is not dropped.
     assert equal ($all | length) 2
@@ -690,7 +690,7 @@ def "messages errors when the current project has no sessions" [] {
         do { cd $proj_dir; try { messages; "no error" } catch {|e| $e.msg } }
     }
 
-    rm -rf $fake_home $proj_dir
+    rm --recursive --force $fake_home $proj_dir
 
     assert ($result | str contains "No session files found")
 }
@@ -721,7 +721,7 @@ def "a search matching nothing is an empty result that still pipes on" [] {
         }
     }
 
-    rm -rf $fake_home $proj_dir
+    rm --recursive --force $fake_home $proj_dir
 
     assert equal $result.empty []
     assert equal $result.chained []
@@ -761,7 +761,7 @@ def "sessions --all-projects piped into messages searches every project" [] {
         sessions --all-projects | messages 'needle'
     }
 
-    rm -rf $fake_home
+    rm --recursive --force $fake_home
 
     let msgs = $result | get message
     assert equal ($result | length) 2
@@ -793,7 +793,7 @@ def "messages with no input skips subagent transcripts" [] {
         do { cd $proj_dir; messages 'needle' }
     }
 
-    rm -rf $fake_home $proj_dir
+    rm --recursive --force $fake_home $proj_dir
 
     assert equal ($result | length) 1
     assert ($result.0.message | str contains "top level")
@@ -822,7 +822,7 @@ def "messages matches a regex, not just a literal" [] {
         do { cd $proj_dir; messages 'staging|prod' }
     }
 
-    rm -rf $fake_home $proj_dir
+    rm --recursive --force $fake_home $proj_dir
 
     let msgs = $result | get message
     assert equal ($result | length) 2
@@ -856,7 +856,7 @@ def "messages ignores a ripgrep rc file in the pre-filter" [] {
         do { cd $proj_dir; messages 'staging|prod' }
     }
 
-    rm -rf $fake_home $proj_dir
+    rm --recursive --force $fake_home $proj_dir
 
     assert equal ($result | length) 2
 }
@@ -882,7 +882,7 @@ def "messages --no-rg matches an anchored pattern the rg pre-filter misses" [] {
     let default = with-env {HOME: $fake_home} { do { cd $proj_dir; messages '^deploy' } }
     let no_rg = with-env {HOME: $fake_home} { do { cd $proj_dir; messages '^deploy' --no-rg } }
 
-    rm -rf $fake_home $proj_dir
+    rm --recursive --force $fake_home $proj_dir
 
     # rg can't see the anchored match in the raw bytes; in-engine it finds the
     # one message that starts with "deploy" and excludes the mid-string one.
@@ -1006,7 +1006,7 @@ def "tool-calls with no input reads every session of the current project" [] {
     let all = with-env {HOME: $fake_home} { do { cd $proj_dir; tool-calls } }
     let matched = with-env {HOME: $fake_home} { do { cd $proj_dir; tool-calls 'claude-nu sessions' } }
 
-    rm -rf $fake_home $proj_dir
+    rm --recursive --force $fake_home $proj_dir
 
     assert equal ($all | length) 2
     assert equal ($matched | length) 1
@@ -1175,7 +1175,7 @@ def "messages keys subagent rows by real project, not the subagents folder" [] {
         sessions $proj --subagents | messages
     }
 
-    rm -rf $fake_home
+    rm --recursive --force $fake_home
 
     assert equal ($result.project | uniq) ["-proj-a"]
     let all = $result | get message
@@ -1744,7 +1744,7 @@ def "sessions parses single file" [] {
 
     let result = sessions $temp_file
 
-    rm -rf $temp_dir
+    rm --recursive --force $temp_dir
 
     assert equal ($result | length) 1
     assert equal ($result.0.summary) "Test session"
@@ -1763,7 +1763,7 @@ def "sessions parses directory of files" [] {
 
     let result = sessions $temp_dir
 
-    rm -rf $temp_dir
+    rm --recursive --force $temp_dir
 
     assert equal ($result | length) 2
 }
@@ -1781,7 +1781,7 @@ def "sessions ignores non-uuid files in directory" [] {
 
     let result = sessions $temp_dir
 
-    rm -rf $temp_dir
+    rm --recursive --force $temp_dir
 
     assert equal ($result | length) 1
     assert equal ($result.0.summary) "Valid"
@@ -1814,7 +1814,7 @@ def "sessions --all-projects iterates every project dir" [] {
 
     let result = with-env {HOME: $fake_home} { sessions --all-projects }
 
-    rm -rf $fake_home
+    rm --recursive --force $fake_home
 
     assert equal ($result | length) 2
     let summaries = $result | get summary | sort
@@ -1864,7 +1864,7 @@ def "discover-session-files yields null parent for top-level files" [] {
 
     let result = discover-session-files $temp_dir
 
-    rm -rf $temp_dir
+    rm --recursive --force $temp_dir
 
     assert equal ($result | length) 1
     assert equal $result.0.parent_session_id null
@@ -1883,7 +1883,7 @@ def "discover-session-files extracts parent UUID from subagent path" [] {
 
     let result = discover-session-files $temp_dir
 
-    rm -rf $temp_dir
+    rm --recursive --force $temp_dir
 
     let agent_rows = $result | where parent_session_id == $parent_uuid
     assert equal ($agent_rows | length) 1
@@ -1905,7 +1905,7 @@ def "discover-session-files finds workflow-nested subagents" [] {
 
     let result = discover-session-files $temp_dir
 
-    rm -rf $temp_dir
+    rm --recursive --force $temp_dir
 
     let agent_rows = $result | where parent_session_id == $parent_uuid
     assert equal ($agent_rows | length) 1
@@ -1923,12 +1923,12 @@ def "discover-session-files orders rows newest first" [] {
     let newer = $temp_dir | path join "22222222-2222-2222-2222-222222222222.jsonl"
     "" | save --force $older
     "" | save --force $newer
-    touch -m -t ((date now) - 2hr) $older
-    touch -m -t ((date now) - 1hr) $newer
+    touch --modified --timestamp ((date now) - 2hr) $older
+    touch --modified --timestamp ((date now) - 1hr) $newer
 
     let result = discover-session-files $temp_dir
 
-    rm -rf $temp_dir
+    rm --recursive --force $temp_dir
 
     assert ("modified" in ($result | columns))
     assert equal ($result | get path) [$newer $older]
@@ -1950,7 +1950,7 @@ def "nu-complete returns empty for non-existent sessions dir" [] {
             nu-complete claude sessions
         }
     }
-    rm -rf $fake_home
+    rm --recursive --force $fake_home
 
     assert equal $result.completions []
     assert equal $result.options.sort false
@@ -1985,7 +1985,7 @@ def "nu-complete claude sessions shows latest ai-title in description" [] {
         }
     }
 
-    rm -rf $fake_home $proj_dir
+    rm --recursive --force $fake_home $proj_dir
 
     assert equal ($result.completions | length) 1
     assert ($result.completions.0.description | str contains "Current title")
@@ -2021,7 +2021,7 @@ def "nu-complete claude sessions shows the /rename name over the ai-title" [] {
         }
     }
 
-    rm -rf $fake_home $proj_dir
+    rm --recursive --force $fake_home $proj_dir
 
     assert ($result.completions.0.description | str contains "my-rename")
 }
@@ -2044,7 +2044,7 @@ def "projects recovers name from session cwd and counts sessions" [] {
 
     let result = with-env {HOME: $fake_home} { projects }
 
-    rm -rf $fake_home
+    rm --recursive --force $fake_home
 
     assert equal ($result | length) 1
     assert equal $result.0.name "parent/proj"
@@ -2063,13 +2063,13 @@ def "projects falls back to older sessions when newest lacks cwd" [] {
     let old_file = $sessions_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
     '{"type":"user","cwd":"/real/parent/proj","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
         | save --force $old_file
-    touch -m -t ((date now) - 1hr) $old_file
+    touch --modified --timestamp ((date now) - 1hr) $old_file
     '{"type":"summary","summary":"Legacy sidechain summary"}'
         | save --force ($sessions_dir | path join "12345678-1234-1234-1234-123456789abd.jsonl")
 
     let result = with-env {HOME: $fake_home} { projects }
 
-    rm -rf $fake_home
+    rm --recursive --force $fake_home
 
     assert equal ($result | length) 1
     assert equal $result.0.name "parent/proj"
@@ -2083,7 +2083,7 @@ def "projects skips dirs without session files" [] {
 
     let result = with-env {HOME: $fake_home} { projects }
 
-    rm -rf $fake_home
+    rm --recursive --force $fake_home
 
     assert equal $result []
 }
@@ -2556,7 +2556,7 @@ def "resolve-session-file resolves a bare UUID against the sessions dir" [] {
 
     let result = resolve-session-file $uuid --sessions-dir $dir
 
-    rm -rf $dir
+    rm --recursive --force $dir
 
     assert equal ($result | path basename) $"($uuid).jsonl"
 }
@@ -2577,7 +2577,7 @@ def "resolve-session-file finds a UUID in another project via glob" [] {
         resolve-session-file $uuid --sessions-dir $empty_dir
     }
 
-    rm -rf $fake_home $empty_dir
+    rm --recursive --force $fake_home $empty_dir
 
     assert equal ($result | path basename) $"($uuid).jsonl"
 }
@@ -2596,7 +2596,7 @@ def "resolve-session-file errors when a UUID exists nowhere" [] {
         } catch {|e| $e.msg }
     }
 
-    rm -rf $fake_home $empty_dir
+    rm --recursive --force $fake_home $empty_dir
 
     assert str contains $err "not found in any project"
 }
@@ -2623,7 +2623,7 @@ def "resolve-session-file resolves a name against the sessions dir" [] {
     # literal, not a regex
     let result = resolve-session-file "auth (refactor)" --sessions-dir $dir
 
-    rm -rf $dir
+    rm --recursive --force $dir
 
     assert equal ($result | path basename) $"($uuid).jsonl"
 }
@@ -2643,7 +2643,7 @@ def "resolve-session-file does not resolve a name a session was renamed away fro
         } catch {|e| $e.msg }
     }
 
-    rm -rf $fake_home $dir
+    rm --recursive --force $fake_home $dir
 
     assert str contains $err "not found in any project"
 }
@@ -2662,7 +2662,7 @@ def "resolve-session-file finds a name in another project" [] {
         resolve-session-file "todo/plan.md" --sessions-dir $empty_dir
     }
 
-    rm -rf $fake_home $empty_dir
+    rm --recursive --force $fake_home $empty_dir
 
     assert equal ($result | path basename) $"($uuid).jsonl"
 }
@@ -2683,7 +2683,7 @@ def "resolve-session-file errors on an ambiguous name and lists both sessions" [
         ""
     } catch {|e| $e.msg }
 
-    rm -rf $dir
+    rm --recursive --force $dir
 
     assert str contains $err "ambiguous"
     assert str contains $err $first
@@ -2721,7 +2721,7 @@ def "resolve-piped-sessions resolves the session column via UUID lookup" [] {
 
     let result = with-env {HOME: $fake_home} { resolve-piped-sessions [{session: $uuid}] }
 
-    rm -rf $fake_home
+    rm --recursive --force $fake_home
 
     assert equal ($result | each { path basename }) [$"($uuid).jsonl"]
 }
@@ -2794,7 +2794,7 @@ def "export-session gives a string for one session and a list for many" [] {
 
     let one = {path: $files.0.path} | export-session
     let many = $files | export-session
-    rm -rf $dir
+    rm --recursive --force $dir
 
     assert equal ($one | describe) "string"
     assert ($one | str contains "# My Topic")

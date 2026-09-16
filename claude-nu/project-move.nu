@@ -339,6 +339,7 @@ def plan-swap [file: path, kind: string, needle: string, replacement: string]: n
 #
 # Returns one row per artifact touched; `--dry-run` returns the same rows and
 # writes nothing.
+@category claude-nu
 @example "see what a move would touch" { claude-nu project-move ~/old/proj ~/new/proj --dry-run }
 export def main [
     from: path # project path Claude has state for (the old location)

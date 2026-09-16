@@ -459,6 +459,7 @@ def gi-session-key [session: string]: nothing -> string {
 
 # What gi has seeded in this repo, and the canvas this session is bound to.
 # The verbs: `gi enable`, `gi import`, `gi open`.
+@category claude-nu
 export def main [
     --root: path # Repo root to inspect (default: git top-level)
 ]: nothing -> record {
@@ -468,6 +469,7 @@ export def main [
 # Open a canvas: launch a session bound to it, creating the canvas from the
 # template when it does not exist and continuing the session it already records
 # when it has one.
+@category claude-nu
 export def --wrapped "gi open" [
     doc?: path # The canvas, relative to where you are (default: gi/canvas-<timestamp>.md); with --fork, the canvas to fork FROM
     --root: path # Run gi in this directory instead of here: the canvas is read there and the session starts there (default: your cwd)
@@ -522,6 +524,7 @@ export def --wrapped "gi open" [
 # Not a prerequisite for `gi open`, which seeds the same files itself. Run it to
 # refresh seeds with --force, or to get the `gi-canvas` skill into a repo where
 # the work will start from inside a live session rather than from a launch.
+@category claude-nu
 export def "gi enable" [
     --root: path # Repo root to seed (default: git top-level)
     --force # Overwrite the seeded style and skills with the module's versions
@@ -567,6 +570,7 @@ export def "gi enable" [
 # Write a canvas from a session's dialogue: the canvas header, an import note,
 # then the user's messages and Claude's visible replies. The doc records that
 # session, so `gi open <doc>` resumes it instead of minting a new one.
+@category claude-nu
 export def "gi import" [
     session?: string@"nu-complete claude sessions" # Session UUID, /rename name, or .jsonl path (default: the session this runs inside)
     --to: path # Where the canvas lands, relative to where you are (default: gi/session-<key>.md)

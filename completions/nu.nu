@@ -6,7 +6,7 @@ const error_styles = [fancy plain]
 const log_levels = [error warn info debug trace]
 const log_targets = [stdout stderr mixed file]
 
-export def parse-script-commands [script: string] {
+export def parse-script-commands [script: string]: nothing -> table {
     ast --flatten (open $script --raw)
     | where { $in.shape != shape_flag }
     | window 3 --remainder
@@ -23,9 +23,9 @@ export def parse-script-commands [script: string] {
     | update name { str replace 'main ' '' }
 }
 
-export def "nu-complete nu subcommands" [context: string] {
+export def "nu-complete nu subcommands" [context: string]: nothing -> any {
     let script = $context
-        | split row -r '\s+'
+        | split row --regex '\s+'
         | skip 1
         | where { ($in | str ends-with '.nu') and ($in | path exists) }
         | get 0?
@@ -36,7 +36,7 @@ export def "nu-complete nu subcommands" [context: string] {
     let subcmd_names = $cmds | get name
 
     let typed_args = $context
-        | split row -r '\s+'
+        | split row --regex '\s+'
         | skip 1
         | where { not ($in | str starts-with '-') and not ($in | str ends-with '.nu') }
 

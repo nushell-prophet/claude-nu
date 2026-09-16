@@ -16,7 +16,7 @@ def has-uncommitted-changes [path: path]: nothing -> bool {
 }
 
 # Find nutest module path, or null if not available
-def find-nutest [] {
+def find-nutest []: nothing -> any {
     for dir in ($env.NU_LIB_DIRS? | default []) {
         let candidate = $dir | path join 'nutest'
         if ($candidate | path exists) {
@@ -30,7 +30,7 @@ def find-nutest [] {
     null
 }
 
-export def main [] { }
+export def main []: nothing -> nothing { }
 
 # Run all tests
 #
@@ -45,7 +45,7 @@ export def 'main test' [
     --pretty # force the human view even when output is piped
     --all # human view: also list passing tests (default shows only failures)
     --fail # exit with non-zero code if any tests fail (for CI)
-] {
+]: nothing -> nothing {
     let results = collect-unit-results
 
     if (machine-mode --json=$json --pretty=$pretty) {
@@ -70,7 +70,7 @@ export def 'main test-unit' [
     --json # force machine-readable JSON output even on a terminal
     --pretty # force the human view even when output is piped
     --all # human view: also list passing tests (default shows only failures)
-] {
+]: nothing -> any {
     let flat = collect-unit-results
     if (machine-mode --json=$json --pretty=$pretty) {
         $flat | to json --raw
@@ -95,8 +95,8 @@ def machine-mode [--json --pretty]: nothing -> bool {
 def collect-unit-results []: nothing -> table {
     let nutest_path = find-nutest
     if $nutest_path == null {
-        print -e $"(ansi red)✗(ansi reset) nutest not found in NU_LIB_DIRS or at ../nutest"
-        print -e $"  Install: (ansi attr_dimmed)git clone https://github.com/vyadh/nutest ../nutest(ansi reset)"
+        print --stderr $"(ansi red)✗(ansi reset) nutest not found in NU_LIB_DIRS or at ../nutest"
+        print --stderr $"  Install: (ansi attr_dimmed)git clone https://github.com/vyadh/nutest ../nutest(ansi reset)"
         return []
     }
 
@@ -106,8 +106,8 @@ def collect-unit-results []: nothing -> table {
     } | complete
 
     if $result.exit_code != 0 {
-        print -e $"(ansi red)✗(ansi reset) nutest failed"
-        if ($result.stderr | str trim | is-not-empty) { print -e $result.stderr }
+        print --stderr $"(ansi red)✗(ansi reset) nutest failed"
+        if ($result.stderr | str trim | is-not-empty) { print --stderr $result.stderr }
         return []
     }
 
@@ -135,14 +135,14 @@ def failure-message []: any -> any {
 
 # Print the human view: non-passing tests (or all with --all), then a summary line.
 # Returns nothing so no wide table auto-renders and truncates the verdict column.
-def print-human [flat: table --all] {
+def print-human [flat: table --all]: nothing -> nothing {
     let to_show = if $all { $flat } else { $flat | where status != 'passed' }
     $to_show | each {|r| print-test-result $r }
     print-summary $flat
 }
 
 # Print the N passed, M failed headline
-def print-summary [flat: table] {
+def print-summary [flat: table]: nothing -> nothing {
     let passed = $flat | where status == 'passed' | length
     let failed = $flat | where status == 'failed' | length
     let total = $flat | length
@@ -150,7 +150,7 @@ def print-summary [flat: table] {
 }
 
 # Print a single test result with status indicator (and the assertion on failure)
-def print-test-result [result: record] {
+def print-test-result [result: record]: nothing -> nothing {
     let icon = match $result.status {
         'passed' => $"(ansi green)✓(ansi reset)"
         'failed' => $"(ansi red)✗(ansi reset)"
@@ -171,7 +171,7 @@ export def 'main vendor-sessions' [
     ...sessions: string # Session UUIDs to vendor (default: most recent)
     --count (-n): int = 3 # Number of most recent sessions when no UUIDs given
     --commit # Also create a git commit after copying
-] {
+]: nothing -> nothing {
     use claude-nu/sessions.nu get-sessions-dir
 
     let sessions_dir = get-sessions-dir
@@ -275,7 +275,7 @@ export def 'main check' [
 
 # Update dotnu capture files (requires dotnu module in scope)
 @example "Update all captures" { nu toolkit.nu update-captures }
-export def 'main update-captures' [] {
+export def 'main update-captures' []: nothing -> nothing {
     if not (scope modules | where name == dotnu | is-not-empty) {
         print $"(ansi red)✗(ansi reset) dotnu module not in scope"
         print "  Add `use dotnu/` or ensure dotnu is in NU_LIB_DIRS"

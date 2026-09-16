@@ -53,7 +53,7 @@ def "enable writes no settings file" [] {
     let root = temp-root
     gi enable --root $root | ignore
     let wrote_settings = settings-of $root | path exists
-    rm -rf $root
+    rm --recursive --force $root
 
     # The whole point of the redesign: activation travels with `gi open`, so a
     # seeded repo carries no outputStyle, no hook, and no env for other sessions.
@@ -68,7 +68,7 @@ def "enable leaves a foreign settings file untouched" [] {
     $before | save (settings-of $root)
     gi enable --root $root | ignore
     let after = open (settings-of $root)
-    rm -rf $root
+    rm --recursive --force $root
 
     assert equal $after $before
 }
@@ -78,7 +78,7 @@ def "enable makes no canvas" [] {
     let root = temp-root
     let status = gi enable --root $root
     let gi_dir = $root | path join "gi" | path exists
-    rm -rf $root
+    rm --recursive --force $root
 
     # Canvases belong to the two verbs that make one: `gi open <doc>` creates
     # and binds in the same breath, `gi import` writes one from a session. A
@@ -94,7 +94,7 @@ def "enable distributes the output style" [] {
     let status = gi enable --root $root
     let exists = $status.style | path exists
     let body = if $exists { open --raw $status.style } else { "" }
-    rm -rf $root
+    rm --recursive --force $root
 
     assert $exists
     assert ($body | str contains "name: Canvas")
@@ -106,7 +106,7 @@ def "enable seeds the gi skills into .claude/skills" [] {
     let status = gi enable --root $root
     let all_exist = $status.skills | all {|p| $p | path exists }
     let names = $status.skills | each {|p| $p | path dirname | path basename } | sort
-    rm -rf $root
+    rm --recursive --force $root
 
     assert $all_exist
     assert equal $names ["gi-canvas" "git-intent" "git-intent-distill" "git-intent-readback" "git-intent-squash-archive"]
@@ -120,7 +120,7 @@ def "enable does not clobber an edited skill" [] {
     "my edited skill" | save $skill
     gi enable --root $root | ignore
     let body = open --raw $skill
-    rm -rf $root
+    rm --recursive --force $root
 
     assert equal $body "my edited skill"
 }
@@ -133,7 +133,7 @@ def "enable does not clobber an edited style" [] {
     "my edited style" | save $style
     gi enable --root $root | ignore
     let body = open --raw $style
-    rm -rf $root
+    rm --recursive --force $root
 
     assert equal $body "my edited style"
 }
@@ -149,7 +149,7 @@ def "enable --force refreshes an edited style and skill" [] {
     gi enable --root $root --force | ignore
     let style_body = open --raw $style
     let skill_body = open --raw $skill
-    rm -rf $root
+    rm --recursive --force $root
 
     assert ($style_body | str contains "name: Canvas")
     assert ($skill_body | str contains "name: git-intent")
@@ -162,7 +162,7 @@ def "enable --force never touches a canvas" [] {
     "my work" | save --force $doc
     gi enable --root $root --force | ignore
     let body = open --raw $doc
-    rm -rf $root
+    rm --recursive --force $root
 
     # --force refreshes distributed text (style, skills). A canvas is the
     # user's work and is not distributed text — enable never writes one.
@@ -174,7 +174,7 @@ def "enable writes an ignore file naming every seed, and not itself" [] {
     let root = temp-root
     gi enable --root $root | ignore
     let lines = open --raw ($root | path join ".claude" ".gitignore") | lines | where $it !~ '^#'
-    rm -rf $root
+    rm --recursive --force $root
 
     # Exact paths only: gi seeds into .claude/ but does not own it, and a `*` or
     # a bare `skills/` would hide a skill the user wrote by hand.
@@ -198,7 +198,7 @@ def "the ignore block is regenerated and lines outside it are kept" [] {
     | save --force ($root | path join ".claude" ".gitignore")
     gi enable --root $root | ignore
     let second = open --raw ($root | path join ".claude" ".gitignore")
-    rm -rf $root
+    rm --recursive --force $root
 
     # gi rewrites what is between its markers — that is what answers the "second
     # copy of the seed list" objection, since a skill added to gi-md-src cannot
@@ -221,7 +221,7 @@ def "an unclosed gi block is an error, not a second block" [] {
     | lines | where $it !~ '^# end gi seeds$' | str join "\n"
     $mangled | save --force ($root | path join ".claude" ".gitignore")
     let out = try { gi enable --root $root | ignore; "" } catch {|e| $e.msg }
-    rm -rf $root
+    rm --recursive --force $root
 
     # Without the closing line gi cannot tell where its own entries stop, and
     # guessing would either swallow the rest of the file or stack blocks.
@@ -234,7 +234,7 @@ def "enable --no-gitignore leaves the seeds visible to git" [] {
     gi enable --root $root --no-gitignore | ignore
     let wrote = $root | path join ".claude" ".gitignore" | path exists
     let seeded = $root | path join ".claude" "output-styles" "canvas.md" | path exists
-    rm -rf $root
+    rm --recursive --force $root
 
     # For the repo that wants the seeds committed so a teammate gets gi on
     # clone. Only this verb can decline: `gi open` always writes the file, or a
@@ -255,7 +255,7 @@ def "a seeded repo reports one untracked line for .claude" [] {
     let git = ["-C" $root "-c" "core.excludesFile=/dev/null"]
     let status = ^git ...$git status --porcelain | lines
     let named = ^git ...$git status --porcelain --untracked-files=all | lines
-    rm -rf $root
+    rm --recursive --force $root
 
     # The whole point of the file, measured rather than argued: the folder still
     # announces that gi wrote there, and the seeds inside it are quiet.
@@ -273,7 +273,7 @@ def "status reports the session canvas from the environment" [] {
     gi enable --root $root | ignore
     let unbound = gi --root $root
     let bound = with-env { GI_CANVAS: "/repo/gi/session-abc.md" } { gi --root $root }
-    rm -rf $root
+    rm --recursive --force $root
 
     # Activation is per session, so status answers "am I in a canvas session"
     # from the environment — there is no repo-side flag to read.
@@ -293,7 +293,7 @@ def "status paths shorten against the cwd and stay absolute elsewhere" [] {
     cd $abs
     let inside = gi --root $root
     cd $orig
-    rm -rf $root
+    rm --recursive --force $root
 
     # The record's consumer is a person at a terminal: a path reads as they
     # would type it from where they stand, and stays absolute when it is not
@@ -312,7 +312,7 @@ def "status reports seeds differing from the module as stale" [] {
     let edited = gi --root $root | get stale
     gi enable --root $root --force | ignore
     let refreshed = gi --root $root | get stale
-    rm -rf $root
+    rm --recursive --force $root
 
     assert equal $fresh []
     assert equal ($edited | each {|p| $p | path dirname | path basename }) ["git-intent"]
@@ -354,7 +354,7 @@ def "open seeds an unseeded repo instead of refusing" [] {
     let seeded = $root | path join ".claude" "output-styles" "canvas.md" | path exists
     let ignored = $root | path join ".claude" ".gitignore" | path exists
     let canvas = $root | path join "gi" "plan.md" | path exists
-    rm -rf $root
+    rm --recursive --force $root
 
     # outputStyle names a file that must exist here, or the session starts with
     # no style and gi is half on. Refusing was the old answer; seeding is the
@@ -385,7 +385,7 @@ def "a relative canvas is read where the user stands, not at the repo root" [] {
     }
     let at_sub = $sub | path join "todo" "plan.md" | path exists
     let at_root = $root | path join "todo" "plan.md" | path exists
-    rm -rf $root
+    rm --recursive --force $root
 
     assert $at_sub "the canvas did not land under the directory the launch ran from"
     assert (not $at_root) "the canvas was anchored at the repo root"
@@ -411,7 +411,7 @@ def "the root flag moves the whole run, canvas included" [] {
     }
     let at_root = $root | path join "gi" "plan.md" | path exists
     let beside_caller = $env.PWD | path join "gi" "plan.md" | path exists
-    rm -rf $root
+    rm --recursive --force $root
 
     assert $at_root
     assert (not $beside_caller) "the canvas was written next to the caller instead of under --root"
@@ -542,7 +542,7 @@ def "forking copies the canvas and leaves the source bound as it was" [] {
     let dst = gi-fork-canvas $src
     let copied = open --raw $dst
     let source_still = gi-frontmatter-session $src
-    rm -rf $root
+    rm --recursive --force $root
 
     assert equal ($dst | path basename) "plan_1.md"
     # The source keeps its session: forking is for carrying a document into
@@ -560,7 +560,7 @@ def "a fork that cannot be stamped fails before the copy exists" [] {
     "---\nsession: 11111111-2222-3333-4444-555555555555\n\n# no closing fence\n" | save --force $src
     let out = try { gi-fork-canvas $src; "" } catch {|e| $e.msg }
     let left = ls ($root | path join "gi") | get name | path basename
-    rm -rf $root
+    rm --recursive --force $root
 
     # The error belongs to the source, and it has to arrive before the copy: the
     # same throw after `cp` left an orphan bound to the source's session and
@@ -574,7 +574,7 @@ def "a fork that cannot be stamped fails before the copy exists" [] {
 def "forking a canvas that is not there is an error, not a new canvas" [] {
     let root = temp-root
     let out = try { gi-fork-canvas ($root | path join "gi" "missing.md"); "" } catch {|e| $e.msg }
-    rm -rf $root
+    rm --recursive --force $root
 
     # --fork names a source, so an absent file cannot mean "create it" the way
     # a plain `gi open` does.
@@ -595,7 +595,7 @@ def "open --fork launches the copy and leaves the source binding alone" [] {
     }
     let source_still = gi-frontmatter-session $src
     let fork_sid = gi-frontmatter-session ($root | path join "gi" "plan_1.md")
-    rm -rf $root
+    rm --recursive --force $root
 
     # The whole of --fork through the real command: the copy is what opens, on
     # an id of its own declared with --session-id (never --resume, which would
@@ -632,7 +632,7 @@ def "stamping a session creates the frontmatter block when there is none" [] {
     gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
     let after = open --raw $doc
     let sid = gi-frontmatter-session $doc
-    rm -rf $root
+    rm --recursive --force $root
 
     assert equal $sid "11111111-2222-3333-4444-555555555555"
     # The canvas's own content survives untouched below the new block.
@@ -647,7 +647,7 @@ def "stamping a session replaces an id already recorded" [] {
     gi-stamp-session $doc "99999999-8888-7777-6666-555555555555"
     let raw = open --raw $doc
     let sid = gi-frontmatter-session $doc
-    rm -rf $root
+    rm --recursive --force $root
 
     # This is what `gi open --new-session` does: the canvas names one session,
     # never two, so the old key is overwritten rather than joined.
@@ -663,7 +663,7 @@ def "stamping a session leaves a session-like line in the prose alone" [] {
     "---\nsession: 11111111-2222-3333-4444-555555555555\n---\n\nsession: not frontmatter\n" | save $doc
     gi-stamp-session $doc "99999999-8888-7777-6666-555555555555"
     let body = open --raw $doc | lines | last
-    rm -rf $root
+    rm --recursive --force $root
 
     # The rewrite is scoped to the block above the closing fence.
     assert equal $body "session: not frontmatter"
@@ -676,7 +676,7 @@ def "stamping a session names the file when the frontmatter is not closed" [] {
     let doc = $root | path join "gi" "broken.md"
     "---\ntitle: my plan\n" | save $doc
     let out = try { gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"; null } catch {|e| $e.msg }
-    rm -rf $root
+    rm --recursive --force $root
 
     # Indexing past the split would throw "Row number too large", which names
     # neither the file nor what is wrong with it.
@@ -692,7 +692,7 @@ def "stamping a session joins an existing frontmatter block" [] {
     "---\ntitle: my plan\n---\n\n# Working area\n" | save $doc
     gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
     let meta = open --raw $doc | lines | skip 1 | take until {|l| $l == "---" } | str join "\n" | from yaml
-    rm -rf $root
+    rm --recursive --force $root
 
     # One block, not two: a hand-written key keeps its place.
     assert equal $meta {session: "11111111-2222-3333-4444-555555555555" title: "my plan"}
@@ -803,7 +803,7 @@ def "check names the bound canvas in the block reason" [] {
     let reason = block-decision { last_assistant_message: $BLOCKED_ANSWER, cwd: $root } --canvas ($root | path join "gi" "plan.md")
     | from json
     | get reason
-    rm -rf $root
+    rm --recursive --force $root
 
     # Shortened against the repo root: the agent reads this path in a message.
     assert ($reason | str contains "`gi/plan.md`")
@@ -819,7 +819,7 @@ def "check names the canvas relative to the session directory" [] {
     | from json | get reason
     let above = block-decision { last_assistant_message: $BLOCKED_ANSWER, cwd: $sub } --canvas ($root | path join "gi" "plan.md")
     | from json | get reason
-    rm -rf $root
+    rm --recursive --force $root
 
     # The short form is relative to where the session stands, not to the repo
     # root: the agent reads this path and has to be able to open it. A canvas
@@ -834,7 +834,7 @@ def "check blocks a protected branch even when the message is allowed" [] {
     let root = temp-root
     git init -qb master $root
     let out = block-decision { last_assistant_message: "done", cwd: $root }
-    rm -rf $root
+    rm --recursive --force $root
 
     let decision = $out | from json
     assert equal $decision.decision "block"
@@ -846,7 +846,7 @@ def "check passes an allowed message on a work branch" [] {
     let root = temp-root
     git init -qb canvas-work $root
     let out = block-decision { last_assistant_message: "done", cwd: $root }
-    rm -rf $root
+    rm --recursive --force $root
 
     assert equal $out null
 }
@@ -992,7 +992,7 @@ def "check lets a marked turn end on a protected branch" [] {
     git init -qb master $root
     let file = transcript-of ["chat: which branch am I on?"]
     let out = block-decision { last_assistant_message: "You are on `master`.", cwd: $root, transcript_path: $file }
-    rm -rf $root
+    rm --recursive --force $root
     rm $file
 
     assert equal $out null
@@ -1073,7 +1073,7 @@ def "import writes a session-keyed canvas" [] {
         gi import --root $root
     }
     let body = open --raw $status.doc
-    rm -rf $root $home
+    rm --recursive --force $root $home
 
     assert equal ($status.doc | path basename) $"session-($FIXTURE_SESSION | str substring 0..7).md"
     assert str contains $body "## User"
@@ -1090,7 +1090,7 @@ def "import takes a named session, with no live session in the environment" [] {
         gi import $FIXTURE_SESSION --root $root
     }
     let body = open --raw $status.doc
-    rm -rf $root $home
+    rm --recursive --force $root $home
 
     assert equal ($status.doc | path basename) $"session-($FIXTURE_SESSION | str substring 0..7).md"
     assert str contains $body "## User"
@@ -1118,7 +1118,7 @@ def "import takes a session by its /rename name and keys the doc on the session"
         gi import my-plan --root $root --commit
     }
     let subject = git -C $root log -1 --format=%s
-    rm -rf $root $home
+    rm --recursive --force $root $home
 
     assert equal ($status.doc | path basename) $"session-($FIXTURE_SESSION | str substring 0..7).md"
     assert str contains $subject ($FIXTURE_SESSION | str substring 0..7)
@@ -1135,7 +1135,7 @@ def "import takes a session as a .jsonl path" [] {
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
         gi import $file --root $root
     }
-    rm -rf $root $home
+    rm --recursive --force $root $home
 
     assert equal ($status.doc | path basename) $"session-($FIXTURE_SESSION | str substring 0..7).md"
 }
@@ -1148,7 +1148,7 @@ def "the to flag names the canvas, with no session named" [] {
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
         gi import --to notes/plan.md --root $root
     }
-    rm -rf $root $home
+    rm --recursive --force $root $home
 
     assert equal ($status.doc | path basename) "plan.md"
 }
@@ -1170,7 +1170,7 @@ def "a relative --to is read where the user stands" [] {
     }
     let at_sub = $sub | path join "notes" "plan.md" | path exists
     let at_root = $root | path join "notes" "plan.md" | path exists
-    rm -rf $root $home
+    rm --recursive --force $root $home
 
     assert $at_sub "the canvas did not land under the directory the import ran from"
     assert (not $at_root) "the canvas was anchored at the repo root"
@@ -1185,7 +1185,7 @@ def "import refuses to overwrite an existing doc" [] {
         gi import --root $root | ignore
         try { gi import --root $root | ignore; null } catch {|e| $e.msg }
     }
-    rm -rf $root $home
+    rm --recursive --force $root $home
 
     assert ($out | str contains "already exists")
 }
@@ -1196,7 +1196,7 @@ def "import with no session errors when no live session id is exported" [] {
     let out = with-env {CLAUDE_CODE_SESSION_ID: null} {
         try { gi import --root $root | ignore; null } catch {|e| $e.msg }
     }
-    rm -rf $root
+    rm --recursive --force $root
 
     assert ($out | str contains "no live session")
 }
@@ -1210,7 +1210,7 @@ def "the gitignore flag keeps the import out of git, beside the doc" [] {
         gi import --root $root --gitignore
     }
     let ignored = open --raw ($root | path join "gi" ".gitignore") | lines
-    rm -rf $root $home
+    rm --recursive --force $root $home
 
     assert equal $ignored [($status.doc | path basename)]
 }
@@ -1228,7 +1228,7 @@ def "the commit flag puts the import into git history" [] {
         gi import --root $root --commit | ignore
     }
     let committed = git -C $root show --name-only --format="%s" HEAD | lines
-    rm -rf $root $home
+    rm --recursive --force $root $home
 
     assert equal $committed.0 $"gi: import session ($FIXTURE_SESSION | str substring 0..7) as the working doc"
     assert ($committed | any {|l| $l | str ends-with ".md" })
@@ -1253,7 +1253,7 @@ def "an imported canvas carries the full session id in its frontmatter" [] {
         gi import --root $root
     }
     let sid = gi-frontmatter-session $status.doc
-    rm -rf $root $home
+    rm --recursive --force $root $home
 
     # The 8-char key names the file; the frontmatter carries the full UUID resume needs.
     assert equal $sid $FIXTURE_SESSION
@@ -1264,7 +1264,7 @@ def "frontmatter-session is null for a canvas without a session" [] {
     let root = temp-root
     plain-canvas $root "gi/plain.md" | ignore
     let sid = gi-frontmatter-session ($root | path join "gi" "plain.md")
-    rm -rf $root
+    rm --recursive --force $root
 
     assert equal $sid null
 }
