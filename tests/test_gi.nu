@@ -9,10 +9,6 @@ def temp-root []: nothing -> path {
     $nu.temp-dir | path join $"gi-(random uuid)"
 }
 
-def settings-of [root: path]: nothing -> path {
-    $root | path join ".claude" "settings.local.json"
-}
-
 # A directory holding a `claude` that records the directory it ran in and its
 # arguments, instead of starting a session — for the tests that run a launch to
 # the end. Returns the directory, to be prepended to PATH for that call only.
@@ -36,7 +32,7 @@ def stub-claude [root: path]: nothing -> path {
 }
 
 # An unbound canvas, the way `gi open` leaves one before a session is stamped
-# in. enable does not make canvases, so tests that need one write it directly.
+# in. Tests that need one write it directly rather than launching.
 def plain-canvas [root: path, rel: string]: nothing -> path {
     let doc = $root | path join $rel
     mkdir ($doc | path dirname)
@@ -44,236 +40,15 @@ def plain-canvas [root: path, rel: string]: nothing -> path {
     $doc
 }
 
-# =============================================================================
-# enable — seeding only; nothing is turned on and nothing is recorded
-# =============================================================================
-
-@test
-def "enable writes no settings file" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    let wrote_settings = settings-of $root | path exists
-    rm --recursive --force $root
-
-    # The whole point of the redesign: activation travels with `gi open`, so a
-    # seeded repo carries no outputStyle, no hook, and no env for other sessions.
-    assert (not $wrote_settings)
-}
-
-@test
-def "enable leaves a foreign settings file untouched" [] {
-    let root = temp-root
-    mkdir ($root | path join ".claude")
-    let before = { permissions: { allow: ["Bash(ls:*)"] } }
-    $before | save (settings-of $root)
-    gi enable --root $root | ignore
-    let after = open (settings-of $root)
-    rm --recursive --force $root
-
-    assert equal $after $before
-}
-
-@test
-def "enable makes no canvas" [] {
-    let root = temp-root
-    let status = gi enable --root $root
-    let gi_dir = $root | path join "gi" | path exists
-    rm --recursive --force $root
-
-    # Canvases belong to the two verbs that make one: `gi open <doc>` creates
-    # and binds in the same breath, `gi import` writes one from a session. A
-    # canvas seeded here would be an unbound file nobody asked for — enable
-    # does not even carry a `doc` field to report.
-    assert ("doc" not-in ($status | columns))
-    assert (not $gi_dir)
-}
-
-@test
-def "enable distributes the output style" [] {
-    let root = temp-root
-    let status = gi enable --root $root
-    let exists = $status.style | path exists
-    let body = if $exists { open --raw $status.style } else { "" }
-    rm --recursive --force $root
-
-    assert $exists
-    assert ($body | str contains "name: Canvas")
-}
-
-@test
-def "enable seeds the gi skills into .claude/skills" [] {
-    let root = temp-root
-    let status = gi enable --root $root
-    let all_exist = $status.skills | all {|p| $p | path exists }
-    let names = $status.skills | each {|p| $p | path dirname | path basename } | sort
-    rm --recursive --force $root
-
-    assert $all_exist
-    assert equal $names ["gi-canvas" "git-intent" "git-intent-distill" "git-intent-readback" "git-intent-squash-archive"]
-}
-
-@test
-def "enable does not clobber an edited skill" [] {
-    let root = temp-root
-    let skill = $root | path join ".claude" "skills" "git-intent" "SKILL.md"
-    mkdir ($skill | path dirname)
-    "my edited skill" | save $skill
-    gi enable --root $root | ignore
-    let body = open --raw $skill
-    rm --recursive --force $root
-
-    assert equal $body "my edited skill"
-}
-
-@test
-def "enable does not clobber an edited style" [] {
-    let root = temp-root
-    let style = $root | path join ".claude" "output-styles" "canvas.md"
-    mkdir ($style | path dirname)
-    "my edited style" | save $style
-    gi enable --root $root | ignore
-    let body = open --raw $style
-    rm --recursive --force $root
-
-    assert equal $body "my edited style"
-}
-
-@test
-def "enable --force refreshes an edited style and skill" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    let style = $root | path join ".claude" "output-styles" "canvas.md"
-    let skill = $root | path join ".claude" "skills" "git-intent" "SKILL.md"
-    "edited style" | save --force $style
-    "edited skill" | save --force $skill
-    gi enable --root $root --force | ignore
-    let style_body = open --raw $style
-    let skill_body = open --raw $skill
-    rm --recursive --force $root
-
-    assert ($style_body | str contains "name: Canvas")
-    assert ($skill_body | str contains "name: git-intent")
-}
-
-@test
-def "enable --force never touches a canvas" [] {
-    let root = temp-root
-    let doc = plain-canvas $root "gi/doc.md"
-    "my work" | save --force $doc
-    gi enable --root $root --force | ignore
-    let body = open --raw $doc
-    rm --recursive --force $root
-
-    # --force refreshes distributed text (style, skills). A canvas is the
-    # user's work and is not distributed text — enable never writes one.
-    assert equal $body "my work"
-}
-
-@test
-def "enable writes an ignore file naming every seed, and not itself" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    let lines = open --raw ($root | path join ".claude" ".gitignore") | lines | where $it !~ '^#'
-    rm --recursive --force $root
-
-    # Exact paths only: gi seeds into .claude/ but does not own it, and a `*` or
-    # a bare `skills/` would hide a skill the user wrote by hand.
-    assert equal ($lines | where $it =~ '\*' | length) 0
-    assert ("output-styles/canvas.md" in $lines)
-    assert ("skills/gi-canvas/SKILL.md" in $lines)
-    # Not itself: that one visible file is what keeps `.claude/` in `git status`
-    # as a single line instead of vanishing.
-    assert equal ($lines | where $it =~ 'gitignore' | length) 0
-}
-
-@test
-def "the ignore block is regenerated and lines outside it are kept" [] {
-    let root = temp-root
-    mkdir ($root | path join ".claude")
-    "settings.local.json\n" | save --force ($root | path join ".claude" ".gitignore")
-    gi enable --root $root | ignore
-    let first = open --raw ($root | path join ".claude" ".gitignore")
-    # Somebody else's line arriving after gi's block, and a stale entry inside it.
-    $first | str replace "output-styles/canvas.md" "gone/from/the/module.md" | $"($in)mine/\n"
-    | save --force ($root | path join ".claude" ".gitignore")
-    gi enable --root $root | ignore
-    let second = open --raw ($root | path join ".claude" ".gitignore")
-    rm --recursive --force $root
-
-    # gi rewrites what is between its markers — that is what answers the "second
-    # copy of the seed list" objection, since a skill added to gi-md-src cannot
-    # be left unignored.
-    assert ($second | str contains "output-styles/canvas.md")
-    assert (not ($second | str contains "gone/from/the/module.md"))
-    # And touches nothing outside them: `.claude/` is a shared folder, so a line
-    # gi did not write is not gi's to delete.
-    assert ($second | str contains "settings.local.json")
-    assert ($second | str contains "mine/")
-    # One block, not one per run.
-    assert equal ($second | lines | where $it =~ '^# end gi seeds$' | length) 1
-}
-
-@test
-def "an unclosed gi block is an error, not a second block" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    let mangled = open --raw ($root | path join ".claude" ".gitignore")
-    | lines | where $it !~ '^# end gi seeds$' | str join "\n"
-    $mangled | save --force ($root | path join ".claude" ".gitignore")
-    let out = try { gi enable --root $root | ignore; "" } catch {|e| $e.msg }
-    rm --recursive --force $root
-
-    # Without the closing line gi cannot tell where its own entries stop, and
-    # guessing would either swallow the rest of the file or stack blocks.
-    assert ($out | str contains "no closing line")
-}
-
-@test
-def "enable --no-gitignore leaves the seeds visible to git" [] {
-    let root = temp-root
-    gi enable --root $root --no-gitignore | ignore
-    let wrote = $root | path join ".claude" ".gitignore" | path exists
-    let seeded = $root | path join ".claude" "output-styles" "canvas.md" | path exists
-    rm --recursive --force $root
-
-    # For the repo that wants the seeds committed so a teammate gets gi on
-    # clone. Only this verb can decline: `gi open` always writes the file, or a
-    # repo that never ran `enable` would get the noise back.
-    assert (not $wrote)
-    assert $seeded
-}
-
-@test
-def "a seeded repo reports one untracked line for .claude" [] {
-    let root = temp-root
-    mkdir $root
-    ^git -C $root init --quiet
-    gi enable --root $root | ignore
-    # core.excludesFile is neutralised: a developer with a global ignore entry
-    # for .claude would otherwise see this pass or fail for reasons that have
-    # nothing to do with the file gi writes.
-    let git = ["-C" $root "-c" "core.excludesFile=/dev/null"]
-    let status = ^git ...$git status --porcelain | lines
-    let named = ^git ...$git status --porcelain --untracked-files=all | lines
-    rm --recursive --force $root
-
-    # The whole point of the file, measured rather than argued: the folder still
-    # announces that gi wrote there, and the seeds inside it are quiet.
-    assert equal $status ["?? .claude/"]
-    assert equal $named ["?? .claude/.gitignore"]
-}
 
 # =============================================================================
-# status — what is seeded here, and what this session is bound to
+# status — where the protocol comes from, and what this session is bound to
 # =============================================================================
 
 @test
 def "status reports the session canvas from the environment" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    let unbound = gi --root $root
-    let bound = with-env { GI_CANVAS: "/repo/gi/session-abc.md" } { gi --root $root }
-    rm --recursive --force $root
+    let unbound = gi
+    let bound = with-env { GI_CANVAS: "/repo/gi/session-abc.md" } { gi }
 
     # Activation is per session, so status answers "am I in a canvas session"
     # from the environment — there is no repo-side flag to read.
@@ -282,42 +57,30 @@ def "status reports the session canvas from the environment" [] {
 }
 
 @test
-def "status paths shorten against the cwd and stay absolute elsewhere" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    # The expanded form, so cd lands on the physical path cwd-relative compares
-    # against — the record is built from an expanded root.
-    let abs = $root | path expand
-    let outside = gi --root $root
-    let orig = $env.PWD
-    cd $abs
-    let inside = gi --root $root
-    cd $orig
-    rm --recursive --force $root
+def "status names the plugin that carries the protocol, and its namespaced parts" [] {
+    let status = gi
 
-    # The record's consumer is a person at a terminal: a path reads as they
-    # would type it from where they stand, and stays absolute when it is not
-    # under them — which is also why these tests, run from elsewhere, can keep
-    # handling the paths they get back.
-    assert equal $inside.style (".claude" | path join "output-styles" "canvas.md")
-    assert equal $outside.style ($abs | path join ".claude" "output-styles" "canvas.md")
+    # gi writes nothing into a repo any more, so status reports the one
+    # directory every launch reads instead of a list of seeds that could drift.
+    assert ($status.plugin | path join ".claude-plugin" "plugin.json" | path exists)
+    # Plugin components are namespaced by the plugin name — the bare names
+    # resolve to nothing, which is the silent failure this pins.
+    assert equal $status.style "gi:Canvas"
+    assert ("gi:git-intent" in $status.skills)
+    assert ("gi:git-intent-squash-archive" in $status.skills)
+    assert equal ($status.skills | where {|s| not ($s | str starts-with "gi:") }) []
 }
 
 @test
-def "status reports seeds differing from the module as stale" [] {
-    let root = temp-root
-    gi enable --root $root | ignore
-    let fresh = gi --root $root | get stale
-    "user edit" | save --force ($root | path join ".claude" "skills" "git-intent" "SKILL.md")
-    let edited = gi --root $root | get stale
-    gi enable --root $root --force | ignore
-    let refreshed = gi --root $root | get stale
-    rm --recursive --force $root
+def "status carries no repo-scoped fields" [] {
+    let columns = gi | columns
 
-    assert equal $fresh []
-    assert equal ($edited | each {|p| $p | path dirname | path basename }) ["git-intent"]
-    assert equal $refreshed []
+    # The seeds are gone, and with them the reasons these existed: there is no
+    # per-repo copy to locate and nothing that can differ from the module.
+    assert ("stale" not-in $columns)
+    assert ("root" not-in $columns)
 }
+
 
 # =============================================================================
 # launch — the activation payload and the guards that run before claude does
@@ -328,7 +91,10 @@ def "launch settings carry the Canvas style and the Stop hook" [] {
     let with_hook = gi-launch-settings --hook | from json
     let without = gi-launch-settings | from json
 
-    assert equal $with_hook.outputStyle "Canvas"
+    # Namespaced by the plugin that ships the style. A bare "Canvas" resolves
+    # to nothing and the session starts style-less with no error at all, so
+    # this string is the whole difference between gi on and gi silently off.
+    assert equal $with_hook.outputStyle "gi:Canvas"
     assert equal ($with_hook.hooks.Stop | length) 1
     # The hook runs the entry script, not `-c` with an import string: the body
     # lives in a file the syntax check can see. `gi check` is that body, not a
@@ -336,12 +102,12 @@ def "launch settings carry the Canvas style and the Stop hook" [] {
     assert ($with_hook.hooks.Stop.0.hooks.0.command | str contains "gi-hook.nu")
     # --no-hook keeps the proactive style and drops the floor — so the payload
     # must carry no Stop key at all, not an empty one.
-    assert equal $without.outputStyle "Canvas"
+    assert equal $without.outputStyle "gi:Canvas"
     assert equal $without.hooks? null
 }
 
 @test
-def "open seeds an unseeded repo instead of refusing" [] {
+def "open writes nothing into the repo but the canvas" [] {
     let root = temp-root
     mkdir $root
     ^git -C $root init --quiet
@@ -351,21 +117,27 @@ def "open seeds an unseeded repo instead of refusing" [] {
         # assertion below rather than here — where it would skip the cleanup.
         try { open --raw ($root | path join "claude-args") } catch { "" }
     }
-    let seeded = $root | path join ".claude" "output-styles" "canvas.md" | path exists
-    let ignored = $root | path join ".claude" ".gitignore" | path exists
+    let dot_claude = $root | path join ".claude" | path exists
     let canvas = $root | path join "gi" "plan.md" | path exists
     rm --recursive --force $root
 
-    # outputStyle names a file that must exist here, or the session starts with
-    # no style and gi is half on. Refusing was the old answer; seeding is the
-    # new one, and it is what keeps a launch from dying after it has already
-    # copied a fork.
-    assert $seeded
+    # The style and the skills ride the launch as a plugin, read in place from
+    # the module. So the repo gets the canvas and nothing else — no .claude/,
+    # no seeds to drift, no .gitignore block to explain them away.
     assert $canvas
+    assert (not $dot_claude) "the launch wrote into the repo's .claude/"
     assert ($launched | str contains "--name gi/plan.md")
-    # `open` cannot decline the ignore file — this is the repo that never ran
-    # `enable`, and it is the one that would otherwise get the noise back.
-    assert $ignored
+    # The value, not just the flag: a launch passing --plugin-dir with an empty
+    # or wrong path starts with no style and no gi skills and says nothing about
+    # it. So read the path back out and prove it is a real plugin — the manifest
+    # is what makes Claude Code load the directory at all.
+    let plugin_dir = $launched | parse --regex '--plugin-dir (?<dir>\S+)' | get dir.0
+    assert ($plugin_dir | str ends-with ([gi-md-src plugin] | path join))
+    assert ($plugin_dir | path join ".claude-plugin" "plugin.json" | path exists)
+    assert ($plugin_dir | path join "output-styles" "canvas.md" | path exists)
+    # The other half of the same activation: --settings must name the style
+    # namespaced, or the plugin loads and nothing turns on.
+    assert ($launched | str contains '"outputStyle":"gi:Canvas"')
 }
 
 @test
@@ -446,7 +218,8 @@ def "the launch states the canvas path in the system prompt" [] {
 @test
 def "a flag typed where the canvas goes is not taken as the canvas" [] {
     # --root points at a directory that does not exist, so a guard-order
-    # regression cannot reach the launcher and seed the developer's own checkout.
+    # regression cannot reach the launcher and write into the developer's own
+    # checkout.
     let root = temp-root
     # --wrapped hands an undeclared flag before the doc to the positional, so
     # without this a typo would create a canvas named after the flag.
@@ -610,7 +383,7 @@ def "open --fork launches the copy and leaves the source binding alone" [] {
 @test
 def "the fork flags refuse the two ways they cannot mean anything" [] {
     # Same reason as above: a guard that stopped firing must not reach the
-    # launcher and seed the repo the suite is running in.
+    # launcher and write a canvas into the repo the suite is running in.
     let root = temp-root
     # --fork is the one case where the positional names a source, so with no
     # canvas named there is nothing to copy.
@@ -698,10 +471,10 @@ def "stamping a session joins an existing frontmatter block" [] {
     assert equal $meta {session: "11111111-2222-3333-4444-555555555555" title: "my plan"}
 }
 
-# No tests here for `gi --force`, `gi enable --no-hook`, `gi enable <doc>`, or
-# `gi <doc>`: each verb is its own command, so the parser rejects those before
-# the code runs — and a parse error cannot be caught by `try`, which is the
-# point.
+# No tests here for `gi --no-hook`, `gi --fork` or `gi <doc>`: each verb is its
+# own command, so the parser rejects a flag or a path given to the bare status
+# verb before the code runs — and a parse error cannot be caught by `try`,
+# which is the point.
 #
 # Nor for "open refuses a bound canvas" / "resume needs a session": there is
 # one verb now, and the canvas decides which half of it runs.

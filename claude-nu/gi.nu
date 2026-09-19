@@ -1,32 +1,24 @@
-# gi — the gi protocol: seeded per repo, activated per session at launch.
+# gi — the gi protocol: carried by a plugin, activated per session at launch.
 #
 # The gi protocol moves all "what/why" into git: the diff and the commit body
-# carry the record, the chat carries almost nothing. Three commands do the work,
+# carry the record, the chat carries almost nothing. Two commands do the work,
 # and the split between them is the whole design:
 #
-#   gi enable          seeds files into the repo — the Canvas output style and
-#                      the gi skills. Writes nothing to settings, turns nothing
-#                      on, and makes no canvas: that is the launcher's job, so
-#                      no two verbs ever write the same canvas. `gi open` seeds
-#                      the same files itself, so this verb is not a prerequisite
-#                      for it; what it still owns is `--force` (refresh after a
-#                      module update — `open` must never clobber an edited
-#                      style) and the chicken-and-egg of `gi import`, which
-#                      needs the `gi-canvas` skill in the repo but launches
-#                      nothing and so never passes through `open`.
 #   gi import          writes one canvas, from a session's dialogue — the one it
 #                      runs inside, or any session named on the line. The only
 #                      verb that can capture the session running it, since it
-#                      launches nothing: `enable` seeds no canvas, and `open`
-#                      cannot be reached from the session being imported.
-#   gi open            launches Claude Code bound to one canvas: `--settings`
-#                      carries the output style and the Stop hook for that launch
-#                      alone, `--append-system-prompt` names the canvas to the
-#                      agent, and $env.GI_CANVAS names it to the hook, which runs
-#                      as a child of that session. A canvas holds
-#                      one session for life — a canvas with no session gets one
-#                      minted and written in, one that has it is resumed. Which
-#                      case it is, the file says; there is no second verb.
+#                      launches nothing: `open` cannot be reached from the
+#                      session being imported.
+#   gi open            launches Claude Code bound to one canvas. `--plugin-dir`
+#                      hands `claude` the gi plugin — the Canvas output style
+#                      and the skills that work a canvas — for that launch only;
+#                      `--settings` carries the style's name and the Stop hook;
+#                      `--append-system-prompt` names the canvas to the agent;
+#                      and $env.GI_CANVAS names it to the hook, which runs as a
+#                      child of that session. A canvas holds one session for
+#                      life — a canvas with no session gets one minted and
+#                      written in, one that has it is resumed. Which case it is,
+#                      the file says; there is no second verb.
 #                      `--new-session` is the way out when that session is gone
 #                      (deleted, expired): it overwrites the recorded id.
 #                      `--fork` is the other direction — keep the canvas bound
@@ -35,15 +27,29 @@
 #                      conversation can be carried on in a fresh context while
 #                      the conversation that planned it stays readable.
 #
-# Bare `gi` is the third name and does no work: it reports what is seeded here
-# and which canvas the asking session is bound to.
+# Bare `gi` is the third name and does no work: it reports which plugin supplies
+# the protocol and which canvas the asking session is bound to.
+#
+# Why a plugin and not files copied into each repo, which is what this replaced:
+# `--plugin-dir` loads a directory for one session, reading it in place. Copying
+# was copy-if-absent, so every repo was pinned to whatever the module held when
+# it was first seeded, and nothing anybody reads reported the drift — repos ran
+# months of canvas sessions on a style and skills the module had long since
+# rewritten. Reading in place cannot go stale, writes nothing into the repo, and
+# still loads only for launches gi makes, so a plain `claude` anywhere is
+# untouched. It also deleted the whole seeding half of this file: gi-paths,
+# gi-seed, gi-stale, the `.claude/.gitignore` block, and `gi enable` itself.
+# Plugin components are namespaced by the plugin's name, so the style is
+# `gi:Canvas` and the skills are `gi:git-intent` and friends — verified against
+# the CLI, an unnamespaced `Canvas` resolves to nothing and the launch is
+# silently style-less.
 #
 # Why activation lives at launch and not in .claude/settings.local.json (which
 # is what this replaced): outputStyle, hooks, and env in a settings file are
 # repo-wide and load into EVERY session in the repo. A canvas opened yesterday
 # kept shaping unrelated sessions today, and the only cure was remembering to
 # run `gi disable`. With per-launch activation there is no state to forget: a
-# plain `claude` in a gi-seeded repo is a plain session, always.
+# plain `claude` in any repo is a plain session, always.
 #
 # The style is proactive shaping only — it rests on prose, and the agent drifts
 # back to long chat answers. The Stop hook is the structural floor under it: it
@@ -59,11 +65,11 @@
 
 use sessions.nu [export-session resolve-session-file read-session-records user-message-texts "nu-complete claude sessions"]
 
-# The output-style name gi passes to `claude --settings` at launch. Matches the
-# `name:` frontmatter in the seeded style file — outputStyle names a style, and
-# Claude Code resolves it against .claude/output-styles in the launch directory,
-# so the two must agree or the launch is silently style-less.
-const GI_STYLE = "Canvas"
+# The output-style name gi passes to `claude --settings` at launch: the plugin's
+# name, a colon, then the `name:` frontmatter of the style file it ships.
+# Verified against the CLI — the bare `Canvas` resolves to nothing and the
+# session starts style-less with no error, so the two halves must agree.
+const GI_STYLE = "gi:Canvas"
 
 # Absolute path to this module's directory, resolved at parse time. Why a const:
 # `path self` only runs at parse time, and the hook needs an absolute `use`
@@ -81,6 +87,14 @@ const GI_MODULE_DIR = (path self | path dirname)
 # puts it at the head of an imported dialogue.
 const GI_HEADER_SRC = ($GI_MODULE_DIR | path join "gi-md-src" "canvas-header.md")
 
+# The plugin `gi open` hands to `claude --plugin-dir`: the Canvas output style
+# and the skills that work a canvas. Read in place for one session — never
+# installed, never copied into the repo, so it cannot drift from the module.
+# canvas-header.md is deliberately NOT in here: it is the template for a new
+# canvas, not a plugin component, and a stray file at a plugin root is a file
+# Claude Code may try to read as one.
+const GI_PLUGIN_DIR = ($GI_MODULE_DIR | path join "gi-md-src" "plugin")
+
 # The shell command Claude Code runs for the Stop event. `--stdin` feeds the
 # event JSON to the script as `$in`. The absolute path is required — relative
 # paths are not resolved at hook time — and quoted, for a module dir with a
@@ -96,9 +110,9 @@ const GI_COMMAND = $"nu --stdin \"($GI_MODULE_DIR | path join 'gi-hook.nu')\""
 # The settings gi hands to `claude` at launch. Verified against the CLI:
 # --settings takes a JSON string as well as a path, its keys MERGE with the
 # project's settings files rather than replace them (a repo's permissions
-# survive), and outputStyle resolves against .claude/output-styles in the launch
-# directory. So one flag carries the whole activation for one session, and the
-# repo keeps no record of it. Exported for tests: this payload IS the protocol's
+# survive), and outputStyle resolves the plugin-namespaced name of a style the
+# same launch's --plugin-dir supplies. So the two flags carry the whole
+# activation for one session, and the repo keeps no record of it. Exported for tests: this payload IS the protocol's
 # on-switch, so it is worth pinning down on its own.
 export def gi-launch-settings [--hook]: nothing -> string {
     {outputStyle: $GI_STYLE}
@@ -130,34 +144,12 @@ def gi-branch [root: path]: nothing -> any {
     if $out.exit_code == 0 and ($branch | is-not-empty) { $branch }
 }
 
-# Every path enable seeds, in one record. No settings file among them: gi writes
-# to none — activation travels with the launch (see gi-launch). No canvas among
-# them either: `gi open` creates that, from $GI_HEADER_SRC.
-# - style: the Canvas output style. Why distribute a local copy: this module is
-#   vendored on its own, so it must carry the style itself rather than depend on
-#   a Claude plugin being installed — `enable` drops it as a per-repo project
-#   style. The srcs ship inside the module, so they vendor with it.
-# - skills: the gi skills, seeded the same way. Why: project-level
-#   .claude/skills needs no plugin install — file presence at session start IS
-#   activation — and the style names git-intent-squash-archive, so seeding
-#   makes that reference real in any gi-enabled repo.
-def gi-paths [root: path]: nothing -> record {
-    {
-        style_src: ($GI_MODULE_DIR | path join "gi-md-src" "canvas-output-style.md")
-        style_dst: ($root | path join ".claude" "output-styles" "canvas.md")
-        skills_src: ($GI_MODULE_DIR | path join "gi-md-src" "skills")
-        skills_dst: ($root | path join ".claude" "skills")
-        ignore_dst: ($root | path join ".claude" ".gitignore")
-    }
-}
-
 # The directory gi runs in: --root when the user names one, otherwise where
 # they are standing. Everything a gi command does happens here — the launch
 # cd's to it, a relative canvas is read against it, and the short form printed
 # and handed to the agent is relative to it.
 # `root` (the repo) is a different question and stays a different value: it is
-# where `.claude/` is seeded and which branch the guard reads. Those are
-# repo-scoped; the canvas is not.
+# the branch the guard reads. That is repo-scoped; the canvas is not.
 # Why not the repo root for both, which is what this replaced: a path typed on a
 # command line means what it means everywhere else in a shell — relative to
 # where you stand — and inside a monorepo the repo root is never where you work.
@@ -212,12 +204,14 @@ def cwd-relative []: path -> path {
 # nothing errors. Measured: 46 of 205 copies corrupted under `par-each`, 0 with
 # this, 0 with an external `cp`. That is what made `tests/test_gi.nu` fail a
 # different test on nearly every run — nutest runs tests in parallel, so several
-# `gi enable` seedings copy at once. It is not only a test problem: `gi open`
-# seeds and then launches `claude` against those very files.
-# --force because `gi enable --force` refreshes seeds that are already there;
-# the other two callers write a path they have just shown to be free.
+# seedings copied at once. The seeding is gone (the protocol rides a plugin
+# now), but the two remaining callers — the canvas template and `--fork` — still
+# write files a launch immediately reads, so the fix stays.
+# No --force: both callers write a path they have just proved free (the template
+# only inside `if not ($doc_abs | path exists)`, a fork at the next unused `_n`).
+# A save that finds a file there means that proof broke, and it should say so.
 def copy-file [src: path, dst: path]: nothing -> nothing {
-    open --raw $src | save --raw --force $dst
+    open --raw $src | save --raw $dst
 }
 
 # The canvas name minted when the user names none. A def and not a const: the
@@ -273,120 +267,6 @@ export def gi-fork-canvas [src: path]: nothing -> path {
     let dst = $dir | path join (gi-fork-name ($src | path basename) (ls $dir | get name | path basename))
     copy-file $src $dst
     $dst
-}
-
-# The bundled skills as [src dst] seed rows for enable's copy-if-absent loop.
-# Enumerated from disk, not hardcoded: adding a skill under gi-md-src/skills
-# is the whole change.
-def gi-skill-seeds [paths: record]: nothing -> table {
-    ls $paths.skills_src
-    | get name
-    | each {|dir|
-        {
-            src: ($dir | path join "SKILL.md")
-            dst: ($paths.skills_dst | path join ($dir | path basename) "SKILL.md")
-        }
-    }
-}
-
-# The seeds `enable --force` may refresh: the style and the skills —
-# distributed text the module owns. The working doc is deliberately absent:
-# it holds the user's work and is never overwritten.
-def gi-refresh-seeds [paths: record]: nothing -> table {
-    [[src dst]; [$paths.style_src $paths.style_dst]]
-    | append (gi-skill-seeds $paths)
-}
-
-# Copy the seeds into the repo, never clobbering a file that is already there
-# unless --force says to: once seeded they are the user's files, and refreshing
-# would destroy their edits. --force overwrites, because they are distributed
-# text a module update should be able to refresh.
-# Shared by `gi enable` and `gi open`. Why `open` seeds instead of refusing: the
-# style has to be on disk for `--settings` to name it, and refusing was its only
-# move — an error that also sat *after* the fork copy, so a launch that would not
-# start still left a stray canvas behind and burned a name in the `_n` series.
-# Seeding removes the error rather than reordering around it.
-def gi-seed [paths: record, --force, --no-gitignore]: nothing -> nothing {
-    for seed in (gi-refresh-seeds $paths | insert overwrite $force) {
-        if $seed.overwrite or not ($seed.dst | path exists) {
-            mkdir ($seed.dst | path dirname)
-            copy-file $seed.src $seed.dst
-        }
-    }
-    if not $no_gitignore {
-        let existing = if ($paths.ignore_dst | path exists) { open --raw $paths.ignore_dst } else { "" }
-        gi-ignore-text $paths $existing | save --force $paths.ignore_dst
-    }
-}
-
-# The block markers gi owns inside `.claude/.gitignore`. Everything between them
-# is regenerated; everything outside is somebody else's and is carried through
-# untouched — the same rule the seeded style and skills get, and the same rule
-# `gi import --gitignore` follows for the file beside a canvas. `.claude/` is a
-# shared folder: gi seeds into it but does not own it.
-const GI_IGNORE_BEGIN = "# gi seeds — regenerated by `claude-nu gi`. `git add` them to track them instead; ignore rules do not apply to tracked files."
-const GI_IGNORE_END = "# end gi seeds"
-
-# The ignore file gi writes beside its seeds, so a repo it seeded does not show
-# six untracked files nobody wants to read in a diff. `existing` is the file's
-# current content ("" when there is none); gi's block replaces the old one in
-# place, or is appended when the file has none yet.
-# Exact paths, never `*` or a bare `skills/`: a directory pattern would silently
-# hide a skill the user wrote by hand.
-# The block does not list the ignore file itself, on purpose. `git status` then
-# still reports `?? .claude/` as a single line resolving to this file alone, so
-# the folder says gi wrote here while the seeds stay quiet; hiding it too makes
-# `.claude/` vanish from `git status`, which is how you forget a tool is writing
-# into your repo. Regenerated on every seed run from the same enumeration the
-# copy loop uses, so a skill added to gi-md-src can never be left unignored.
-def gi-ignore-text [paths: record, existing: string = ""]: nothing -> string {
-    let dir = $paths.ignore_dst | path dirname
-    let lines = $existing | lines
-    let before = $lines | take until {|l| $l == $GI_IGNORE_BEGIN }
-    # A block opened and never closed means the file was hand-edited into a
-    # shape gi cannot rewrite without guessing where its own lines end. Say so
-    # rather than append a second block or swallow the rest of the file.
-    if (($before | length) < ($lines | length)) and ($GI_IGNORE_END not-in $lines) {
-        error make --unspanned {
-            msg: $"gi's block in ($paths.ignore_dst) has no closing line"
-            help: $"add `($GI_IGNORE_END)` after gi's entries, or delete the block and let gi write a new one"
-        }
-    }
-    let after = $lines | skip until {|l| $l == $GI_IGNORE_END } | skip 1
-    $before
-    | append $GI_IGNORE_BEGIN
-    | append (gi-refresh-seeds $paths | get dst | each {|dst| $dst | path relative-to $dir })
-    | append $GI_IGNORE_END
-    | append $after
-    | append ""
-    | str join "\n"
-}
-
-# Seeded files whose content differs from the module source. Why content
-# compare, not a version field: copy-if-absent pins a consumer repo to
-# whatever was current at first enable, and nothing else ever signals drift.
-# "Differs" covers a user edit too — the two are indistinguishable, and
-# --force resolves both in the module's favor; that is what --force means.
-def gi-stale [paths: record]: nothing -> list {
-    gi-refresh-seeds $paths
-    | where {|s| ($s.dst | path exists) and (open --raw $s.dst) != (open --raw $s.src) }
-    | get dst
-}
-
-# The drift note, printed by every verb the user reaches gi through: `enable`,
-# `import`, and each `gi open` launch. Why all three and not just status, which
-# already carries the list: copy-if-absent pins a repo to whatever the module
-# held at its first seed, nobody polls status, and a repo can then run months of
-# canvas sessions on a style the module has since rewritten — this change is how
-# the seed of a rewritten rule reaches a repo that was seeded before it.
-# A note, never an error: the seeded copy still works, and the difference may be
-# the user's own edit to it, which --force would discard.
-def gi-stale-note [paths: record]: nothing -> nothing {
-    let stale = gi-stale $paths
-    if ($stale | is-not-empty) {
-        print $"note: ($stale | length) seeded file\(s\) differ from the module — `gi enable --force` refreshes them:"
-        for f in $stale { print $"  ($f | cwd-relative)" }
-    }
 }
 
 # The UUID of the session this command runs inside — what `gi import` falls back
@@ -457,13 +337,11 @@ def gi-session-key [session: string]: nothing -> string {
 # nushell shows the contiguous comment block, so keep the rationale above the
 # blank line.
 
-# What gi has seeded in this repo, and the canvas this session is bound to.
-# The verbs: `gi enable`, `gi import`, `gi open`.
+# Where the gi protocol comes from, and the canvas this session is bound to.
+# The verbs: `gi import`, `gi open`.
 @category claude-nu
-export def main [
-    --root: path # Repo root to inspect (default: git top-level)
-]: nothing -> record {
-    gi-status --root $root
+export def main []: nothing -> record {
+    gi-status
 }
 
 # Open a canvas: launch a session bound to it, creating the canvas from the
@@ -518,47 +396,6 @@ export def --wrapped "gi open" [
     gi-launch --root $root --doc $doc --hook=(not $no_hook) --new-session=$new_session --fork=$fork --extra $extra
 }
 
-# Seed the gi protocol into this repo: the Canvas style and the gi skills.
-# Turns nothing on — `gi open` does that, per session — and writes to
-# no settings file. Re-runnable: seeded files are never clobbered.
-# Not a prerequisite for `gi open`, which seeds the same files itself. Run it to
-# refresh seeds with --force, or to get the `gi-canvas` skill into a repo where
-# the work will start from inside a live session rather than from a launch.
-@category claude-nu
-export def "gi enable" [
-    --root: path # Repo root to seed (default: git top-level)
-    --force # Overwrite the seeded style and skills with the module's versions
-    --no-gitignore # Do not write .claude/.gitignore — leave the seeds visible to git
-]: nothing -> record {
-    let root = $root | default (gi-repo-root) | path expand
-    let paths = gi-paths $root
-    # Why only this verb can decline the ignore file, while `gi open` always
-    # writes it: `open` is where a repo that never ran `enable` gets seeded, and
-    # that repo would otherwise get the noise back. Declining is the deliberate
-    # act, so it belongs on the deliberate verb — and it is a one-time state
-    # anyway: `git add` the seeds and the ignore file stops applying to them.
-    gi-seed $paths --force=$force --no-gitignore=$no_gitignore
-    # Seeding alone changes nothing about the session that ran it: the style and
-    # the hook arrive with `gi open`, so the next lines are the whole
-    # instruction. Seeding writes no canvas, so both verbs that make one are
-    # named here — this is where the user is standing.
-    # cwd-relative cannot shorten the root itself (a directory is not *under*
-    # itself), and the common call runs exactly there — so that case is named
-    # in words instead of echoing the long absolute path back.
-    print (if $root == ($env.PWD | path expand) {
-        "gi seeded here."
-    } else {
-        $"gi seeded in ($root | cwd-relative)."
-    })
-    print $"start a canvas:  claude-nu gi open [<doc>]"
-    print $"...or from a session's dialogue:  claude-nu gi import [<session>]"
-    # Surface drift at the moment the user is already touching gi — status
-    # carries the same list, but nobody polls it. --force just refreshed them,
-    # so there is nothing left to report.
-    if not $force { gi-stale-note $paths }
-    gi-status --root $root
-}
-
 # Why a verb of its own and not a flag on `gi enable` (which is what this
 # replaced): enable seeds distributed text and makes no canvas, so an import
 # living there dragged in a path and three flags the command had no other use
@@ -595,7 +432,6 @@ export def "gi import" [
     # Read the run directory off the flag before the next line shadows it.
     let dir = gi-run-dir $root
     let root = $root | default (gi-repo-root) | path expand
-    let paths = gi-paths $root
     # Default is session-keyed, so re-running it for one session names one file
     # and leaves the repo's other canvases alone.
     # Why --to and not a second positional: the common in-session call names a
@@ -637,13 +473,9 @@ export def "gi import" [
     }
 
     print $"canvas: ($paths_doc.rel)"
-    # Not a blocked next step — `gi open` seeds the style itself. It is the
-    # skills that only `enable` puts here, and an in-session `gi import` needs
-    # them. Say so while the user is still looking at the command.
-    if not ($paths.style_dst | path exists) {
-        print $"the gi skills are not in this repo yet:  claude-nu gi enable"
-    }
-    gi-stale-note $paths
+    # Nothing to check before this line any more: the style and the skills ride
+    # the launch as a plugin, so there is no per-repo state an import could find
+    # missing and no seeded copy that could have drifted.
     print $"open a bound session on it:  claude-nu gi open ($paths_doc.rel)"
     if $session == null {
         # The log can never hold the turn that ran the import (Claude Code writes
@@ -655,7 +487,7 @@ export def "gi import" [
     }
     # `doc` and status's `canvas` are different questions: the canvas this call
     # wrote, versus the one the calling session is bound to (usually none).
-    gi-status --root $root | insert doc ($paths_doc.abs | cwd-relative)
+    gi-status | insert doc ($paths_doc.abs | cwd-relative)
 }
 
 # The `session:` value from a canvas's YAML frontmatter, or null when the file
@@ -738,20 +570,24 @@ const GI_OWNED_FLAGS = ["--settings" "--session-id" "--resume" "-r" "--continue"
 
 # The pass-through's one rule: it may not carry a flag gi sets itself. Why it has
 # to fail and not just lose: `claude` takes the LAST --settings, so a forwarded
-# one wins and takes the style and the Stop hook with it — gi half on, the same
-# state the style-exists check in gi-launch refuses to allow, only silent. A
-# forwarded --resume/--session-id likewise unbinds the launch from the canvas
-# that named it. --append-system-prompt is the same failure again and measured:
-# given two, `claude` keeps only the last, so a forwarded one drops the line that
-# names the canvas and the session is back to guessing. `=` split so
-# `--settings={...}` is caught too. Called once, at the top of gi-launch, before
+# one wins and takes the style's name and the Stop hook with it — gi silently
+# half on. A forwarded --resume/--session-id likewise unbinds the launch from
+# the canvas that named it. --append-system-prompt is the same failure again and
+# measured: given two, `claude` keeps only the last, so a forwarded one drops
+# the line that names the canvas and the session is back to guessing. `=` split
+# so `--settings={...}` is caught too.
+# --plugin-dir is deliberately NOT on the list, though gi sets it: `claude`
+# documents it as repeatable, so a forwarded one loads a second plugin
+# ALONGSIDE gi's rather than displacing it. Last-wins is the hazard this guard
+# exists for, and it does not apply — refusing would only forbid something that
+# works. Called once, at the top of gi-launch, before
 # the canvas is written.
 export def gi-reject-owned-flags [extra: list<string>]: nothing -> nothing {
     let owned = $extra | where ($it | split row "=" | first) in $GI_OWNED_FLAGS
     if ($owned | is-not-empty) {
         error make --unspanned {
             msg: $"gi sets ($owned | str join ', ') itself — a canvas launch cannot pass it through"
-            help: "the canvas binds the session (--session-id/--resume/--name) and carries the style and the hook (--settings); to work in another session, open another canvas"
+            help: "the canvas binds the session (--session-id/--resume/--name) and carries the style name and the hook (--settings); to work in another session, open another canvas"
         }
     }
 }
@@ -801,21 +637,6 @@ def gi-launch [
     # Read the run directory off the flag before the next line shadows it.
     let dir = gi-run-dir $root
     let root = $root | default (gi-repo-root) | path expand
-    # outputStyle names a style file that must be on disk, or the session starts
-    # with no style and gi is silently half on. So seed it — copy-if-absent, an
-    # edited style is never touched — rather than refuse. At the repo root and
-    # not at the run directory: Claude Code searches every `.claude/output-styles/`
-    # from the working directory up to the root, so one seed serves the whole
-    # repo instead of one per subdirectory a canvas was ever opened from. Seeding
-    # cannot fail on anything the user typed; every check that can (the flags
-    # above, the fork source below) either runs before it or before its own
-    # write, so no failure leaves a canvas behind.
-    let paths = gi-paths $root
-    gi-seed $paths
-    # Copy-if-absent leaves an already-seeded file alone, so seeding is exactly
-    # what cannot fix drift — say so here, where the session about to start is
-    # the one that will run on the older text.
-    gi-stale-note $paths
     let doc = $doc | default (gi-default-doc)
     # The copy is made here and not in `gi open` so everything below — the
     # session plan, the stamp, GI_CANVAS, --name — sees only the file being
@@ -860,35 +681,31 @@ def gi-launch [
     let args = gi-launch-args $plan.sid $doc_rel --resume=$plan.resume ...$extra
     print $"canvas ($doc_rel), session (gi-session-key $plan.sid)(if $hook { '' } else { ', no Stop hook' })"
     # cd only matters when --root sent the launch elsewhere; without it this is
-    # already where the user stands. It is not needed to find the style: Claude
-    # Code loads project output styles from every `.claude/output-styles/`
-    # between the working directory and the repository root, so the seed at the
-    # root resolves from any subdirectory of it.
+    # already where the user stands. It is not needed to find the style or the
+    # skills: --plugin-dir names them by absolute path, so no directory the
+    # launch stands in can change what loads.
     do {
         cd $dir
-        with-env { GI_CANVAS: $doc_abs } { ^claude --settings (gi-launch-settings --hook=$hook) ...$args }
+        with-env { GI_CANVAS: $doc_abs } {
+            ^claude --plugin-dir $GI_PLUGIN_DIR --settings (gi-launch-settings --hook=$hook) ...$args
+        }
     }
 }
 
-# What gi has seeded in this repo, plus whether the session asking is bound to a
+# Where the protocol comes from, plus whether the session asking is bound to a
 # canvas. Pipeline-friendly record.
-def gi-status [
-    --root: path # Repo root to inspect (default: git top-level)
-]: nothing -> record {
-    let root = $root | default (gi-repo-root) | path expand
-    let paths = gi-paths $root
-    # Paths pass through cwd-relative. This revises "data here; display is the
-    # caller's business", which kept them absolute: the record's only consumer
-    # is a human terminal, where a wide column truncates exactly the segment
-    # that differs, and no script reads these fields — the hook reads
-    # $env.GI_CANVAS itself, which stays absolute.
+# Why `style` and `skills` and `stale` are gone: gi seeds nothing into a repo
+# now, so there is no per-repo state to report and nothing that can drift from
+# the module. `plugin` replaces all three — it is the one directory every
+# launch reads, in place.
+def gi-status []: nothing -> record {
     {
         # Read from the environment, not from a file: activation is per session,
         # so "is gi on" is a property of who is asking, not of the repo.
         canvas: ($env.GI_CANVAS? | if ($in | is-not-empty) { cwd-relative } else { })
-        style: ($paths.style_dst | cwd-relative)
-        skills: (gi-skill-seeds $paths | get dst | each {|p| $p | cwd-relative })
-        stale: (gi-stale $paths | each {|p| $p | cwd-relative })
+        plugin: ($GI_PLUGIN_DIR | cwd-relative)
+        style: $GI_STYLE
+        skills: (ls ($GI_PLUGIN_DIR | path join "skills") | get name | each {|d| $"gi:($d | path basename)" })
     }
 }
 

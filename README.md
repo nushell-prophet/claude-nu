@@ -279,17 +279,14 @@ A session file whose bytes are not valid UTF-8 stops the move before anything is
 
 ### `claude-nu gi`
 
-Set up the gi protocol in a repo — where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing.
-It comes in three verbs.
-`enable` **seeds** the repo: the Canvas output style and the gi skills.
+The gi protocol — where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing.
+It comes in two verbs.
 `import` **writes a canvas** from a session's dialogue.
 `open` **launches** a session bound to one canvas, creating the canvas if it does not exist yet — that launch is the only thing that turns gi on.
 
 Each verb is a real Nushell subcommand, so it carries its own flags and its own `help claude-nu gi <verb>`, and `claude-nu gi <TAB>` completes them.
 
 ```nushell no-run
-claude-nu gi enable            # seed style + skills into this repo (no canvas); optional — `gi open` seeds for itself
-claude-nu gi enable --no-gitignore # ...leaving the seeds visible to git, to commit them for a teammate
 claude-nu gi import            # a canvas from the dialogue of the session this runs inside (gi/session-<id>.md)
 claude-nu gi import <TAB>      # ...or of any session: the picker shows age, size, summary
 claude-nu gi import --to notes/x.md # ...at a chosen path
@@ -302,7 +299,7 @@ claude-nu gi open gi/plan.md --no-hook # style only, without the Stop-hook floor
 claude-nu gi open gi/plan.md --new-session # start over on it: mint a fresh id, overwrite the recorded one
 claude-nu gi open gi/plan.md --fork # ...or keep it as it is and open a copy (gi/plan_1.md) on a session of its own
 claude-nu gi open gi/plan.md --dangerously-skip-permissions --model opus # ...any other flag goes straight to `claude`
-claude-nu gi                   # { canvas, style, skills, stale }
+claude-nu gi                   # { canvas, plugin, style, skills }
 ```
 
 **The Stop hook** is the hard floor that comes with every bound session: the agent's final chat message must stay small — `done`, a status note, a pointer to where the answer landed — at most 3 line breaks and 480 characters; anything bigger blocks the turn with an instruction to move the answer into the canvas and commit it — the block message names the exact file.
@@ -317,9 +314,9 @@ The marker is read from the transcript, from your last authored message, so only
 It covers one turn — the next unmarked message is canvas work again.
 
 **Why activation lives at launch.**
-`gi open` passes the style and the hook to `claude --settings` (which takes inline JSON, merges with the project's settings rather than replacing them), names the canvas to the agent with `--append-system-prompt`, and sets `$env.GI_CANVAS` in the launch environment, which the hook inherits as a child process.
+`gi open` hands the gi plugin — the Canvas style and the skills — to `claude --plugin-dir`, passes the style's name and the hook to `claude --settings` (which takes inline JSON, merges with the project's settings rather than replacing them), names the canvas to the agent with `--append-system-prompt`, and sets `$env.GI_CANVAS` in the launch environment, which the hook inherits as a child process.
 The path goes to the agent as text and to the hook as an environment variable because an environment variable is not in the model's context: pointing the agent at `$env.GI_CANVAS` cost a shell call per session, and when the agent misremembered the variable's name it read an empty string and started listing directories to find a canvas.
-So gi writes to no settings file at all, and there is nothing to switch off afterwards: a plain `claude` in a seeded repo is a plain session, always.
+So gi writes nothing at all — no settings file, and nothing inside the repo but the canvas — and there is nothing to switch off afterwards: a plain `claude` in any repo is a plain session, always.
 The earlier design put `outputStyle`, the hook, and the canvas path into `.claude/settings.local.json` — repo-wide keys that loaded into *every* session opened there, so a canvas from last week kept shaping unrelated work until you remembered to disable it.
 `$env.GI_CANVAS` is also the hook's on/off switch: with no canvas bound it has nothing to enforce and stands down.
 
@@ -328,7 +325,7 @@ A repo can hold as many canvases as you like — each `gi open` binds one sessio
 **One directory.**
 gi runs where you are standing: a relative canvas path is read against your cwd, the session starts there, and the path gi prints, hands to the agent, and quotes in a hook message is relative to the same place — so what you read is what you can paste back.
 `--root <dir>` moves the whole run there instead.
-Only two things stay repo-scoped, because they are properties of the repo and not of the canvas: `.claude/` is seeded at the git root, and the branch guard reads the repo's branch.
+One thing stays repo-scoped, because it is a property of the repo and not of the canvas: the branch guard reads the repo's branch.
 Anchoring the canvas at the git root as well is what this replaced, and inside a monorepo it silently wrote to the wrong file: run from `mono/sub`, `gi open todo/x.md` made and bound `mono/todo/x.md` — a second file with the same name as the one you meant.
 One consequence to know: a canvas opened from a subdirectory gets its own session store, so `claude-nu sessions` at the repo root needs `--all-projects` to list it.
 
@@ -362,33 +359,37 @@ It lands in the working tree untracked; `--commit` puts it in git, `--gitignore`
 Neither is the default: a transcript carries raw paths and whatever the dialogue quoted, so tracking it is your call — but leaving it ignored means every later gi turn stays out of git too, which is the failure gi exists to prevent.
 
 An imported canvas records the session it came from, so `gi open <doc>` reopens **that same session** (`claude --resume`, so the id keeps matching the frontmatter) with the canvas bound, and — when it was the live session — the agent still holds the turns the log could not contain yet and can append that missing tail itself.
-The `gi-canvas` skill drives the whole flow from inside a chat session, so you don't type nushell into Bash: it runs the import and hands you the one line to run.
+The `40-gi-canvas` skill drives the whole flow from inside a chat session, so you don't type nushell into Bash: it runs the import and hands you the one line to run.
 
-**`enable` is optional.**
-`gi open` needs the Canvas style on disk — `--settings` names a style, and Claude Code resolves it against every `.claude/output-styles/` between the launch directory and the repository root — so it seeds the style and the skills itself at the repo root, copy-if-absent, instead of refusing to launch without them.
-One seed serves the whole repo, including a launch from a subdirectory.
-That removes an error rather than reordering around one: the style check used to sit *after* `--fork` had already copied a canvas, so a launch that would not start still left a stray file behind and burned a name in the `_n` series.
-What `gi enable` still owns is `--force` (refreshing seeds after a module update — a launch must never clobber a style you edited) and the chicken-and-egg of running `gi import` from inside a live session, which needs the `gi-canvas` skill already in the repo but launches nothing, so it never passes through `open`.
+**The protocol rides a plugin, and the repo keeps nothing.**
+`gi open` hands `claude --plugin-dir` the directory `claude-nu/gi-md-src/plugin/`, which holds the Canvas output style and the gi skills.
+`--plugin-dir` loads a plugin for one session, reading it where it lies — nothing installed, nothing copied, no trace in `~/.claude.json` beyond a usage counter.
+So a canvas launch writes exactly one thing into your repo: the canvas.
+There is no `.claude/` from gi, no `.gitignore` block explaining it, and no `gi enable` verb — nothing is seeded, so nothing has to be refreshed.
 
-**The seeds hide themselves.**
-Seeding drops six files into `.claude/`, and an untracked directory is reported by git as a whole — in lazygit it lands as the first expanded folder, burying the changes you actually want to read.
-So seeding also writes `.claude/.gitignore` listing the seeds *by exact path*.
-Never `*` or a bare `skills/`: gi seeds into `.claude/` but does not own it, and a directory pattern would silently hide a skill you wrote by hand.
-gi owns a marked block inside the file: what is between the markers is regenerated from the same list the copy loop uses, so a skill added to the module can never be left unignored, and every line outside them is carried through untouched — `.claude/` is shared, and a line gi did not write is not gi's to delete.
-It deliberately does not list itself — `git status` then reports `?? .claude/` as a single line pointing at that one file, which is the state to aim at: the folder still says gi wrote there, and the seeds inside are quiet.
-Hiding the ignore file too would make `.claude/` vanish, and an invisible folder is how you forget a tool is writing into your repo.
-`gi enable --no-gitignore` skips it, for the repo that wants the seeds committed so a teammate gets gi on clone; `gi open` has no such flag, because it is the verb that seeds a repo which never ran `enable`, and that repo would get the noise back.
-Declining is a one-time state anyway — `git add` the seeds and the ignore file stops applying to them, since ignore rules never apply to tracked files.
+What that replaced was copying the style and the skills into every repo, copy-if-absent.
+The copy never came back for a second look, so a repo stayed on whatever the module held the day it was first seeded; one ran canvas sessions for two months on a style that had since grown a whole new rule, and the drift note that would have said so is printed at launch and scrolls away.
+Reading in place cannot go stale.
+It also keeps the protocol opt-in: the plugin loads only for launches gi makes, so a plain `claude` anywhere else is untouched — which a machine-wide install into `~/.claude/skills/` would have given up.
+
+**The parts are namespaced.**
+Claude Code prefixes a plugin's components with the plugin's name, so the style is `gi:Canvas` and the skills are `/gi:git-intent`, `/gi:git-intent-readback`, `/gi:git-intent-distill`, `/gi:git-intent-squash-archive`.
+The prefix is not cosmetic: a bare `Canvas` in `outputStyle` resolves to nothing and the session starts with no style **and no error**, which is gi silently half on.
+
+**A repo seeded by the old gi needs cleaning out by hand.**
+Nothing migrates it, on purpose: gi no longer reads those paths, so it cannot tell its own leftovers from files you put there.
+Project skills and plugin skills coexist rather than override, so until you remove them a canvas session in such a repo loads each gi skill twice — once bare from the repo copy, which is frozen at whatever the module held when that repo was first seeded, and once as `gi:*` from the plugin.
+Four things to delete: `.claude/output-styles/canvas.md`, `.claude/skills/git-intent*`, `.claude/skills/gi-canvas`, and the `# gi seeds` block in `.claude/.gitignore` (delete the file if that block is all it holds).
+
+**One skill is not in the plugin.**
+`40-gi-canvas` (the `40-` prefix is that repo's, so its skills group in the menu) turns the chat you are already in into a canvas, which means it has to be there in sessions gi did *not* launch — exactly where `--plugin-dir` never reaches.
+It ships with the rest of your own skills instead, and is the one piece of gi that is installed rather than read from the module.
 
 **Why `import` is its own verb.**
 It was `gi enable --from-session`, which put a canvas-writing switch on the one command that makes no canvases, and dragged in a path plus three flags that meant nothing without it — enforced by run-time guards a signature states for free.
 As a switch it could also only ever mean the live session, so an older chat could not be imported from the REPL at all, and there was nothing for a completer to complete.
 
-`enable` seeds the **Canvas** output style (the proactive half — the hook is the reactive floor) as `.claude/output-styles/canvas.md`, and the gi skills into `.claude/skills/`.
-That is all it writes: canvases come from `gi open`, which creates one from the template and binds a session to it in the same breath, or from `gi import`, which writes one from a dialogue — so no two verbs ever write the same file.
-Seeded files are never overwritten, so your edits are safe; `--force` refreshes the style and skills from the module, and `status.stale` lists seeds that have drifted from it.
-Drift is also reported where you meet it: `enable`, `import`, and every `gi open` launch print a note naming the seeds that differ, because copy-if-absent pins a repo to whatever the module held when it was first seeded and nobody polls status.
-A note, not an error — the seeded copy still works, and the difference may be your own edit, which `--force` would discard.
+Canvases come from `gi open`, which creates one from the template and binds a session to it in the same breath, or from `gi import`, which writes one from a dialogue — so no two verbs ever write the same file.
 
 ### `claude-nu example`
 

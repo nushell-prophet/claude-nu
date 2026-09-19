@@ -8,7 +8,7 @@
 #   slash-commands  # Extract the slash commands invoked in a session — what you typed
 #   export-session  # Render a session's dialogue to markdown
 #   project-move    # Retarget Claude's stored state from a project's old path to its new one
-#   gi              # gi protocol: status on its own; gi enable seeds a repo, gi import turns a session into a canvas, gi open launches a session bound to one
+#   gi              # gi protocol: status on its own; gi import turns a session into a canvas, gi open launches a session bound to one
 #   example         # Pick a pipeline from the module's own `@example` blocks and paste it into your command line
 #
 # Usage:
@@ -26,7 +26,7 @@ export use sessions.nu [
 ]
 # `gi check` is deliberately absent: it is the Stop hook's body, not a verb a
 # user types, and the hook imports it straight from gi.nu (see GI_COMMAND).
-export use gi.nu [ main "gi enable" "gi import" "gi open" ]
+export use gi.nu [ main "gi import" "gi open" ]
 # `main` imports under the module's own name — this is `claude-nu project-move`.
 export use project-move.nu [ main ]
 export use example.nu [ main ]

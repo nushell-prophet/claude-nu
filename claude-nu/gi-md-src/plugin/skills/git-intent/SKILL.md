@@ -20,7 +20,7 @@ If the agent's reply would be large, write it to a sibling file next to the docu
 It's a REPL cycle: user instructs, sees the diff, judges, instructs again.
 Git adds what a plain REPL lacks — per-step rollback and a history you can return to.
 That history is the workflow's main artifact: an auditable record of decisions, their motivations, and the paths that were considered and rejected.
-The iterative history is preserved on archival (see `/git-intent-squash-archive`) precisely so the rejected paths aren't lost.
+The iterative history is preserved on archival (see `/gi:git-intent-squash-archive`) precisely so the rejected paths aren't lost.
 
 ## Instruction channels
 
@@ -120,6 +120,6 @@ The subject prefix is `gi:` (quiet — the commit *is* the unit, no surrounding 
 
 ## Related
 
-- `/git-intent-readback` — when the commits to process are the user's answers to your questions, run this first: restate them and stop, instead of executing a reading nobody confirmed
-- `/git-intent-distill` — when the document has filled up with spent markers and superseded deliberation, cut it back to current state before the next loop
-- `/git-intent-squash-archive` — when done iterating, squash the branch into one clean commit preserved as a git tag
+- `/gi:git-intent-readback` — when the commits to process are the user's answers to your questions, run this first: restate them and stop, instead of executing a reading nobody confirmed
+- `/gi:git-intent-distill` — when the document has filled up with spent markers and superseded deliberation, cut it back to current state before the next loop
+- `/gi:git-intent-squash-archive` — when done iterating, squash the branch into one clean commit preserved as a git tag

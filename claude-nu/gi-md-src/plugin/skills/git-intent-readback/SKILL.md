@@ -44,7 +44,7 @@ If you hesitate between *clear* and *ambiguous*, it is ambiguous.
 
 1. **Tree check** — `git status --porcelain`.
    Uncommitted answers are a draft he is still writing: read them back if he pasted them as a `git diff`, and leave your readback uncommitted too; never write over his lines or sweep them into your commit.
-   (Same rule as `/git-intent`; `/git-intent-distill` alone still requires a clean tree, because it rewrites the whole file.)
+   (Same rule as `/gi:git-intent`; `/gi:git-intent-distill` alone still requires a clean tree, because it rewrites the whole file.)
 2. **Get the answers** — `git log -p -N -- <doc>` with `N = $ARGUMENTS` (default `1`); `$ARGUMENTS` may instead name a scope or file.
    `git show HEAD~N:<doc>` gives the pre-answer version — that is where your original questions still stand.
    A pasted `git diff` is the same input, uncommitted: the answers are in the paste, and the pre-answer version is `HEAD:<doc>`.
@@ -64,10 +64,10 @@ Confirmation costs the user one word, and it is the only thing standing between 
 
 ## After
 
-The user edits, answers the `???`, commits — then `/git-intent` executes.
-The `## Readback` section is spent process material once the work starts: `/git-intent-distill` cuts it into history.
+The user edits, answers the `???`, commits — then `/gi:git-intent` executes.
+The `## Readback` section is spent process material once the work starts: `/gi:git-intent-distill` cuts it into history.
 
 ## Related
 
-- `/git-intent` — the execute loop this pass deliberately delays.
-- `/git-intent-distill` — removes the spent readback section afterwards.
+- `/gi:git-intent` — the execute loop this pass deliberately delays.
+- `/gi:git-intent-distill` — removes the spent readback section afterwards.

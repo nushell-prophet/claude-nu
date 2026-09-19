@@ -60,7 +60,7 @@ A column blank in every recent session is a reader that has stopped reading.
 Columns that are legitimately blank are listed in `known.nuon` under `expected_blank_columns` and excluded.
 
 **smoke** — every read-only public command, run for real: `projects`, `sessions --all-columns`, `sessions | messages`, `messages --include-responses`, `export-session`, `gi`.
-Writing verbs are deliberately absent: `gi open` launches `claude`, and `gi enable` / `gi import` / `project-move` change the tree.
+Writing verbs are deliberately absent: `gi open` launches `claude`, and `gi import` / `project-move` change the tree.
 
 The very first run, on 2026-08-17 against Claude Code 2.1.233, is the best worked example — it hit every verdict at once:
 

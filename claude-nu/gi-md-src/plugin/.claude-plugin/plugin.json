@@ -1,0 +1,5 @@
+{
+  "name": "gi",
+  "description": "The gi canvas protocol: the Canvas output style and the skills that work a canvas. Loaded for one launch by `claude-nu gi open`, never installed.",
+  "version": "1.0.0"
+}

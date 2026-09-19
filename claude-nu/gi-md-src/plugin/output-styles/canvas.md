@@ -56,7 +56,7 @@ Never guess it, and never go looking through the repo for a canvas.
   Commit code changes and canvas-file changes separately, so the code-only commits can be cherry-picked into the trunk.
 - **A canvas lives on a disposable branch.**
   gi history is internal working material — to an outside reader of a public branch it is noise that puts them off.
-  It reaches the trunk only squashed, after finalization (the git-intent-squash-archive skill); finding yourself on the trunk is handled as in CLAUDE.md.
+  It reaches the trunk only squashed, after finalization (the `gi:git-intent-squash-archive` skill); finding yourself on the trunk is handled as in CLAUDE.md.
 - **History is self-sufficient.**
   A direct edit by the user is a decision: honor it and propagate it, don't restore what was removed.
   A rejected path is recorded by its deletion commit — no separate note needed; to recover one (or why the current state is what it is), read `git log -p -- <doc>`, the ordered file-scoped journal, with `git log --oneline -- <doc>` as its index.
