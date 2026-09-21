@@ -1,9 +1,15 @@
 # gi — the gi protocol: carried by a plugin, activated per session at launch.
 #
 # The gi protocol moves all "what/why" into git: the diff and the commit body
-# carry the record, the chat carries almost nothing. Two commands do the work,
+# carry the record, the chat carries almost nothing. Three commands do the work,
 # and the split between them is the whole design:
 #
+#   gi new             names a canvas from a slug — `todo/<date>-<slug>.md` —
+#                      writes the frontmatter and the header into it, opens it
+#                      for the task to be written in (a zellij pane of its own,
+#                      so the document stays in view), and ends in `gi open`.
+#                      The naming is all it adds; everything after it is the
+#                      launch below.
 #   gi import          writes one canvas, from a session's dialogue — the one it
 #                      runs inside, or any session named on the line. The only
 #                      verb that can capture the session running it, since it
@@ -338,10 +344,139 @@ def gi-session-key [session: string]: nothing -> string {
 # blank line.
 
 # Where the gi protocol comes from, and the canvas this session is bound to.
-# The verbs: `gi import`, `gi open`.
+# The verbs: `gi new`, `gi import`, `gi open`.
 @category claude-nu
 export def main []: nothing -> record {
     gi-status
+}
+
+# The file name a slug gets: the day, then the slug. The date is a parameter
+# and not read inside, so the format and the collision are testable on a day
+# that is not today. Exported for tests.
+export def gi-new-name [slug: string, date: string]: nothing -> string {
+    $"($date)-($slug).md"
+}
+
+# The starting content of a canvas `gi new` writes: the todo frontmatter the
+# user's own notes carry, then the same header every other new canvas gets.
+# Not `to yaml` because: a bare date comes back quoted, so the trailing #hint
+# would land inside the value instead of being a yaml comment.
+# Exported for tests.
+export def gi-new-text [date: string]: nothing -> string {
+    [
+        "---"
+        "status: draft #draft | in_progress | completed | rejected"
+        $"created: '($date)' #yyyyMMdd"
+        $"updated: '($date)' #yyyyMMdd"
+        "---"
+        ""
+        (open --raw $GI_HEADER_SRC)
+    ]
+    | str join "\n"
+}
+
+# Which command will open the canvas — resolved before anything is written, so
+# an editor that is not there leaves no canvas behind for the next run to refuse
+# as already existing (the rule gi-fork-canvas and gi import already follow).
+# Inside zellij that is `zellij`, which reads $EDITOR/$VISUAL itself and refuses
+# when neither is set; outside it is $env.EDITOR, with no default — which editor
+# to open is the user's to declare, and a name invented here would fail as
+# "command not found" on a machine that never had it, far from the setting that
+# is actually missing.
+def gi-editor []: nothing -> string {
+    if ($env.ZELLIJ? | is-not-empty) { return "zellij" }
+    if ($env.EDITOR? | is-empty) {
+        error make --unspanned {
+            msg: "no editor: $env.EDITOR is unset"
+            help: "set $env.EDITOR, or write the canvas without opening it: gi new <slug> --no-editor"
+        }
+    }
+    $env.EDITOR
+}
+
+# Put the canvas in front of the user so the task is written in it. Inside
+# zellij it opens in a pane of its own and nothing waits for it: the session
+# starts beside it, so the document stays in view while the session runs.
+# Outside zellij there is no second pane to use, so the editor takes this one
+# and the launch follows when it exits.
+# Not `zellij run --blocking -- $editor` because: it would keep the old
+# write-then-launch sequence, but the pane holding the canvas closes exactly
+# when the session starts — the one moment the canvas has to be visible.
+# The cursor lands past the header, on the first line the user writes on — as
+# `cmd+e` already does with its `hx +7`. `+N` is the line-number syntax of hx,
+# vim and nano; an $env.EDITOR that spells it another way opens the file at the
+# top, which is a wrong cursor and not a failure.
+def gi-edit [doc: path, editor: string]: nothing -> nothing {
+    let line = (open --raw $doc | lines | length) + 1
+    if $editor == "zellij" {
+        ^zellij edit --line-number $line $doc
+    } else {
+        ^$editor $"+($line)" $doc
+    }
+}
+
+# Why a verb of its own and not `gi open <path>` with the path typed out: the
+# date prefix and the frontmatter were done by hand or by zellij's `cmd+e`,
+# which names a file after the day alone — so the slug arrived by renaming the
+# file in the editor afterwards, and the path was then typed a second time for
+# `gi open`. Naming the canvas is the only thing that ever varied.
+# Why `--fork` and `--new-session` are not among the flags it borrows: both act
+# on a canvas that exists and already records a session, and this one is made
+# here.
+
+# Create a canvas and open a session bound to it: `<folder>/<date>-<slug>.md`,
+# the editor for writing the task in, then the launch.
+@category claude-nu
+export def --wrapped "gi new" [
+    slug: string # What the canvas is about; the file is <date>-<slug>.md
+    --folder: path = "todo" # Where the canvas lands, relative to where you are
+    --root: path # Run gi in this directory instead of here: the canvas is written there and the session starts there (default: your cwd)
+    --no-editor # Write the canvas without opening it for editing
+    --no-claude-launch # Write the canvas and hand back its path; launch nothing
+    --no-hook # Launch with the Canvas style but without the Stop-hook floor
+    --dangerously-skip-permissions # Pass claude's flag of the same name through
+    ...rest: string # Any other flags go straight to `claude`
+]: nothing -> any {
+    # Same rule as `gi open`'s canvas argument: under --wrapped an undeclared
+    # flag typed before the positional becomes the positional, so a typo would
+    # otherwise create `todo/<date>---modle.md` instead of reaching the
+    # pass-through below.
+    if ($slug | str starts-with "-") {
+        error make {
+            msg: $"($slug) is not a slug"
+            label: {text: "flags go after the slug: gi new <slug> <flags>" span: (metadata $slug).span}
+        }
+    }
+    let extra = if $dangerously_skip_permissions { ["--dangerously-skip-permissions"] } else { [] }
+    | append $rest
+    # Before the canvas is written, not when it is opened: see gi-editor.
+    let editor = if $no_editor { null } else { gi-editor }
+    let dir = gi-run-dir $root
+    # Read once: a run that crosses midnight between the two uses would name the
+    # file for one day and stamp `created:` with the next.
+    let today = date now | format date '%J'
+    let doc = $folder | path join (gi-new-name $slug $today)
+    let paths_doc = gi-doc-path $dir $doc
+    # The same slug on the same day names the canvas that is already there, and
+    # that is nearly always the one meant. Not todo.nu's `-1` suffix because:
+    # that rule exists for a name with nothing in it but the date, where a
+    # second note the same day is ordinary; a slug is typed on purpose.
+    if ($paths_doc.abs | path exists) {
+        error make --unspanned {
+            msg: $"canvas already exists: ($paths_doc.rel)"
+            help: $"open it instead: claude-nu gi open ($paths_doc.rel) — or pick another slug"
+        }
+    }
+    mkdir ($paths_doc.abs | path dirname)
+    gi-new-text $today | save --raw $paths_doc.abs
+    if $editor != null { gi-edit $paths_doc.abs $editor }
+    if $no_claude_launch {
+        # The one case with something to hand back: the canvas is unbound and
+        # nothing was launched, so the path is what the caller does the next
+        # thing with. A launch returns nothing — `claude` has the terminal.
+        return ($paths_doc.abs | cwd-relative)
+    }
+    gi-launch --root $root --doc $doc --hook=(not $no_hook) --extra $extra
 }
 
 # Open a canvas: launch a session bound to it, creating the canvas from the

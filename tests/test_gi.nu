@@ -5,6 +5,11 @@ use std/testing *
 # `gi` command (main) plus the exported helpers, unprefixed.
 use ../claude-nu/gi.nu *
 
+# The canvas template, resolved against this file rather than the working
+# directory: `path self` takes a path relative to the script, and a const is the
+# only place it runs.
+const GI_HEADER_SRC = (path self ../claude-nu/gi-md-src/canvas-header.md)
+
 def temp-root []: nothing -> path {
     $nu.temp-dir | path join $"gi-(random uuid)"
 }
@@ -28,6 +33,17 @@ def stub-claude [root: path]: nothing -> path {
     with-env {PATH: ([$dir] | append $env.PATH)} {
         assert equal (which claude | get path.0? ) $bin "the stub claude is not the one PATH resolves"
     }
+    $dir
+}
+
+# The same trick for `zellij`: `gi new` hands the editor to a pane instead of
+# taking the terminal, and the branch is only reachable with $env.ZELLIJ set.
+def stub-zellij [root: path]: nothing -> path {
+    let dir = $root | path join "stub-bin"
+    mkdir $dir
+    let bin = $dir | path join "zellij"
+    $"#!/bin/sh\nprintf '%s\\n' \"$*\" > ($root | path join 'zellij-args')\n" | save --force $bin
+    ^chmod +x $bin
     $dir
 }
 
@@ -469,6 +485,150 @@ def "stamping a session joins an existing frontmatter block" [] {
 
     # One block, not two: a hand-written key keeps its place.
     assert equal $meta {session: "11111111-2222-3333-4444-555555555555" title: "my plan"}
+}
+
+# =============================================================================
+# new — a canvas named from a slug, then the launch
+# =============================================================================
+
+@test
+def "a canvas is named by the day it was made and the slug" [] {
+    assert equal (gi-new-name "gi-new" "20260921") "20260921-gi-new.md"
+}
+
+@test
+def "a new canvas starts as a todo carrying the canvas header" [] {
+    let text = gi-new-text "20260921"
+    let meta = $text | lines | skip 1 | take until {|l| $l == "---" } | str join "\n" | from yaml
+
+    # The frontmatter the user's own notes carry — `lstd` reads `status` to
+    # decide which notes are still open, so a canvas made here has to answer it.
+    # `draft`, not the line: the `#hint` after it is a yaml comment, which is
+    # what the hand-written frontmatter buys over `to yaml`.
+    assert equal $meta.status "draft"
+    assert equal $meta.created "20260921"
+    assert equal $meta.updated "20260921"
+    # And the header every other new canvas gets, so a canvas made by this verb
+    # and one made by `gi open` read the same below the frontmatter.
+    assert ($text | str ends-with (open --raw $GI_HEADER_SRC))
+}
+
+@test
+def "new hands back the path when it launches nothing" [] {
+    let root = temp-root
+    mkdir $root
+    let today = date now | format date '%J'
+    let returned = gi new gi-new --root $root --no-editor --no-claude-launch
+    let doc = $root | path join "todo" $"($today)-gi-new.md"
+    let launched = $root | path join "claude-args" | path exists
+    let bound = if ($doc | path exists) { gi-frontmatter-session $doc } else { "no canvas" }
+    rm --recursive --force $root
+
+    assert equal $returned $doc
+    assert (not $launched) "a --no-claude-launch run started a session"
+    # Unbound on purpose: the session is minted by the launch, so a canvas left
+    # here can still be opened by `gi open` later without --new-session.
+    assert equal $bound null
+}
+
+@test
+def "new opens a session bound to the canvas it just wrote" [] {
+    let root = temp-root
+    mkdir $root
+    ^git -C $root init --quiet
+    let today = date now | format date '%J'
+    let launched = with-env {PATH: (stub-claude $root | append $env.PATH)} {
+        gi new gi-new --root $root --no-editor
+        try { open --raw ($root | path join "claude-args") } catch { "" }
+    }
+    let doc = $root | path join "todo" $"($today)-gi-new.md"
+    let bound = if ($doc | path exists) { gi-frontmatter-session $doc } else { "no canvas" }
+    rm --recursive --force $root
+
+    # The whole point of the verb: the file it named is the file the session is
+    # bound to, with no path typed a second time.
+    assert ($launched | str contains $"--name todo/($today)-gi-new.md")
+    assert ($bound | is-not-empty) "the canvas was launched without recording its session"
+    assert ($launched | str contains $"--session-id ($bound)")
+}
+
+@test
+def "new opens the canvas in a pane of its own and starts the session beside it" [] {
+    let root = temp-root
+    mkdir $root
+    ^git -C $root init --quiet
+    let today = date now | format date '%J'
+    let bin = stub-claude $root
+    stub-zellij $root | ignore
+    with-env {PATH: ($bin | append $env.PATH), ZELLIJ: "0"} {
+        gi new gi-new --root $root
+    }
+    let doc = $root | path join "todo" $"($today)-gi-new.md"
+    let edited = try { open --raw ($root | path join "zellij-args") | str trim } catch { "" }
+    let launched = $root | path join "claude-args" | path exists
+    # One past the last line the template wrote: the cursor lands where the user
+    # types, not on the header. Counted from the template and not from the file,
+    # which the launch has since stamped a `session:` line into.
+    let line = (gi-new-text $today | lines | length) + 1
+    rm --recursive --force $root
+
+    assert equal $edited $"edit --line-number ($line) ($doc)"
+    # Both in one run: nothing waits for the editor, which is what puts the
+    # canvas beside the session instead of in front of it.
+    assert $launched "the session did not start after the editor pane opened"
+}
+
+@test
+def "the folder flag moves the canvas out of todo" [] {
+    let root = temp-root
+    mkdir $root
+    let today = date now | format date '%J'
+    gi new gi-new --root $root --folder gi --no-editor --no-claude-launch | ignore
+    let at_gi = $root | path join "gi" $"($today)-gi-new.md" | path exists
+    let at_todo = $root | path join "todo" | path exists
+    rm --recursive --force $root
+
+    assert $at_gi
+    assert (not $at_todo) "the default folder was made even though --folder named another"
+}
+
+@test
+def "a run with no editor set fails before the canvas is written" [] {
+    let root = temp-root
+    mkdir $root
+    let caught = with-env {ZELLIJ: "" EDITOR: ""} {
+        try { gi new gi-new --root $root --no-claude-launch; "no error" } catch {|e| $e.msg }
+    }
+    let wrote = $root | path join "todo" | path exists
+    rm --recursive --force $root
+
+    # No invented editor: which one to open is the user's to declare.
+    assert ($caught | str contains "no editor")
+    # And the check runs before the file, or the canvas it left behind would be
+    # refused as already existing by the next run, once the editor is set.
+    assert (not $wrote) "a canvas was written before the editor was resolved"
+}
+
+@test
+def "the same slug on the same day names the canvas already there" [] {
+    let root = temp-root
+    mkdir $root
+    gi new gi-new --root $root --no-editor --no-claude-launch | ignore
+    let second = try { gi new gi-new --root $root --no-editor --no-claude-launch; "no error" } catch {|e| $e.msg }
+    rm --recursive --force $root
+
+    # Not a `-1` sibling: a slug is typed on purpose, so a repeat means the
+    # canvas wanted is the one that exists.
+    assert ($second | str contains "canvas already exists")
+}
+
+@test
+def "a flag typed where the slug goes is not taken as the slug" [] {
+    # Same trap `gi open` has: under --wrapped an undeclared leading flag lands
+    # in the positional, so this would otherwise make `todo/<date>---model.md`.
+    let caught = try { gi new --model opus --no-claude-launch; "no error" } catch {|e| $e.msg }
+
+    assert ($caught | str contains "is not a slug")
 }
 
 # No tests here for `gi --no-hook`, `gi --fork` or `gi <doc>`: each verb is its

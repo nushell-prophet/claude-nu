@@ -280,13 +280,18 @@ A session file whose bytes are not valid UTF-8 stops the move before anything is
 ### `claude-nu gi`
 
 The gi protocol — where all "what/why" lives in git (the diff and commit body) and the chat carries almost nothing.
-It comes in two verbs.
+It comes in three verbs.
+`new` **names a canvas** from a slug and opens it.
 `import` **writes a canvas** from a session's dialogue.
 `open` **launches** a session bound to one canvas, creating the canvas if it does not exist yet — that launch is the only thing that turns gi on.
 
 Each verb is a real Nushell subcommand, so it carries its own flags and its own `help claude-nu gi <verb>`, and `claude-nu gi <TAB>` completes them.
 
 ```nushell no-run
+claude-nu gi new plan          # todo/<date>-plan.md, the editor to write the task in, then a session bound to it
+claude-nu gi new plan --folder gi # ...in another folder
+claude-nu gi new plan --no-editor # ...written straight, no editor
+claude-nu gi new plan --no-claude-launch # ...and nothing launched: the path comes back instead
 claude-nu gi import            # a canvas from the dialogue of the session this runs inside (gi/session-<id>.md)
 claude-nu gi import <TAB>      # ...or of any session: the picker shows age, size, summary
 claude-nu gi import --to notes/x.md # ...at a chosen path
@@ -349,6 +354,13 @@ The use it exists for: plan a change in one conversation, then implement it in a
 The name carries the lineage, so nothing has to be recorded in the frontmatter.
 Numbering is max+1 over the series, never the first free gap: `gi/` is untracked by default, so a deleted `plan_1.md` may still be named in a commit body or a chat pointer, and must not be handed to a different canvas later.
 `--fork` needs a canvas to fork from (the positional names the source, not the file being created), and cannot be combined with `--new-session` — both mint an id, but on different files.
+
+**Starting a canvas from a slug.**
+`gi new <slug>` is the naming half of `gi open`: the canvas is `<folder>/<date>-<slug>.md` (`--folder`, default `todo`), it starts with the todo frontmatter — `status`, `created`, `updated` — and the same header a canvas gets from `gi open`, and the command ends in that launch.
+It then puts the file in front of you to write the task in: inside zellij in a pane of its own, so the document stays in view while the session runs beside it; outside zellij in `$env.EDITOR` in the terminal you are in, and the launch follows when the editor exits — with no `$env.EDITOR` set that is an error naming `--no-editor`, never a guess at which editor you have.
+`--no-editor` skips that, `--no-claude-launch` skips the launch and hands back the path instead, and the flags `gi open` defines — `--root`, `--no-hook`, `--dangerously-skip-permissions`, anything else straight to `claude` — work here too.
+`--fork` and `--new-session` are the two it does not take: both act on a canvas that exists and already records a session.
+The same slug on the same day is an error naming the canvas already there, not a second file — a slug is typed on purpose, unlike zellij's `cmd+e` note, which is named after the day alone and numbers a repeat.
 
 **Switching into gi mid-chat:** `gi import` starts the canvas from a session's dialogue instead of the empty template, so the discussion that led you to gi is the canvas's first content.
 With no session named it takes the one it runs inside (`$env.CLAUDE_CODE_SESSION_ID` — not "the newest session file", which during a live session is as likely a subagent transcript); name one — with a completer showing age, size and summary — to import an older chat from the REPL, where there is no live session to fall back on.
