@@ -31,14 +31,14 @@ claude-nu/
 │   ├── example.nu       # `claude-nu example`: the module's own `@example` blocks as a completion menu that pastes the picked pipeline into the command line
 │   ├── gi-md-src/       # canvas-header.md (the new-canvas template) and plugin/ — the gi plugin `gi open` hands to `claude --plugin-dir`: .claude-plugin/plugin.json, output-styles/canvas.md, skills/
 │   └── gi-hook.nu       # Stop-hook entry point — `nu --stdin` runs this file; it imports `gi check` from gi.nu, which mod.nu deliberately does not re-export
-├── completions/         # Completions for the two CLIs this repo is about; unrelated tools moved to ../dotfiles/nushell/completions/
+├── completions/         # Completions for the two CLIs this repo is about; unrelated tools: ../dotfiles/nushell/completions/
 │   ├── claude.nu        # claude CLI (50+ flags, session picker, MCP/plugin subcommands)
 │   └── nu.nu            # nu CLI (dynamic: parses scripts for subcommands at tab-time)
 ├── tests/               # 240+ tests (nutest framework)
 └── toolkit.nu           # Dev tools: test, test-unit, vendor-sessions, check, update-captures
 ```
 
-Reference-doc fetchers (Claude Code + Nushell docs) moved to cozy: `cozy docs claude` / `cozy docs nushell` (see `../cozy/cozy-module/docs.nu`).
+Reference-doc fetchers (Claude Code + Nushell docs): `cozy docs claude` / `cozy docs nushell` (see `../cozy/cozy-module/docs.nu`).
 
 **Key concepts:**
 - Session files: JSONL in `~/.claude/projects/<encoded-path>/` where path is `-` separated segments
@@ -48,7 +48,6 @@ Reference-doc fetchers (Claude Code + Nushell docs) moved to cozy: `cozy docs cl
 - `claude.nu` session picker shows age, size, and summary alongside UUIDs
 - The protocol ships as a plugin: `claude-nu/gi-md-src/plugin/` holds `.claude-plugin/plugin.json` (name `gi`), `output-styles/canvas.md` and `skills/`, and `gi open` hands the directory to `claude --plugin-dir` for that launch alone.
   Nothing is installed and nothing is copied — the plugin is read in place, so it cannot drift from the module and a repo gets no `.claude/` from gi at all.
-  Why, and what it replaced: seeding was copy-if-absent, so every repo was pinned to the module text of its first seed and nobody read `status.stale`; one repo ran canvas sessions for two months on a style the module had long since rewritten.
   It also loads only for launches gi makes, so a plain `claude` anywhere is untouched — the property a machine-wide `~/.claude/skills/` install would have lost.
   **Plugin components are namespaced by the plugin name.** The style is `gi:Canvas` (`GI_STYLE`) and the skills are `gi:git-intent`, `gi:git-intent-readback`, `gi:git-intent-distill`, `gi:git-intent-squash-archive`.
   A bare `Canvas` in `outputStyle` resolves to nothing and the session starts style-less **with no error** — verified against the CLI, and the reason `gi-launch-settings` is pinned by its own test.
@@ -59,11 +58,11 @@ Reference-doc fetchers (Claude Code + Nushell docs) moved to cozy: `cozy docs cl
 - The `chat:` aside has two halves that must stay in sync: `gi-off-canvas` in `gi.nu` (the hook reads the marker from the transcript's last authored user message and lets the turn end — message rule and branch guard both) and the matching bullet in the style (answer in chat, write nothing).
   The marker is only ever the user's: an agent-written one would be the agent lifting its own floor.
 - `gi import` is the only verb runnable from inside the session being captured: `open` launches `claude`, which a live session cannot do for itself.
-  Its session is a parameter with the `nu-complete claude sessions` picker, not a switch — a switch could only mean the live session, so the REPL case (import an older chat) had no spelling at all.
+  Its session is a parameter with the `nu-complete claude sessions` picker, not a switch — a switch could only mean the live session, so the REPL case (import an older chat) would have no spelling at all.
 - gi runs in one directory and every path is relative to it: `gi-run-dir` is `--root` when given, otherwise your cwd.
   The launch `cd`s there, a relative canvas is read there, and the one short form (`gi-doc-path`'s `rel`) — printed, pasted back as a command, handed to the agent, and used by the hook — is relative to it.
   `root` stays a separate value for the one repo-scoped thing left: the branch guard.
-  Anchoring the canvas at the repo root instead was the bug: inside a monorepo the root is never where you work, so `gi open todo/x.md` from `mono/sub` made and bound `mono/todo/x.md`.
+  Not the repo root: inside a monorepo the root is never where you work, so `gi open todo/x.md` from `mono/sub` would make and bind `mono/todo/x.md`.
   The `cd` is not needed to find the style or the skills — `--plugin-dir` names the plugin by absolute path, so no directory the launch stands in changes what loads.
   Cost accepted: a canvas opened from a subdirectory gets its own session store (`~/.claude/projects/` is keyed by cwd), so `claude-nu sessions` at the root will not list it without `--all-projects`; `claude --resume <id>` finds it anyway, since v2.1.223 searches every project on the machine.
 - A repo seeded by the old gi keeps its copies until they are deleted by hand, and project skills coexist with plugin skills rather than override them — so a canvas session there loads each gi skill twice, the repo's copy bare and frozen, the plugin's as `gi:*`.
@@ -109,7 +108,7 @@ claude-nu gi import --commit           # ...and commit it; --gitignore keeps it 
 claude-nu gi open gi/plan.md           # Launch a session bound to that canvas: the gi plugin (style + skills, read in place) via `--plugin-dir`, its style name and the Stop hook via `claude --settings`, the canvas path stated to the agent via `--append-system-prompt` (an env var is not in the model's context, so GI_CANVAS alone left it hunting), $env.GI_CANVAS set for the hook. A canvas with no `session:` gets one minted and written in; one that has it is resumed. Created from the template if new; --no-hook drops the floor; --new-session overwrites the recorded id when that session is gone; --fork instead leaves the canvas bound and opens a copy at the next `_n` sibling (`plan.md` → `plan_1.md`, max+1 over the series) on a session of its own — plan in one conversation, implement in a fresh context; parallel canvases per repo. `--wrapped`: unknown flags (`--model`, ...) go straight to `claude` (`--dangerously-skip-permissions` is not one of them — `gi open` declares it itself, so that it cannot land in the doc's place), except the ones gi sets itself (`--settings`, `--session-id`, `--resume`/`-r`, `--continue`/`-c`, `--fork-session`, `--name`, `--append-system-prompt` — `claude` keeps only the last of two, which would drop the canvas line), and a flag in the doc's place is an error rather than a canvas named `--model`
 claude-nu gi                           # { canvas, plugin, style, skills } — canvas comes from $env.GI_CANVAS, i.e. the asking session; the rest describe the plugin every launch reads, and there is no `stale` any more because nothing is copied
 claude-nu example                      # The `@example` blocks of the loaded claude-nu commands as a table: slug, description, pipeline
-claude-nu example <slug>               # ...paste that pipeline into the command line (`commandline edit --replace`), for the user to run. Tab-completes, the menu showing the whole pipeline next to each slug. Source is `scope commands`, not a second list; cross-command pipelines hang on the module's `main`, which no longer spells them out in its help text. The completer returns `{options: {sort: false}, completions: ...}` — the menu order is authored (module pipelines first, then each command's, as declared), not alphabetical
+claude-nu example <slug>               # ...paste that pipeline into the command line (`commandline edit --replace`), for the user to run. Tab-completes, the menu showing the whole pipeline next to each slug. Source is `scope commands`, not a second list; cross-command pipelines hang on the module's `main`. The completer returns `{options: {sort: false}, completions: ...}` — the menu order is authored (module pipelines first, then each command's, as declared), not alphabetical
 ```
 
 ## Development

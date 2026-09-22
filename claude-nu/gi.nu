@@ -156,12 +156,12 @@ def gi-branch [root: path]: nothing -> any {
 # and handed to the agent is relative to it.
 # `root` (the repo) is a different question and stays a different value: it is
 # the branch the guard reads. That is repo-scoped; the canvas is not.
-# Why not the repo root for both, which is what this replaced: a path typed on a
+# Why not the repo root for both: a path typed on a
 # command line means what it means everywhere else in a shell — relative to
 # where you stand — and inside a monorepo the repo root is never where you work.
-# Run from `mono/sub`, `gi open todo/x.md` silently made and bound
+# Run from `mono/sub`, `gi open todo/x.md` would silently make and bind
 # `mono/todo/x.md`, a second file with the same basename as the one the user
-# meant, and the session wrote its whole answer into it.
+# meant, and the session would write its whole answer into it.
 def gi-run-dir [root?: path]: nothing -> path {
     $root | default $env.PWD | path expand
 }
@@ -208,11 +208,8 @@ def cwd-relative []: path -> path {
 # two `cp` calls running in different threads write each other's bytes, so a
 # destination ends up the right length holding another file's content, and
 # nothing errors. Measured: 46 of 205 copies corrupted under `par-each`, 0 with
-# this, 0 with an external `cp`. That is what made `tests/test_gi.nu` fail a
-# different test on nearly every run — nutest runs tests in parallel, so several
-# seedings copied at once. The seeding is gone (the protocol rides a plugin
-# now), but the two remaining callers — the canvas template and `--fork` — still
-# write files a launch immediately reads, so the fix stays.
+# this, 0 with an external `cp`. The two callers — the canvas template and
+# `--fork` — write files a launch immediately reads.
 # No --force: both callers write a path they have just proved free (the template
 # only inside `if not ($doc_abs | path exists)`, a fork at the next unused `_n`).
 # A save that finds a file there means that proof broke, and it should say so.

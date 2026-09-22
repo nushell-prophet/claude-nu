@@ -35,8 +35,7 @@ def "get-sessions-dir returns valid path for current directory" [] {
 
 @test
 def "messages drops every system/command wrapper prefix" [] {
-    # Why: the old shadow test kept its own copy of the prefix list, which had
-    # already drifted from SYSTEM_PREFIXES. Drive one message per real prefix
+    # Why: drive one message per real prefix
     # through `messages` so renaming/removing any one is caught here. (The list
     # mirrors SYSTEM_PREFIXES; feeding a prefix that the source no longer filters
     # makes it survive and fails this test.)
@@ -590,7 +589,7 @@ def "messages always includes session column" [] {
 
 @test
 def "piping top-level sessions into messages excludes subagents" [] {
-    # Why: messages no longer enumerates sessions — the caller scopes via
+    # Why: the caller scopes via
     # `sessions | where parent_session_id == null`. Subagent transcripts hold
     # agent-driven turns, so dropping them is the caller's choice, not messages'.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
@@ -1142,12 +1141,12 @@ def "bare claude-nu answers with guidance, not command not found" [] {
     # Why: a directory module with no `main` makes the bare name fall through to
     # an external-command lookup — "command not found" one line after `claude-nu
     # sessions` worked. The signpost takes no search term (scope lives left of
-    # the pipe now), so it can only name the subcommands and point at the examples.
+    # the pipe), so it can only name the subcommands and point at the examples.
     let err = try { claude-nu; null } catch {|e| $e }
     assert equal $err.msg "claude-nu needs a subcommand"
     assert ($err.details.help | str contains "claude-nu example")
 
-    # The search shapes it used to spell out are `@example` blocks now, so they
+    # The search shapes are `@example` blocks, so they
     # are asserted where they live — one copy, reachable from help, from
     # `claude-nu example` and from `dotnu examples-update`.
     let examples = scope commands | where name == "claude-nu" | get examples | first | get example
@@ -2996,8 +2995,7 @@ def "a window that matches nothing is empty rather than an error" [] {
 @test
 def "read-session-records names the file when a line is not JSON" [] {
     # Why: a transcript cut by an unclean shutdown ends in NUL bytes; nushell
-    # trims whitespace only, so that tail reaches serde and fails. The lazy
-    # stream used to surface that error at the consumer, naming no file.
+    # trims whitespace only, so that tail reaches serde and fails.
     let f = $nu.temp-dir | path join $"test-nul-tail-(random uuid).jsonl"
     let tail = 0x[00 00 00 00 00 00 00 00]
     ('{"type":"user","message":{"role":"user","content":"hi"}}' + "\n" | into binary) ++ $tail | save --force --raw $f

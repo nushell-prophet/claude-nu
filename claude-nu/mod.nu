@@ -16,11 +16,10 @@
 #   claude-nu messages 'regex'                     # search this project's messages
 #   claude-nu sessions --all-projects | claude-nu messages 'regex'
 
-# Why no umbrella search (the old `claude-nu -f 'regex'`): search was written
-# three ways that differed only in scope, and scope was the one thing the syntax
-# didn't show. Now it is always to the left of the pipe — `messages 'x'` for this
+# Why no umbrella search: scope would be the one thing its syntax didn't show.
+# Scope is always to the left of the pipe — `messages 'x'` for this
 # project, `sessions --all-projects | messages 'x'` for every project — and the
-# rg pre-filter that made `-f` fast moved into `messages`, where the scope is.
+# rg pre-filter sits in `messages`, where the scope is.
 export use sessions.nu [
     projects messages tool-calls slash-commands main export-session
 ]
@@ -35,10 +34,10 @@ export use example.nu [ main ]
 # falls through to an external-command lookup and answers "command not found" —
 # one line after `claude-nu sessions` worked, which reads as "the module isn't
 # installed". It is a signpost and nothing else: it takes no search term, because
-# scope now lives left of the pipe (see the note above), so all it can do is name
+# scope lives left of the pipe (see the note above), so all it can do is name
 # the subcommands and point at the examples.
 #
-# The pipelines it used to spell out by hand now hang here as `@example` blocks:
+# The pipelines hang here as `@example` blocks:
 # a pipeline crosses commands, so no single subcommand owns it, and the module's
 # own `main` is the one place that covers all of them. They reach `help
 # claude-nu`, `claude-nu example` and `dotnu examples-update` from this one copy.

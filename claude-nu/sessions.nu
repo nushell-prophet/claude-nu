@@ -510,8 +510,7 @@ def parse-session-columns [selected: list<string>]: path -> record {
     } else { {} }
 
     # Why `select` (not where+reduce): it keeps $selected's order and fails fast
-    # if SESSION_COLUMNS names a column this record doesn't compute — drift
-    # between the two lists used to be silently dropped.
+    # if SESSION_COLUMNS names a column this record doesn't compute.
     {
         summary: $summary
         first_timestamp: $timestamps.first
@@ -724,7 +723,7 @@ export def main [
 
     # Why: --columns is a comma-separated string (see the completer) — split,
     # trim, and drop empties so "version, cwd" and a trailing comma are forgiving.
-    # uniq because `select` (unlike the old where+reduce) rejects a repeated name.
+    # uniq because `select` rejects a repeated name.
     let requested = $columns
         | default ""
         | split row ','

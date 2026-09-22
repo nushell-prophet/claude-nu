@@ -158,9 +158,9 @@ def "open writes nothing into the repo but the canvas" [] {
 
 @test
 def "a relative canvas is read where the user stands, not at the repo root" [] {
-    # The monorepo shape: one git repo, work happening in a subdirectory. gi
-    # used to join every relative canvas onto the git top-level, so `gi open
-    # todo/plan.md` from `sub/` made and bound `<root>/todo/plan.md` — a second
+    # The monorepo shape: one git repo, work happening in a subdirectory. Anchored
+    # at the git top-level, `gi open todo/plan.md` from `sub/` would make and bind
+    # `<root>/todo/plan.md` — a second
     # file with the same basename as the one the user meant, in a directory
     # they were not in.
     let root = temp-root

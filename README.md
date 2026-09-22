@@ -331,7 +331,7 @@ A repo can hold as many canvases as you like — each `gi open` binds one sessio
 gi runs where you are standing: a relative canvas path is read against your cwd, the session starts there, and the path gi prints, hands to the agent, and quotes in a hook message is relative to the same place — so what you read is what you can paste back.
 `--root <dir>` moves the whole run there instead.
 One thing stays repo-scoped, because it is a property of the repo and not of the canvas: the branch guard reads the repo's branch.
-Anchoring the canvas at the git root as well is what this replaced, and inside a monorepo it silently wrote to the wrong file: run from `mono/sub`, `gi open todo/x.md` made and bound `mono/todo/x.md` — a second file with the same name as the one you meant.
+Anchoring the canvas at the git root as well would, inside a monorepo, silently write to the wrong file: run from `mono/sub`, `gi open todo/x.md` would make and bind `mono/todo/x.md` — a second file with the same name as the one you meant.
 One consequence to know: a canvas opened from a subdirectory gets its own session store, so `claude-nu sessions` at the repo root needs `--all-projects` to list it.
 
 **Your own `claude` flags.**
@@ -379,8 +379,6 @@ The `40-gi-canvas` skill drives the whole flow from inside a chat session, so yo
 So a canvas launch writes exactly one thing into your repo: the canvas.
 There is no `.claude/` from gi, no `.gitignore` block explaining it, and no `gi enable` verb — nothing is seeded, so nothing has to be refreshed.
 
-What that replaced was copying the style and the skills into every repo, copy-if-absent.
-The copy never came back for a second look, so a repo stayed on whatever the module held the day it was first seeded; one ran canvas sessions for two months on a style that had since grown a whole new rule, and the drift note that would have said so is printed at launch and scrolls away.
 Reading in place cannot go stale.
 It also keeps the protocol opt-in: the plugin loads only for launches gi makes, so a plain `claude` anywhere else is untouched — which a machine-wide install into `~/.claude/skills/` would have given up.
 
@@ -435,8 +433,7 @@ use completions/nu.nu *
 - `completions/claude.nu` — `claude`: 50+ flags, MCP/plugin subcommands, session picker for `--resume`
 - `completions/nu.nu` — `nu`: Parses .nu scripts at tab-time to offer their subcommands and flags
 
-Completions for unrelated tools (`zellij`, `fd`, `chafa`, `sandbox-exec`) used to live here too.
-They moved to the dotfiles repo, under `nushell/completions/`, which is where per-tool shell integration belongs.
+Completions for unrelated tools (`zellij`, `fd`, `chafa`, `sandbox-exec`) are in the dotfiles repo, under `nushell/completions/`, which is where per-tool shell integration belongs.
 
 **Session picker example:**
 ```
