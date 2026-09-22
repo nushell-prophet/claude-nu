@@ -66,6 +66,7 @@
         ListAgents: {status: ignored note: "lists reachable agents/sessions; no metric asks for it, and tool_call_count counts it generically"}
         Workflow: {status: ignored note: "spawns a background multi-agent workflow; no metric asks for it, and tool_call_count counts it generically"}
         SendFeedback: {status: ignored note: "drafts Claude Code feedback, queued locally for the user to approve; no metric asks for it, and tool_call_count counts it generically. 1 call in the newest 300 session files on 2026-09-01"}
+        StructuredOutput: {status: ignored note: "the tool a Workflow subagent given a `schema` calls to return its answer; no metric asks for it, and tool_call_count counts it generically. Lives only in Workflow subagent transcripts (agent-*.jsonl), exactly one call each because the agent prompt demands one: on 2026-09-22 at --window 120, 34 calls, all in agent-*.jsonl, none in a top-level session"}
     }
 
     usage_fields: {
