@@ -32,15 +32,27 @@ const REPO = path self ../../..
 const KNOWN_FILE = path self known.nuon
 
 use ($REPO | path join claude-nu)
-use ($REPO | path join claude-nu discovery.nu) [read-session-records]
+use ($REPO | path join claude-nu discovery.nu) [read-session-records UUID_JSONL_PATTERN AGENT_JSONL_PATTERN]
 use ($REPO | path join claude-nu render.nu) [content-blocks]
 use ($REPO | path join claude-nu extract.nu) [extract-text-content is-user-text]
 
 # Session files across every project, newest first. One `ls` glob does the whole
 # walk — the corpus runs to thousands of files, and stat-ing them one at a time
 # costs more than parsing the window afterwards.
+#
+# Why the name filter, and why the patterns come from discovery.nu: the glob
+# also reaches `<uuid>/subagents/workflows/wf_*/journal.jsonl`, a Workflow
+# orchestration log that is not a transcript. Its records (`started`, `result`,
+# `launched`) then read as record types claude-nu has never heard of, and no
+# entry in known.nuon can settle them — a workflow journal grows new record
+# types of its own, each one a fresh `new` row. `discover-session-files` already
+# names what counts as a session file, so this asks it rather than keeping a
+# second answer.
+# Cost accepted: the driver notices only new shapes inside the kinds of file it
+# knows, not a new *kind* appearing under the projects root.
 export def latest-files [window: int]: nothing -> list<path> {
     ls (($env.HOME | path join .claude projects '**' '*.jsonl') | into glob)
+    | where {|f| ($f.name =~ $UUID_JSONL_PATTERN) or ($f.name =~ $AGENT_JSONL_PATTERN) }
     | sort-by modified --reverse
     | get name
     | if ($in | length) > $window { first $window } else { }
