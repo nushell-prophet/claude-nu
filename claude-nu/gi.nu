@@ -505,8 +505,12 @@ export def --wrapped "gi open" [
     # they name two intentions at once, and the flags cannot say which file the
     # user meant to keep.
     if $fork and $new_session {
-        error make --unspanned {
+        error make {
             msg: "--fork and --new-session cannot be combined"
+            labels: [
+                {text: "binds a copy to a session of its own" span: (metadata $fork).span}
+                {text: "...and this rebinds the named canvas" span: (metadata $new_session).span}
+            ]
             help: "--fork already opens its copy on a fresh session; --new-session restarts the named canvas in place"
         }
     }
