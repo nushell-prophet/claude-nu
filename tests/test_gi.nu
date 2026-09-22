@@ -63,7 +63,7 @@ def plain-canvas [root: path, rel: string]: nothing -> path {
 
 @test
 def "status reports the session canvas from the environment" [] {
-    let unbound = gi
+    let unbound = with-env { GI_CANVAS: null } { gi }
     let bound = with-env { GI_CANVAS: "/repo/gi/session-abc.md" } { gi }
 
     # Activation is per session, so status answers "am I in a canvas session"
@@ -650,9 +650,13 @@ const BLOCKED_ANSWER = "A full answer for the canvas,\nwritten over more lines\n
 # GI_CANVAS is what makes the hook enforce anything, so every rule test binds
 # one. cwd defaults to a non-repo dir: the branch guard must see the payload's
 # state, not whatever branch the test runner's own repo happens to be on.
-def block-decision [payload: record, --canvas: string]: nothing -> any {
+def block-decision [payload: record, --canvas: string, --budget: string]: nothing -> any {
     let canvas = $canvas | default "/elsewhere/gi/canvas.md"
-    with-env { GI_CANVAS: $canvas } {
+    # GI_HOOK_MAX_LEN is a user tunable gi never sets, so a value exported in
+    # the caller's profile would decide these cases instead of the rule. The
+    # default null removes it, pinning the budget to gi's own default rather
+    # than to a number repeated here; --budget is for the tests that set one.
+    with-env { GI_CANVAS: $canvas, GI_HOOK_MAX_LEN: $budget } {
         {cwd: $nu.temp-dir} | merge $payload | to json | gi check
     }
 }
@@ -790,9 +794,7 @@ def "check passes an allowed message on a work branch" [] {
 @test
 def "check converts internal errors into a block, not a crash" [] {
     # Any non-empty message reaches the budget parse, which is what breaks here.
-    let out = with-env { GI_HOOK_MAX_LEN: "abc" } {
-        block-decision { last_assistant_message: "a chat line long enough to be judged" }
-    }
+    let out = block-decision --budget "abc" { last_assistant_message: "a chat line long enough to be judged" }
 
     let decision = $out | from json
     assert equal $decision.decision "block"
@@ -805,24 +807,28 @@ def "check converts internal errors into a block, not a crash" [] {
 
 @test
 def "allow-rule passes empty, short notes, and short pointers" [] {
-    assert (gi-allowed "")
-    assert (gi-allowed "done")
-    assert (gi-allowed "DONE!")
-    assert (gi-allowed "noted")
-    assert (gi-allowed "moved to `docs/plan.md`")
-    assert (gi-allowed "see commands.nu:1180")
-    assert (gi-allowed "next → tests/test_gi.nu")
-    # A short note needs no path: it hides no answer from the canvas.
-    assert (gi-allowed "waiting on the background agent before drafting")
-    # A note and a pointer are two lines; up to 3 breaks are inside the budget.
-    assert (gi-allowed "waiting on the survey agent.\nnext → `todo/plan.md`")
+    with-env { GI_HOOK_MAX_LEN: null } {
+        assert (gi-allowed "")
+        assert (gi-allowed "done")
+        assert (gi-allowed "DONE!")
+        assert (gi-allowed "noted")
+        assert (gi-allowed "moved to `docs/plan.md`")
+        assert (gi-allowed "see commands.nu:1180")
+        assert (gi-allowed "next → tests/test_gi.nu")
+        # A short note needs no path: it hides no answer from the canvas.
+        assert (gi-allowed "waiting on the background agent before drafting")
+        # A note and a pointer are two lines; up to 3 breaks are inside the budget.
+        assert (gi-allowed "waiting on the survey agent.\nnext → `todo/plan.md`")
+    }
 }
 
 @test
 def "allow-rule blocks messages over either budget" [] {
     let long = 1..100 | each { "prose" } | str join " " # 599 chars, one line
-    assert (not (gi-allowed $long))
-    assert (not (gi-allowed "one\ntwo\nthree\nfour\nfive"))
+    with-env { GI_HOOK_MAX_LEN: null } {
+        assert (not (gi-allowed $long))
+        assert (not (gi-allowed "one\ntwo\nthree\nfour\nfive"))
+    }
 }
 
 @test
