@@ -371,12 +371,12 @@ export def gi-new-name [slug: string, date: string]: nothing -> string {
 # user's own notes carry, then the same header every other new canvas gets.
 # Not `to yaml` because: a bare date comes back quoted, so the trailing #hint
 # would land inside the value instead of being a yaml comment.
+# No `created:` because: the file name already starts with that date.
 # Exported for tests.
 export def gi-new-text [date: string]: nothing -> string {
     [
         "---"
         "status: draft #draft | in_progress | completed | rejected"
-        $"created: '($date)' #yyyyMMdd"
         $"updated: '($date)' #yyyyMMdd"
         "---"
         ""
@@ -411,7 +411,7 @@ def gi-editor []: nothing -> string {
 # write-then-launch sequence, but the pane holding the canvas closes exactly
 # when the session starts — the one moment the canvas has to be visible.
 # The cursor lands past the header, on the first line the user writes on — as
-# `cmd+e` already does with its `hx +7`. `+N` is the line-number syntax of hx,
+# `cmd+e` already does with its `hx +N`. `+N` is the line-number syntax of hx,
 # vim and nano; an $env.EDITOR that spells it another way opens the file at the
 # top, which is a wrong cursor and not a failure.
 # Not `zellij edit` because: it opens the file with zellij's `scrollback_editor`
@@ -466,7 +466,7 @@ export def --wrapped "gi new" [
     let editor = if $no_editor { null } else { gi-editor }
     let dir = gi-run-dir $root
     # Read once: a run that crosses midnight between the two uses would name the
-    # file for one day and stamp `created:` with the next.
+    # file for one day and stamp `updated:` with the next.
     let today = date now | format date '%J'
     let doc = $folder | path join (gi-new-name $slug $today)
     let paths_doc = gi-doc-path $dir $doc

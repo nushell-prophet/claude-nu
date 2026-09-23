@@ -506,7 +506,8 @@ def "a new canvas starts as a todo carrying the canvas header" [] {
     # `draft`, not the line: the `#hint` after it is a yaml comment, which is
     # what the hand-written frontmatter buys over `to yaml`.
     assert equal $meta.status "draft"
-    assert equal $meta.created "20260921"
+    # The creation date lives in the file name, so the yaml does not repeat it.
+    assert ("created" not-in ($meta | columns))
     assert equal $meta.updated "20260921"
     # And the header every other new canvas gets, so a canvas made by this verb
     # and one made by `gi open` read the same below the frontmatter.
