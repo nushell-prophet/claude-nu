@@ -150,6 +150,19 @@ def gi-branch [root: path]: nothing -> any {
     if $out.exit_code == 0 and ($branch | is-not-empty) { $branch }
 }
 
+# Move a fresh canvas off the trunk: on a protected branch with nothing staged,
+# switch to a new branch named `name`. Why: gi commits must not land on the
+# trunk, and a new canvas is the moment new work starts. With files staged the
+# user is in the middle of something there, so the switch stays theirs; the
+# launch note still names it.
+# A branch that already exists fails here, with git's own message.
+def gi-leave-trunk [dir: path, name: string]: nothing -> nothing {
+    if (gi-branch $dir) not-in $GI_PROTECTED_BRANCHES { return }
+    let staged = do { ^git -C $dir diff --cached --quiet } | complete
+    if $staged.exit_code != 0 { return }
+    ^git -C $dir switch --create $name
+}
+
 # The directory gi runs in: --root when the user names one, otherwise where
 # they are standing. Everything a gi command does happens here — the launch
 # cd's to it, a relative canvas is read against it, and the short form printed
@@ -422,7 +435,8 @@ def gi-edit [doc: path, editor: string]: nothing -> nothing {
 # here.
 
 # Create a canvas and open a session bound to it: `<folder>/<date>-<slug>.md`,
-# the editor for writing the task in, then the launch.
+# the editor for writing the task in, then the launch. On main or master with
+# nothing staged, it first switches to a new branch named after the slug.
 @category claude-nu
 export def --wrapped "gi new" [
     slug: string # What the canvas is about; the file is <date>-<slug>.md
@@ -464,6 +478,8 @@ export def --wrapped "gi new" [
             help: $"open it instead: claude-nu gi open ($paths_doc.rel) — or pick another slug"
         }
     }
+    # Before the canvas is written: a switch that fails leaves nothing behind.
+    gi-leave-trunk $dir $slug
     mkdir ($paths_doc.abs | path dirname)
     gi-new-text $today | save --raw $paths_doc.abs
     if $editor != null { gi-edit $paths_doc.abs $editor }

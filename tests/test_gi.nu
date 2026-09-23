@@ -578,6 +578,61 @@ def "new opens the canvas in a pane of its own and starts the session beside it"
     assert $launched "the session did not start after the editor pane opened"
 }
 
+# A repo on `branch`, optionally with a file staged, for the trunk tests.
+def branch-repo [branch: string, --staged]: nothing -> path {
+    let root = temp-root
+    ^git init --quiet --initial-branch $branch $root
+    if $staged {
+        "x\n" | save ($root | path join "staged.txt")
+        ^git -C $root add staged.txt
+    }
+    $root
+}
+
+@test
+def "new leaves main for a branch named after the slug" [] {
+    let root = branch-repo main
+    gi new gi-new --root $root --no-editor --no-claude-launch | ignore
+    let branch = ^git -C $root branch --show-current | str trim
+    rm --recursive --force $root
+
+    assert equal $branch "gi-new"
+}
+
+@test
+def "new stays on main when something is staged" [] {
+    let root = branch-repo main --staged
+    gi new gi-new --root $root --no-editor --no-claude-launch | ignore
+    let branch = ^git -C $root branch --show-current | str trim
+    rm --recursive --force $root
+
+    # Staged files are work in progress on the trunk: the switch stays the user's.
+    assert equal $branch "main"
+}
+
+@test
+def "new stays on a work branch" [] {
+    let root = branch-repo canvas-work
+    gi new gi-new --root $root --no-editor --no-claude-launch | ignore
+    let branch = ^git -C $root branch --show-current | str trim
+    rm --recursive --force $root
+
+    assert equal $branch "canvas-work"
+}
+
+@test
+def "a branch that already exists fails before the canvas is written" [] {
+    let root = branch-repo main
+    ^git -C $root commit --quiet --allow-empty --message init
+    ^git -C $root branch gi-new
+    let caught = try { gi new gi-new --root $root --no-editor --no-claude-launch; "no error" } catch { "error" }
+    let written = $root | path join "todo" | path exists
+    rm --recursive --force $root
+
+    assert equal $caught "error"
+    assert (not $written) "a failed switch left a canvas behind"
+}
+
 @test
 def "the folder flag moves the canvas out of todo" [] {
     let root = temp-root
