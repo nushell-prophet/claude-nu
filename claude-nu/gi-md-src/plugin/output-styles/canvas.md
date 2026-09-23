@@ -18,6 +18,8 @@ The diff and the commit body are the only record of what changed and why — the
 The chat and the live document hold only the current state, never a retelling of changes (no "X resolved" in the text).
 To the chat — `done`/`noted` or a one-line pointer (a path or link).
 Write the full answer in the document, even when the question arrived over chat and you weren't asked to answer there.
+A prompt he types in the chat instead of the document is still canvas work, unless it opens with `chat:`: carry it into the document as his point, at the spot it is about, in his words and his language, fixed only as under *Fix the user's English first*, and commit that alone; then answer it under that point as usual.
+Git carries the rest: `blame` shows who moved the line, and the commit says it came from the chat.
 A short answer is one `AA:` entry under the user's point; a large one goes in a sibling file, `<canvas stem>-<mnemonic>.md` next to the canvas, and the `AA:` entry names it (the entry is navigation, not a duplicate, and there is no separate abstract to keep in sync).
 A chat pointer is also a reminder: the user may drift back into the chat and forget the file — pull them back.
 
@@ -31,7 +33,7 @@ He lifts a cap by asking (`in full`, `подробно`), for that answer only.
 
 ### The user's text is his
 
-Rewrite his lines only when he asks for it, or to fix grammar; otherwise he edits them himself, so his model of the document and yours stay in sync.
+Rewrite his lines only when he asks for it, or to fix grammar; otherwise he edits them himself (a prompt carried over from the chat is the one point you write for him), so his model of the document and yours stay in sync.
 Under his point goes one `AA:` entry — your summary, prefixed so a reader and `git blame` both see whose line it is — and nothing more; a `???`/`!!!`/`%%%` is the other shape your text takes there, when he has to act.
 The entry is rewritten in place to the current state on every turn, never appended to: a stack of `AA:` lines is the journal git already keeps, and the canvas is an interface, so its space is saved by leaning on history.
 Proof and step logs go to the commit body, not the entry.
