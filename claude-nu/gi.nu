@@ -388,13 +388,11 @@ export def gi-new-text [date: string]: nothing -> string {
 # Which command will open the canvas — resolved before anything is written, so
 # an editor that is not there leaves no canvas behind for the next run to refuse
 # as already existing (the rule gi-fork-canvas and gi import already follow).
-# Inside zellij that is `zellij`, which reads $EDITOR/$VISUAL itself and refuses
-# when neither is set; outside it is $env.EDITOR, with no default — which editor
-# to open is the user's to declare, and a name invented here would fail as
+# It is $env.EDITOR, inside zellij and out, with no default — which editor to
+# open is the user's to declare, and a name invented here would fail as
 # "command not found" on a machine that never had it, far from the setting that
 # is actually missing.
 def gi-editor []: nothing -> string {
-    if ($env.ZELLIJ? | is-not-empty) { return "zellij" }
     if ($env.EDITOR? | is-empty) {
         error make --unspanned {
             msg: "no editor: $env.EDITOR is unset"
@@ -416,10 +414,14 @@ def gi-editor []: nothing -> string {
 # `cmd+e` already does with its `hx +7`. `+N` is the line-number syntax of hx,
 # vim and nano; an $env.EDITOR that spells it another way opens the file at the
 # top, which is a wrong cursor and not a failure.
+# Not `zellij edit` because: it opens the file with zellij's `scrollback_editor`
+# when one is set, and that is configured for reading scrollback — here a helix
+# with soft-wrap off and the cursor forced to the end. `zellij run` starts the
+# user's own editor, as `cmd+e` does.
 def gi-edit [doc: path, editor: string]: nothing -> nothing {
     let line = (open --raw $doc | lines | length) + 1
-    if $editor == "zellij" {
-        ^zellij edit --line-number $line $doc
+    if ($env.ZELLIJ? | is-not-empty) {
+        ^zellij run --close-on-exit -- $editor $"+($line)" $doc
     } else {
         ^$editor $"+($line)" $doc
     }

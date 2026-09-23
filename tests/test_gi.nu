@@ -560,7 +560,7 @@ def "new opens the canvas in a pane of its own and starts the session beside it"
     let today = date now | format date '%J'
     let bin = stub-claude $root
     stub-zellij $root | ignore
-    with-env {PATH: ($bin | append $env.PATH), ZELLIJ: "0"} {
+    with-env {PATH: ($bin | append $env.PATH), ZELLIJ: "0", EDITOR: "hx"} {
         gi new gi-new --root $root
     }
     let doc = $root | path join "todo" $"($today)-gi-new.md"
@@ -572,7 +572,8 @@ def "new opens the canvas in a pane of its own and starts the session beside it"
     let line = (gi-new-text $today | lines | length) + 1
     rm --recursive --force $root
 
-    assert equal $edited $"edit --line-number ($line) ($doc)"
+    # `run`, not `edit`: `zellij edit` would open zellij's scrollback_editor.
+    assert equal $edited $"run --close-on-exit -- hx +($line) ($doc)"
     # Both in one run: nothing waits for the editor, which is what puts the
     # canvas beside the session instead of in front of it.
     assert $launched "the session did not start after the editor pane opened"
