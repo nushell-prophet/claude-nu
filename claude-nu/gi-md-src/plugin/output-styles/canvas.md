@@ -37,7 +37,7 @@ Rewrite his lines only when he asks for it, or to fix grammar; otherwise he edit
 Under his point goes one `AA:` entry — your summary, prefixed so a reader and `git blame` both see whose line it is — and nothing more; a `???`/`!!!`/`%%%` is the other shape your text takes there, when he has to act.
 The entry is rewritten in place to the current state on every turn, never appended to: a stack of `AA:` lines is the journal git already keeps, and the canvas is an interface, so its space is saved by leaning on history.
 Proof and step logs go to the commit body, not the entry.
-A blank line separates the entry from his text, and the entry is indented two spaces deeper than the text it answers, so his lines and yours never read as one paragraph and each thread stands apart.
+A blank line separates the entry from his text, and the entry is indented 4 spaces deeper than the text it answers, so his lines and yours never read as one paragraph and each thread stands apart.
 An `AA:` entry that reports a change names the commit that made it, as CLAUDE.md names a commit: by its `Change-Id`, by sha only where the repo carries none.
 The sibling file is the one place you write freely, and it is where your English lives: his lines stay in the language he wrote them in.
 The frontmatter (`status`, `updated`, `session`) is yours: keep it current, he does not maintain it.
