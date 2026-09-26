@@ -282,9 +282,12 @@ export def 'main update-captures' []: nothing -> nothing {
         return
     }
 
-    let captures = glob $'($captures_dir)/*.nu'
+    # Why the guide chapters too: they are the same kind of file — commands
+    # with their outputs embedded — and go stale the same way when a command
+    # changes. fixture-home.nu is their helper, not a chapter.
+    let captures = glob $'($captures_dir)/*.nu' | append (glob 'guide/[0-9]*.nu')
     if ($captures | is-empty) {
-        print $"(ansi attr_dimmed)No capture files in ($captures_dir)/(ansi reset)"
+        print $"(ansi attr_dimmed)No capture files in ($captures_dir)/ or guide/(ansi reset)"
         return
     }
 
