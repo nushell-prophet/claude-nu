@@ -4,7 +4,7 @@
 # carry the record, the chat carries almost nothing. Three commands do the work,
 # and the split between them is the whole design:
 #
-#   gi new             names a canvas from a slug — `todo/<date>-<slug>.md` —
+#   gi new             names a canvas from a slug — `gi-canvas/<date>-<slug>.md` —
 #                      writes the frontmatter and the header into it, opens it
 #                      for the task to be written in (a zellij pane of its own,
 #                      so the document stays in view), and ends in `gi open`.
@@ -230,10 +230,31 @@ def copy-file [src: path, dst: path]: nothing -> nothing {
     open --raw $src | save --raw $dst
 }
 
-# The canvas name minted when the user names none. A def and not a const: the
-# timestamp has to be read when the command runs, not when the module parses.
-def gi-default-doc []: nothing -> string {
-    $"gi/canvas-(date now | format date '%J_%Q').md"
+# The folder a canvas lands in when the user names none: `gi-canvas/` when the
+# run directory has one, else `todo/` when it has that, else `gi-canvas/`, which
+# the caller's `mkdir` then creates.
+# Why `todo/` before creating a folder: a repo that already keeps its working
+# notes in `todo/` gets its canvases there too, beside them, instead of a second
+# folder of working material.
+# Why read against the run directory and not the cwd: `--root` moves where the
+# canvas lands, so it moves where the folder is looked for.
+export def gi-canvas-folder [dir: path]: nothing -> string {
+    if ($dir | path join "gi-canvas" | path exists) {
+        "gi-canvas"
+    } else if ($dir | path join "todo" | path exists) {
+        "todo"
+    } else {
+        "gi-canvas"
+    }
+}
+
+# The canvas path minted when the user names none: the canvas folder, then the
+# day-prefixed name every new canvas gets. A def and not a const: the timestamp
+# has to be read when the command runs, not when the module parses.
+def gi-default-doc [dir: path]: nothing -> string {
+    let now = date now
+    gi-canvas-folder $dir
+    | path join (gi-new-name $"canvas-($now | format date '%Q')" ($now | format date '%J'))
 }
 
 # The next name in a fork series: `plan.md` -> `plan_1.md`, and a fork of
@@ -241,7 +262,7 @@ def gi-default-doc []: nothing -> string {
 # forks of forks stay flat siblings instead of nesting into `plan_1_1.md` —
 # every canvas grown from one document sorts next to it.
 # Not the first free gap because: a fork name gets written down outside the
-# repo — a chat pointer, a commit body — and gi/ is untracked by default, so
+# repo — a chat pointer, a commit body — and the canvas folder is untracked by default, so
 # nothing would stop a deleted `plan_1.md` from being handed to a different
 # canvas later. Exported for tests.
 export def gi-fork-name [name: string, siblings: list<string>]: nothing -> string {
@@ -442,7 +463,7 @@ def gi-edit [doc: path, editor: string]: nothing -> nothing {
 @category claude-nu
 export def --wrapped "gi new" [
     slug: string # What the canvas is about; the file is <date>-<slug>.md
-    --folder: path = "todo" # Where the canvas lands, relative to where you are
+    --folder: path # Where the canvas lands, relative to where you are (default: gi-canvas/ if present, else todo/ if present, else gi-canvas/, created)
     --root: path # Run gi in this directory instead of here: the canvas is written there and the session starts there (default: your cwd)
     --no-editor # Write the canvas without opening it for editing
     --no-claude-launch # Write the canvas and hand back its path; launch nothing
@@ -468,7 +489,7 @@ export def --wrapped "gi new" [
     # Read once: a run that crosses midnight between the two uses would name the
     # file for one day and stamp `updated:` with the next.
     let today = date now | format date '%J'
-    let doc = $folder | path join (gi-new-name $slug $today)
+    let doc = $folder | default (gi-canvas-folder $dir) | path join (gi-new-name $slug $today)
     let paths_doc = gi-doc-path $dir $doc
     # The same slug on the same day names the canvas that is already there, and
     # that is nearly always the one meant. Not todo.nu's `-1` suffix because:
@@ -499,7 +520,7 @@ export def --wrapped "gi new" [
 # when it has one.
 @category claude-nu
 export def --wrapped "gi open" [
-    doc?: path # The canvas, relative to where you are (default: gi/canvas-<timestamp>.md); with --fork, the canvas to fork FROM
+    doc?: path # The canvas, relative to where you are (default: <canvas folder>/<date>-canvas-<time>.md, the folder as for gi new); with --fork, the canvas to fork FROM
     --root: path # Run gi in this directory instead of here: the canvas is read there and the session starts there (default: your cwd)
     --no-hook # Launch with the Canvas style but without the Stop-hook floor
     --new-session # Start a fresh session on this canvas, overwriting the id it records
@@ -512,7 +533,7 @@ export def --wrapped "gi open" [
     if $fork and ($doc | is-empty) {
         error make --unspanned {
             msg: "--fork needs the canvas to fork from"
-            help: "claude-nu gi open gi/plan.md --fork"
+            help: "claude-nu gi open gi-canvas/plan.md --fork"
         }
     }
     # Both mint an id, but on different files: --new-session overwrites the one
@@ -564,7 +585,7 @@ export def --wrapped "gi open" [
 @category claude-nu
 export def "gi import" [
     session?: string@"nu-complete claude sessions" # Session UUID, /rename name, or .jsonl path (default: the session this runs inside)
-    --to: path # Where the canvas lands, relative to where you are (default: gi/session-<key>.md)
+    --to: path # Where the canvas lands, relative to where you are (default: <canvas folder>/<date>-session-<key>.md, the folder as for gi new)
     --root: path # Run gi in this directory instead of here: --to is read there (default: your cwd)
     --tools # Keep tool calls instead of dropping them: each input in full, each result as a char count
     --commit # Commit the imported doc
@@ -586,11 +607,13 @@ export def "gi import" [
     # Read the run directory off the flag before the next line shadows it.
     let dir = gi-run-dir $root
     let root = $root | default (gi-repo-root) | path expand
-    # Default is session-keyed, so re-running it for one session names one file
-    # and leaves the repo's other canvases alone.
+    # Default is session-keyed, so re-running it for one session on one day
+    # names one file and leaves the repo's other canvases alone.
     # Why --to and not a second positional: the common in-session call names a
     # path but no session, and a positional cannot be skipped.
-    let paths_doc = gi-doc-path $dir ($to | default $"gi/session-(gi-session-key $file).md")
+    let default_doc = gi-canvas-folder $dir
+    | path join (gi-new-name $"session-(gi-session-key $file)" (date now | format date '%J'))
+    let paths_doc = gi-doc-path $dir ($to | default $default_doc)
     # Check before reading the session: a doc that already holds work must not
     # be reported as a near-miss after a long export.
     if ($paths_doc.abs | path exists) {
@@ -791,7 +814,7 @@ def gi-launch [
     # Read the run directory off the flag before the next line shadows it.
     let dir = gi-run-dir $root
     let root = $root | default (gi-repo-root) | path expand
-    let doc = $doc | default (gi-default-doc)
+    let doc = $doc | default (gi-default-doc $dir)
     # The copy is made here and not in `gi open` so everything below — the
     # session plan, the stamp, GI_CANVAS, --name — sees only the file being
     # opened. From this line on a fork is an ordinary canvas.

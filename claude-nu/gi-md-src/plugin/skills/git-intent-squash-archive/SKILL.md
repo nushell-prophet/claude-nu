@@ -1,6 +1,6 @@
 ---
 name: git-intent-squash-archive
-description: Squash every commit on the current branch into one, keeping the original commit stream recoverable in an `archive/<branch>` git tag. Use this whenever a working branch is finished and its step-by-step history should stop being noise for whoever reads the trunk — "squash branch", "squash and archive", "сверни ветку", "finalize this branch", "collapse these commits", "archive the history before merging" — even when the user never names the skill. For gi working branches; when the branch also needs merging and `todo/`/`gi/` kept off the trunk, use `/land-branch` instead.
+description: Squash every commit on the current branch into one, keeping the original commit stream recoverable in an `archive/<branch>` git tag. Use this whenever a working branch is finished and its step-by-step history should stop being noise for whoever reads the trunk — "squash branch", "squash and archive", "сверни ветку", "finalize this branch", "collapse these commits", "archive the history before merging" — even when the user never names the skill. For gi working branches; when the branch also needs merging and `todo/`/`gi-canvas/`/`gi/` kept off the trunk, use `/land-branch` instead.
 allowed-tools: Bash(git *)
 ---
 
@@ -40,5 +40,5 @@ Archive and squash all commits on the current branch:
 ## Related
 
 - `/gi:git-intent` — process commits as instructions and propagate choices before squashing
-- `/land-branch` — the general-development counterpart: same squash-and-archive, but it also merges to the trunk and drops `todo/`/`gi/`.
+- `/land-branch` — the general-development counterpart: same squash-and-archive, but it also merges to the trunk and drops `todo/`/`gi-canvas/`/`gi/`.
   Use it when the branch is not gi working material.

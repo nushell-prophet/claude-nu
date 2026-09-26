@@ -520,7 +520,7 @@ def "new hands back the path when it launches nothing" [] {
     mkdir $root
     let today = date now | format date '%J'
     let returned = gi new gi-new --root $root --no-editor --no-claude-launch
-    let doc = $root | path join "todo" $"($today)-gi-new.md"
+    let doc = $root | path join "gi-canvas" $"($today)-gi-new.md"
     let launched = $root | path join "claude-args" | path exists
     let bound = if ($doc | path exists) { gi-frontmatter-session $doc } else { "no canvas" }
     rm --recursive --force $root
@@ -542,13 +542,13 @@ def "new opens a session bound to the canvas it just wrote" [] {
         gi new gi-new --root $root --no-editor
         try { open --raw ($root | path join "claude-args") } catch { "" }
     }
-    let doc = $root | path join "todo" $"($today)-gi-new.md"
+    let doc = $root | path join "gi-canvas" $"($today)-gi-new.md"
     let bound = if ($doc | path exists) { gi-frontmatter-session $doc } else { "no canvas" }
     rm --recursive --force $root
 
     # The whole point of the verb: the file it named is the file the session is
     # bound to, with no path typed a second time.
-    assert ($launched | str contains $"--name todo/($today)-gi-new.md")
+    assert ($launched | str contains $"--name gi-canvas/($today)-gi-new.md")
     assert ($bound | is-not-empty) "the canvas was launched without recording its session"
     assert ($launched | str contains $"--session-id ($bound)")
 }
@@ -564,7 +564,7 @@ def "new opens the canvas in a pane of its own and starts the session beside it"
     with-env {PATH: ($bin | append $env.PATH), ZELLIJ: "0", EDITOR: "hx"} {
         gi new gi-new --root $root
     }
-    let doc = $root | path join "todo" $"($today)-gi-new.md"
+    let doc = $root | path join "gi-canvas" $"($today)-gi-new.md"
     let edited = try { open --raw ($root | path join "zellij-args") | str trim } catch { "" }
     let launched = $root | path join "claude-args" | path exists
     # One past the last line the template wrote: the cursor lands where the user
@@ -633,6 +633,50 @@ def "a branch that already exists fails before the canvas is written" [] {
 
     assert equal $caught "error"
     assert (not $written) "a failed switch left a canvas behind"
+}
+
+@test
+def "the canvas folder is gi-canvas when the run directory has one" [] {
+    let root = temp-root
+    mkdir ($root | path join "gi-canvas") ($root | path join "todo")
+    let folder = gi-canvas-folder $root
+    rm --recursive --force $root
+
+    assert equal $folder "gi-canvas"
+}
+
+@test
+def "the canvas folder is todo when only todo exists" [] {
+    let root = temp-root
+    mkdir ($root | path join "todo")
+    let folder = gi-canvas-folder $root
+    rm --recursive --force $root
+
+    assert equal $folder "todo"
+}
+
+@test
+def "the canvas folder is gi-canvas when neither exists" [] {
+    let root = temp-root
+    mkdir $root
+    let folder = gi-canvas-folder $root
+    rm --recursive --force $root
+
+    assert equal $folder "gi-canvas"
+}
+
+@test
+def "new puts the canvas in todo when the run directory keeps its notes there" [] {
+    let root = temp-root
+    mkdir ($root | path join "todo")
+    let today = date now | format date '%J'
+    gi new gi-new --root $root --no-editor --no-claude-launch | ignore
+    let at_todo = $root | path join "todo" $"($today)-gi-new.md" | path exists
+    let made_folder = $root | path join "gi-canvas" | path exists
+    rm --recursive --force $root
+
+    assert $at_todo
+    assert (not $made_folder) "a gi-canvas folder was made beside an existing todo"
 }
 
 @test
@@ -1071,7 +1115,7 @@ def "import writes a session-keyed canvas" [] {
     let body = open --raw $status.doc
     rm --recursive --force $root $home
 
-    assert equal ($status.doc | path basename) $"session-($FIXTURE_SESSION | str substring 0..7).md"
+    assert equal ($status.doc | path basename) $"(date now | format date '%J')-session-($FIXTURE_SESSION | str substring 0..7).md"
     assert str contains $body "## User"
 }
 
@@ -1088,7 +1132,7 @@ def "import takes a named session, with no live session in the environment" [] {
     let body = open --raw $status.doc
     rm --recursive --force $root $home
 
-    assert equal ($status.doc | path basename) $"session-($FIXTURE_SESSION | str substring 0..7).md"
+    assert equal ($status.doc | path basename) $"(date now | format date '%J')-session-($FIXTURE_SESSION | str substring 0..7).md"
     assert str contains $body "## User"
 }
 
@@ -1116,7 +1160,7 @@ def "import takes a session by its /rename name and keys the doc on the session"
     let subject = git -C $root log -1 --format=%s
     rm --recursive --force $root $home
 
-    assert equal ($status.doc | path basename) $"session-($FIXTURE_SESSION | str substring 0..7).md"
+    assert equal ($status.doc | path basename) $"(date now | format date '%J')-session-($FIXTURE_SESSION | str substring 0..7).md"
     assert str contains $subject ($FIXTURE_SESSION | str substring 0..7)
 }
 
@@ -1133,7 +1177,7 @@ def "import takes a session as a .jsonl path" [] {
     }
     rm --recursive --force $root $home
 
-    assert equal ($status.doc | path basename) $"session-($FIXTURE_SESSION | str substring 0..7).md"
+    assert equal ($status.doc | path basename) $"(date now | format date '%J')-session-($FIXTURE_SESSION | str substring 0..7).md"
 }
 
 @test
@@ -1205,7 +1249,7 @@ def "the gitignore flag keeps the import out of git, beside the doc" [] {
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
         gi import --root $root --gitignore
     }
-    let ignored = open --raw ($root | path join "gi" ".gitignore") | lines
+    let ignored = open --raw ($status.doc | path dirname | path join ".gitignore") | lines
     rm --recursive --force $root $home
 
     assert equal $ignored [($status.doc | path basename)]

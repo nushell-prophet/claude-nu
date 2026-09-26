@@ -427,22 +427,22 @@ It comes in three verbs.
 Each verb is a real Nushell subcommand, so it carries its own flags and its own `help claude-nu gi <verb>`, and `claude-nu gi <TAB>` completes them.
 
 ```nushell no-run
-claude-nu gi new plan          # todo/<date>-plan.md, the editor to write the task in, then a session bound to it
-claude-nu gi new plan --folder gi # ...in another folder
+claude-nu gi new plan          # gi-canvas/<date>-plan.md (todo/ when only that exists), the editor to write the task in, then a session bound to it
+claude-nu gi new plan --folder notes # ...in another folder
 claude-nu gi new plan --no-editor # ...written straight, no editor
 claude-nu gi new plan --no-claude-launch # ...and nothing launched: the path comes back instead
-claude-nu gi import            # a canvas from the dialogue of the session this runs inside (gi/session-<id>.md)
+claude-nu gi import            # a canvas from the dialogue of the session this runs inside (gi-canvas/<date>-session-<id>.md)
 claude-nu gi import <TAB>      # ...or of any session: the picker shows age, size, summary
 claude-nu gi import --to notes/x.md # ...at a chosen path
 claude-nu gi import --tools    # ...keeping tool calls, each input rendered whole
 claude-nu gi import --commit   # ...and commit it
 claude-nu gi import --gitignore # ...or keep it out of git
-claude-nu gi open              # new canvas + a session bound to it
-claude-nu gi open gi/plan.md   # ...a named one: created from the template if new, resumed if it already holds a session
-claude-nu gi open gi/plan.md --no-hook # style only, without the Stop-hook floor
-claude-nu gi open gi/plan.md --new-session # start over on it: mint a fresh id, overwrite the recorded one
-claude-nu gi open gi/plan.md --fork # ...or keep it as it is and open a copy (gi/plan_1.md) on a session of its own
-claude-nu gi open gi/plan.md --dangerously-skip-permissions --model opus # ...any other flag goes straight to `claude`
+claude-nu gi open              # new canvas (gi-canvas/<date>-canvas-<time>.md) + a session bound to it
+claude-nu gi open gi-canvas/plan.md   # ...a named one: created from the template if new, resumed if it already holds a session
+claude-nu gi open gi-canvas/plan.md --no-hook # style only, without the Stop-hook floor
+claude-nu gi open gi-canvas/plan.md --new-session # start over on it: mint a fresh id, overwrite the recorded one
+claude-nu gi open gi-canvas/plan.md --fork # ...or keep it as it is and open a copy (gi-canvas/plan_1.md) on a session of its own
+claude-nu gi open gi-canvas/plan.md --dangerously-skip-permissions --model opus # ...any other flag goes straight to `claude`
 claude-nu gi                   # { canvas, plugin, style, skills }
 ```
 
@@ -491,11 +491,11 @@ The launch also passes `--name <canvas>`, which puts the canvas in the prompt bo
 The source keeps its session and stays readable.
 The use it exists for: plan a change in one conversation, then implement it in a fresh context that starts from the plan — with the conversation that produced the plan still there to consult, and its own canvas still bound to it.
 The name carries the lineage, so nothing has to be recorded in the frontmatter.
-Numbering is max+1 over the series, never the first free gap: `gi/` is untracked by default, so a deleted `plan_1.md` may still be named in a commit body or a chat pointer, and must not be handed to a different canvas later.
+Numbering is max+1 over the series, never the first free gap: the canvas folder is untracked by default, so a deleted `plan_1.md` may still be named in a commit body or a chat pointer, and must not be handed to a different canvas later.
 `--fork` needs a canvas to fork from (the positional names the source, not the file being created), and cannot be combined with `--new-session` — both mint an id, but on different files.
 
 **Starting a canvas from a slug.**
-`gi new <slug>` is the naming half of `gi open`: the canvas is `<folder>/<date>-<slug>.md` (`--folder`, default `todo`), it starts with the todo frontmatter — `status` and `updated`, the creation date being in the file name already — and the same header a canvas gets from `gi open`, and the command ends in that launch.
+`gi new <slug>` is the naming half of `gi open`: the canvas is `<folder>/<date>-<slug>.md` (`--folder`; by default `gi-canvas/` when the directory has one, else `todo/` when it has that, else a new `gi-canvas/` — the same folder `gi open` and `gi import` pick when given no path), it starts with the todo frontmatter — `status` and `updated`, the creation date being in the file name already — and the same header a canvas gets from `gi open`, and the command ends in that launch.
 On `main` or `master` with nothing staged, it first switches to a new branch named after the slug, so the canvas and its commits start off the trunk.
 It then puts the file in front of you, in `$env.EDITOR`, to write the task in: inside zellij in a pane of its own, so the document stays in view while the session runs beside it; outside zellij in the terminal you are in, and the launch follows when the editor exits — with no `$env.EDITOR` set that is an error naming `--no-editor`, never a guess at which editor you have.
 `--no-editor` skips that, `--no-claude-launch` skips the launch and hands back the path instead, and the flags `gi open` defines — `--root`, `--no-hook`, `--dangerously-skip-permissions`, anything else straight to `claude` — work here too.
@@ -506,7 +506,7 @@ The same slug on the same day is an error naming the canvas already there, not a
 With no session named it takes the one it runs inside (`$env.CLAUDE_CODE_SESSION_ID` — not "the newest session file", which during a live session is as likely a subagent transcript); name one — with a completer showing age, size and summary — to import an older chat from the REPL, where there is no live session to fall back on.
 It keeps user messages and Claude's visible replies, and drops tool calls and thinking behind a note pointing at the raw `.jsonl` (`--tools` keeps tool calls, each input rendered whole — useful when the session's value is in what was tried, not only what was said).
 Importing the live session, the turn that runs the import is never in it: Claude Code writes the session log as the turn runs, so the last exchange is still missing.
-The doc is named for the session (`gi/session-<id>.md`, or `--to <path>`) and is never overwritten — delete it to re-import.
+The doc is named for the day and the session (`gi-canvas/<date>-session-<id>.md`, or `--to <path>`) and is never overwritten — delete it to re-import the same day.
 It lands in the working tree untracked; `--commit` puts it in git, `--gitignore` keeps it out (they are mutually exclusive).
 Neither is the default: a transcript carries raw paths and whatever the dialogue quoted, so tracking it is your call — but leaving it ignored means every later gi turn stays out of git too, which is the failure gi exists to prevent.
 
