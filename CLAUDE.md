@@ -21,10 +21,12 @@ Nushell's completions should be used when they add a real value.
 claude-nu/
 ├── claude-nu/           # Main module
 │   ├── mod.nu           # Module entry point, exports public commands
-│   ├── sessions.nu      # User-facing session/message/tool-call/slash-command commands; re-exports the submodules below
-│   ├── discovery.nu     # On-disk session layout: enumerate, resolve, read session files; also the --since/--until bound parsing and the mtime pre-filter
+│   ├── sessions.nu      # User-facing session/message/tool-call/slash-command/records commands; re-exports the submodules below
+│   ├── discovery.nu     # On-disk session layout: enumerate, resolve, read session files; also the --since/--until bound parsing and the mtime pre-filter, the subagent identity (meta file) and the Workflow state-file readers
 │   ├── extract.nu       # Session records -> text, dialogue, metrics; also the slash-command extractor and the built-in list it filters by
 │   ├── render.nu        # Record content -> markdown text
+│   ├── timeline.nu      # `claude-nu timeline`: one row per content block (text, thinking, tool_use, tool_result) in file order; scopes and dedups through helpers exported from sessions.nu
+│   ├── workflows.nu     # `claude-nu workflows`: one row per Workflow tool run, read from `<session>/workflows/wf_*.json`; the state-file readers live in discovery.nu
 │   ├── gi.nu            # gi protocol, as real subcommands (`gi new`, `gi import`, `gi open`, bare `gi` for status): new names a canvas from a slug and opens it, import writes a canvas from a session's dialogue, open launches a session bound to one canvas (the gi plugin + Stop hook travel with the launch)
 │   ├── project-move.nu  # Retarget stored state from a project's old path to its new one
 │   ├── ask.nu           # One-shot `claude --print` prompt; not re-exported by mod.nu — `use claude-nu/ask.nu *`
@@ -34,7 +36,8 @@ claude-nu/
 ├── completions/         # Completions for the two CLIs this repo is about; unrelated tools: ../dotfiles/nushell/completions/
 │   ├── claude.nu        # claude CLI (50+ flags, session picker, MCP/plugin subcommands)
 │   └── nu.nu            # nu CLI (dynamic: parses scripts for subcommands at tab-time)
-├── tests/               # 240+ tests (nutest framework)
+├── guide/               # Worked pipelines as dotnu embeds, run on the test fixtures via fixture-home.nu; refreshed by `dotnu embeds-update` or `toolkit main update-captures`
+├── tests/               # 300+ tests (nutest framework)
 └── toolkit.nu           # Dev tools: test, test-unit, vendor-sessions, check, update-captures
 ```
 
@@ -79,24 +82,34 @@ use /path/to/completions/claude.nu *
 use /path/to/completions/nu.nu *
 
 # Core commands
-claude-nu projects                     # Projects by recency (name, path, count, modified)
+claude-nu projects                     # Projects by recency (name, path, count, size, modified); `size` sums the same top-level transcripts `count` counts
 claude-nu projects | where name =~ nu | claude-nu sessions | claude-nu messages # pipe chain scoping
 claude-nu messages                     # Every user message of the current project (empty input = current project)
 claude-nu messages 'regex'             # Search this project's user messages (rg pre-scan; --no-rg for exact regex semantics)
 claude-nu sessions --last | claude-nu messages # Just the current session
-claude-nu sessions --session <uuid|name> | claude-nu messages # One named session, by UUID or the name /rename gave it — `sessions` is the only place selection lives
-claude-nu sessions --all-projects | claude-nu messages 'regex' # search across all projects
+claude-nu sessions --session <uuid|name> | claude-nu messages # One named session, by UUID, a unique UUID prefix (`9787e004`, tried before names; several matches are an error listing them), a subagent id (`agent-…`, the name `messages` rows give it), or the name /rename gave it — `sessions` is the only place selection lives. Ids are looked up in this project, then every project (a piped row: its own `project` first); an id with transcripts in two places is an error listing the paths
+claude-nu projects | claude-nu messages 'regex' # search across all projects
+claude-nu messages | where kind == typed # Every row has `kind`: typed, bash-input, bash-output, system (with --include-system), response (with --include-responses). Read from the raw record (isMeta, isCompactSummary, wrapper tags), because the rendered text of `!git log` and a pasted `git log` is the same fence. An editor selection stays `typed`: most carry the user's own words too
+claude-nu messages 'regex' --context 2 --include-responses # ...plus the 2 rows before and after each hit in its session, like `rg --context`; adds `hit`, a shared row comes back once. Needs a regex. The window runs over the rows left after --since/--until, so no row is context for a hit the window dropped
 claude-nu sessions | claude-nu messages 'regex' | claude-nu messages --include-responses # full dialogues of matched sessions
 claude-nu sessions | claude-nu messages 'regex' | claude-nu export-session # markdown of matched sessions in the pipeline (one string per session)
 claude-nu sessions                     # Top-level (human) sessions with summaries and stats
 claude-nu sessions --subagents         # Also include subagent transcripts (parent_session_id set)
+claude-nu sessions --subagents --columns agent_id,agent_type,workflow,agent_label,phase # Which agent a subagent row is — its `session_id` is the parent's. From the sibling `agent-<id>.meta.json`; label and phase fall back to the run's state file for older meta files. Null on top-level rows
+claude-nu sessions --all-projects --columns size,modified # From the `ls` the discovery already runs, so a selection of only these opens no file. `modified` is the mtime `--since` compares, not `last_timestamp`
 claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, reasoning effort...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
 claude-nu sessions --since 1wk         # Sessions active in the last week. `--since`/`--until` are on `sessions`, `messages` and `tool-calls`; each takes a duration meaning ago (`1wk`), a date (`2026-08-01`), or a datetime value. What the window is compared to is the row you asked for: a message or a call by its own timestamp, a session by its file mtime — its last activity. Why that, and what `--since` saves by skipping files unparsed: the README section "The time window"
-claude-nu tool-calls                    # Every tool call of the current project: {tool, input, timestamp, session, project, project_name} — what the agent did, as `messages` is what was said
-claude-nu tool-calls 'claude-nu sessions' # ...narrowed by a regex over the whole input rendered as NUON (which field holds the string depends on the tool), with the same rg pre-filter and `--no-rg` escape as `messages`. Filtering by tool is a plain `where tool == Bash` — no flag, because unlike the regex it buys no pre-filter
-claude-nu sessions --all-projects | claude-nu tool-calls 'npm test' # ...scoped like `messages`, by session rows to the left of the pipe
-claude-nu slash-commands | get command | uniq --count | sort-by count --reverse # What you typed, as `messages` is what you said: one row per slash-command invocation {command, args, timestamp, session, project, project_name}, scoped and windowed like `messages`. Built-ins Claude Code handles itself (/clear, /model, /exit ...) are dropped by default and `--all` keeps them; the list is by hand in extract.nu because resolving names against the installed skills would drop every renamed or deleted command, and the record layout tracks the Claude Code version, not the kind. Prompt-skills (/init, /simplify, /code-review) stay counted. A `Skill` tool call is the agent's own choice, not this — that is `tool-calls | where tool == Skill`
+claude-nu sessions --active-since 2026-08-04 --active-until 2026-08-05 # Record time instead of mtime: keeps a session whose [first_timestamp, last_timestamp] overlaps the window. --active-since keeps the mtime cut as a first pass (mtime is never before the last record). Mixing with --since/--until is an error: one question on two clocks
+claude-nu tool-calls                    # Every tool call of the current project: {tool, input, timestamp, id, uuid, session, project, project_name} — what the agent did, as `messages` is what was said
+claude-nu tool-calls 'claude-nu sessions' # ...narrowed by a regex over the whole input as compact JSON (`'"command":"git'`, the form the rg pre-filter reads; which field holds the string depends on the tool), with the same rg pre-filter and `--no-rg` escape as `messages`. The regex also matches the tool name; the exact filter is `--tool`
+claude-nu projects | claude-nu tool-calls 'npm test' # ...scoped like `messages`, by session rows to the left of the pipe
+claude-nu tool-calls --tool [Read Edit Write] 'sessions\.nu' # ...only the calls to these tools, by exact name: one name or a list. Not `where tool == X`: the flag gets its own rg pre-filter on the raw `"name":"<tool>"` (56 s against 11 s machine-wide), and the regex cannot stand in for it — `mcp__nushell` also matches every `mcp__nushell__*`. An empty list is an error: it is almost always an upstream query that found nothing
+claude-nu tool-calls --results | where is_error # ...with each call's `result` text and `is_error`, joined by the call's id; the regex then searches results too. Off by default: it parses every record, not just the assistant ones
+claude-nu sessions --last | claude-nu timeline # One row per content block in file order: {role, kind (text, thinking, tool_use, tool_result), text, tool, id, is_error, timestamp, uuid, session, project, project_name}. `messages` and `tool-calls` are one table per kind and lose the order between kinds. Scoped, searched and windowed like `messages`; no sort by timestamp, because the blocks of one record share one
+claude-nu workflows | where status != completed # One row per Workflow tool run, from `<session>/workflows/wf_*.json`: {id, session, status, agent_count, duration, error, name, phases, started, summary, agents, state_file, project, project_name}. Scoped like `messages`. `state_file`, not `path`, so a run piped on is not read as a transcript
+claude-nu slash-commands | get command | uniq --count | sort-by count --reverse # What you typed, as `messages` is what you said: one row per slash-command invocation {command, args, timestamp, uuid, session, project, project_name}, scoped and windowed like `messages`. Built-ins Claude Code handles itself (/clear, /model, /exit ...) are dropped by default and `--all` keeps them; the list is by hand in extract.nu because resolving names against the installed skills would drop every renamed or deleted command, and the record layout tracks the Claude Code version, not the kind. Prompt-skills (/init, /simplify, /code-review) stay counted. A `Skill` tool call is the agent's own choice, not this — that is `tool-calls --tool Skill`
+claude-nu records | get type | uniq --count # Every raw record, one row per line: {type, uuid, timestamp, record, session, project, project_name}, the whole line under `record` — for the record types no other command models. Scoped like `messages`, and a record copied into a resumed session comes back once, as there; the regex matches the record as JSON
 claude-nu export-session               # Markdown with YAML frontmatter; save is the shell's job: `| save file.md`
 claude-nu export-session --tools       # ...keeping tool calls: a `> [Bash]` header and the whole input record as a fenced NUON block — lossless, reads back with `from nuon`, no per-tool case. Results are the exception and stay a char count: a single `cat` runs to thousands of characters and would bury the dialogue
 claude-nu project-move ~/old ~/new     # Retarget Claude's state after a project directory moved: sessions dir name, `cwd` in every record, ~/.claude.json (`projects` + `githubRepoPaths`), history.jsonl. `--dry-run` reports the same rows without writing. Literal substring swap, never a JSON round trip. A store already standing at the destination is folded into, not refused — a project that moves twice comes back to a name Claude knows. A file in both stores is resolved by containment: transcripts are append-only, so the copy that contains the other wins (`keep-source` / `keep-destination`), and a pair where neither contains the other stops the run before anything is written. Only two `~/.claude.json` project entries are still refused — no rule picks a winner for `allowedTools` or a trust flag, so the error prints the two commands that show both records

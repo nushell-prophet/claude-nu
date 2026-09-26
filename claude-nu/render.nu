@@ -75,6 +75,15 @@ export def render-tool-input []: record -> string {
     $"($header)\n\n```nuon\n($block.input? | to nuon --pretty)\n```"
 }
 
+# The text a tool_result block carries: its content when that is a string,
+# else its text blocks, one per line. Image and other non-text blocks drop out.
+export def tool-result-text []: record -> string {
+    let raw = $in.content?
+    if ($raw | describe) == "string" { $raw } else {
+        $raw | content-blocks | where type? == "text" | get text --optional | str join "\n"
+    }
+}
+
 # Render a single content block as markdown.
 # text -> text as-is; with --thinking, thinking -> `[thinking]`-prefixed text;
 # with --tools, tool_use -> its whole input, tool_result -> a char count; else "".
@@ -85,14 +94,13 @@ export def render-block [--tools --thinking]: record -> string {
     let block = $in
     match $block.type? {
         "text" => ($block.text? | default "")
-        "thinking" if $thinking => $"[thinking] ($block.thinking? | default '')"
+        # Why the emptiness guard: recent Claude Code writes thinking redacted
+        # — an empty `thinking` beside its `signature` — and each one came back
+        # as a bare `[thinking] ` row, 90 of 118 in one session.
+        "thinking" if $thinking and ($block.thinking? | default "" | is-not-empty) => $"[thinking] ($block.thinking)"
         "tool_use" if $tools => ($block | render-tool-input)
         "tool_result" if $tools => {
-            let raw = $block.content?
-            let txt = if ($raw | describe) == "string" { $raw } else {
-                $raw | content-blocks | where type? == "text" | get text --optional | str join " "
-            }
-            let n = $txt | str length
+            let n = $block | tool-result-text | str length
             let err = if $block.is_error? == true { " error" } else { "" }
             $"> [result($err): ($n) chars]"
         }

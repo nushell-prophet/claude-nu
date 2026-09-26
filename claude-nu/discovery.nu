@@ -10,8 +10,12 @@ export const UUID_JSONL_PATTERN = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 export const UUID_PATTERN = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
 # Subagent JSONL pattern (Claude Code 2.1.138+ layout:
-# `<project>/<session-uuid>/subagents/agent-<id>.jsonl`)
-export const AGENT_JSONL_PATTERN = 'agent-[0-9a-f]+\.jsonl$'
+# `<project>/<session-uuid>/subagents/agent-<id>.jsonl`). The id is usually
+# hex, but some carry words from the task (`agent-afork-59b4cf88f115039f`),
+# and a hex-only pattern left 16 such files on this machine unlisted.
+export const AGENT_JSONL_PATTERN = 'agent-[0-9a-z-]+\.jsonl$'
+# A subagent id as `messages` and `tool-calls` name it: the file stem.
+export const AGENT_ID_PATTERN = '^agent-[0-9a-z-]+$'
 
 # Root of Claude Code session storage: ~/.claude/projects
 export def projects-root []: nothing -> path {
@@ -72,22 +76,30 @@ export def resolve-session-file [
         if ($session | str ends-with '.jsonl') {
             return $session
         }
-        if $session !~ $UUID_PATTERN {
+        # Why: `messages` and `tool-calls` name a subagent transcript by its
+        # file stem, so that name has to resolve back, or the row cannot be
+        # piped onward. A name is tried when no transcript has the id, as
+        # after a prefix: `/rename` can call a session `agent-refactor`.
+        if $session =~ $AGENT_ID_PATTERN {
+            let by_id = find-session-file $dir $"*/subagents/**/($session).jsonl" $session
+            if $by_id != null { return $by_id }
             return (resolve-session-name $session --sessions-dir $dir)
         }
-        let candidate = $dir | path join $"($session).jsonl"
-        if ($candidate | path exists) {
-            return $candidate
+        if $session !~ $UUID_PATTERN {
+            # Why a prefix before a name: notes and agents quote sessions by
+            # their first eight characters (`9787e004`), and a name is only
+            # tried when no id starts with the text.
+            let by_prefix = if $session =~ '^[0-9a-f][0-9a-f-]{5,34}$' {
+                find-session-file $dir $"($session)*.jsonl" $session
+            }
+            if $by_prefix != null { return $by_prefix }
+            return (resolve-session-name $session --sessions-dir $dir)
         }
-        # Why: UUIDs are globally unique, but piped rows (or `sessions
-        # --session`) may
-        # point at a session from another project — search all projects
-        # before giving up.
-        let found = glob (projects-root | path join $"*/($session).jsonl")
-        if ($found | is-empty) {
+        let found = find-session-file $dir $"($session).jsonl" $session
+        if $found == null {
             error make $"Session not found in any project: ($session)"
         }
-        return ($found | first)
+        return $found
     }
 
     if not ($dir | path exists) {
@@ -103,6 +115,180 @@ export def resolve-session-file [
     }
 
     $files | first | get path
+}
+
+# The one session file `pattern` names below `dir`, else below every project;
+# null when none does, an error naming the candidates when several do.
+# Why this project first: an id is unique per project only — a subagent id
+# exists as two different transcripts in two project stores (118 on one
+# machine), and a session copied between stores keeps its UUID — so a row
+# piped from a project, whose `project` becomes `dir`, has to come back from
+# that project, and a pick among the others would be a guess.
+# Why the links are dropped: a resumed session links the transcripts it
+# inherits, and a link is the same transcript, not a second candidate.
+def find-session-file [
+    dir: path
+    pattern: string # glob below a project directory
+    selector: string # what was asked for, for the error
+]: nothing -> any {
+    let local = if ($dir | path exists) {
+        glob ($dir | path join $pattern) | drop-linked-copies $dir
+    } else { [] }
+    let found = $local
+        | if ($in | is-empty) { glob (projects-root | path join "*" $pattern) | drop-linked-copies (projects-root) } else { }
+        | where ($it | path basename) =~ $'($UUID_JSONL_PATTERN)|^($AGENT_JSONL_PATTERN)'
+    if ($found | length) < 2 { return ($found | get 0?) }
+    let ids = $found | each { session-id-from-path } | uniq
+    if ($ids | length) == 1 {
+        let rows = $found | each {|file| $"  ($file)" } | str join "\n"
+        error make $"($selector) names more than one transcript, pick one by its path:\n($rows)"
+    }
+    let rows = $found | each {|file| $"  ($file | session-id-from-path)  ($file | project-dir-name)" } | str join "\n"
+    error make $"Session id prefix is ambiguous, give more characters: ($selector)\n($rows)"
+}
+
+# The parent session of a subagent transcript, read from its path: the
+# directory right above its `subagents`. null for a top-level transcript.
+# Why `path expand`: a resumed session links the first session's agent
+# transcripts into its own `subagents/`, and the parent is the session where
+# the file lives — the one discovery and `--session agent-<id>` report, after
+# `drop-linked-copies` drops the link.
+export def parent-session-of []: path -> any {
+    let file = $in | path expand
+    let top = $file | top-level-session-file
+    if $top == $file { null } else { $top | session-id-from-path }
+}
+
+# The top-level transcript a session file belongs to: itself for a top-level
+# file, `<project>/<uuid>.jsonl` for a subagent transcript under `<uuid>/subagents/`.
+# Why the last `subagents`, not the first: the store itself can sit under a
+# directory of that name (a HOME, a CLAUDE_CONFIG_DIR, a scratch copy), while
+# nothing below `<uuid>/subagents/` is named so.
+export def top-level-session-file []: path -> path {
+    let file = $in
+    if ($file | path basename) !~ $AGENT_JSONL_PATTERN { return $file }
+    let parts = $file | path split
+    let at = $parts | enumerate | where item == "subagents" | get index | last
+    if $at == null or $at == 0 { return $file }
+    $"($parts | first $at | path join).jsonl"
+}
+
+# Workflow run state files of a top-level session, one per run it took part
+# in, by run id. [] when it took part in none.
+# A run counts when the session holds its state file (`<uuid>/workflows/wf_*.json`)
+# or its agents' directory (`<uuid>/subagents/workflows/wf_*`, a symlink in a
+# resumed session); each state file is then found the way an agent finds it,
+# through `workflow-state-file`; a run with no state file anywhere has nothing
+# to read and is left out.
+# Why both places: a run resumed from another session writes its state there,
+# while its agents stay under the session that started it — so the state file
+# alone left the starting session with no run, and an agent's row piped here
+# (which stands for that session) with none either.
+# Why `ls` on the directories and a name filter, not a glob: the directory is a
+# variable, and a `[` in a project path would turn a glob into a pattern.
+export def workflow-state-files []: path -> list<path> {
+    let session_file = $in
+    let session_dir = $session_file | str replace --regex '\.jsonl$' ''
+    let state_dir = $session_dir | path join "workflows"
+    let agents_dir = $session_dir | path join "subagents" "workflows"
+    let from_state = if ($state_dir | path exists) {
+        ls $state_dir
+        | where type == file and ($it.name | path basename) =~ '^wf_.*\.json$'
+        | get name
+        | path parse
+        | get stem
+    } else { [] }
+    let from_agents = if ($agents_dir | path exists) {
+        ls $agents_dir
+        | where type in [dir symlink] and ($it.name | path basename) =~ '^wf_'
+        | get name
+        | path basename
+    } else { [] }
+    $from_state
+    | append $from_agents
+    | uniq
+    | each {|run| $session_file | workflow-state-file $run }
+    | compact
+    | sort-by { path basename }
+}
+
+# One workflow run state file, read into the fields that say which run it was,
+# whether it finished, how long it took and what failed. `agents` holds one row
+# per agent the run's progress lists: {agent_id, label, phase, state}, with
+# `agent_id` spelled as the transcript's file stem, so it joins to `sessions`.
+# Why the status fallback: Claude Code's own reader of this file does the same —
+# a file with no `status` is `failed` when it carries an `error`, else `completed`.
+export def read-workflow-state []: path -> record {
+    let state = open --raw $in | from json
+    let progress = $state.workflowProgress? | default []
+    {
+        id: $state.runId?
+        name: $state.workflowName?
+        status: ($state.status? | default (if $state.error? != null { "failed" } else { "completed" }))
+        agent_count: ($state.agentCount? | default 0)
+        duration: ($state.durationMs? | if $in == null { } else { $in * 1ms })
+        error: $state.error?
+        started: ($state.startTime? | if $in == null { } else { $in * 1_000_000 | into datetime })
+        phases: ($state.phases? | default [] | get --optional title)
+        summary: $state.summary?
+        agents: (
+            $progress
+            | where type? == "workflow_agent"
+            | each {|a| {agent_id: $"agent-($a.agentId?)" label: $a.label? phase: $a.phaseTitle? state: $a.state?} }
+        )
+    }
+}
+
+# Who a subagent transcript is: {agent_id, agent_type, workflow, agent_label,
+# phase}, all null for a top-level transcript. `agent_type` and the label come
+# from the sibling `agent-<id>.meta.json` (`agentType`, `description` — the
+# Agent tool's description, or the label a workflow gave its agent), `phase`
+# from its `workflowPhase`; `workflow` is the `wf_*` directory a workflow agent
+# sits in.
+# Why the state-file fallback: meta files written before Claude Code recorded
+# the label and phase in them carry only `agentType`, and the run's own state
+# file still lists every agent with both. An agent the state does not list — one
+# a resumed run started again under a new id — keeps a null label.
+export def subagent-identity []: path -> record {
+    let file = $in
+    let none = {agent_id: null agent_type: null workflow: null agent_label: null phase: null}
+    if ($file | path basename) !~ $AGENT_JSONL_PATTERN { return $none }
+
+    let agent_id = $file | session-id-from-path
+    let meta_file = $file | str replace --regex '\.jsonl$' '.meta.json'
+    let meta = if ($meta_file | path exists) { open --raw $meta_file | from json } else { {} }
+    let dir = $file | path dirname
+    let workflow = if ($dir | path basename) =~ '^wf_' and ($dir | path dirname | path basename) == "workflows" {
+        $dir | path basename
+    }
+
+    let listed = if $workflow != null and ($meta.description? == null or $meta.workflowPhase? == null) {
+        $file
+        | workflow-state-file $workflow
+        | if $in == null { } else { read-workflow-state | get agents | where agent_id == $agent_id | get 0? }
+    }
+
+    {
+        agent_id: $agent_id
+        agent_type: $meta.agentType?
+        workflow: $workflow
+        agent_label: ($meta.description? | default $listed.label?)
+        phase: ($meta.workflowPhase? | default $listed.phase?)
+    }
+}
+
+# The state file of run `workflow`, looked up from a top-level transcript or one
+# of its agents': the session's own `workflows/<id>.json` first, then any
+# session of the same project. null when none exists.
+# Why the project-wide step: a run resumed from another session writes its state
+# there, while its agents' transcripts stay under the session that started them
+# (seen on this machine: `wf_7b4c85a1-a5c`).
+def workflow-state-file [workflow: string]: path -> any {
+    let session_dir = $in | top-level-session-file | str replace --regex '\.jsonl$' ''
+    let own = $session_dir | path join "workflows" $"($workflow).json"
+    if ($own | path exists) { return $own }
+    let pattern = $session_dir | path dirname | path join "*" "workflows" $"($workflow).json"
+    try { ls ($pattern | into glob) | get name.0? } catch { null }
 }
 
 # The session file carrying `name` as its current name — the same two tiers as
@@ -176,7 +362,13 @@ export def session-id-from-path []: path -> string {
 # re-filters the decoded `type`, so a line merely quoting the marker can't slip in.
 export def read-session-records [--contains: string]: path -> table {
     let file = $in
+    # Why the NUL trim: an unclean shutdown can leave a transcript extended by a
+    # run of NUL bytes that were never written. A raw NUL is never valid JSON,
+    # so the trim drops no record — while one such file on the machine stopped
+    # every `--all-projects` read. Only a trailing run: a NUL anywhere else is a
+    # shape nobody has seen, and it still fails below.
     let raw = open --raw $file
+        | str trim --right --char (char nul)
         | if $contains == null { } else { lines | where ($it | str contains $contains) | str join "\n" }
     # Why: `from json --objects` is lazy, so its error surfaces wherever the
     # caller consumes the table — pointing at some pipeline in discovery.nu and
@@ -196,9 +388,11 @@ export def read-session-records [--contains: string]: path -> table {
 }
 
 # Discover session files in a directory, newest first. Returns rows
-# {path, parent_session_id, modified}; parent_session_id is the parent session
+# {path, parent_session_id, modified, size}; parent_session_id is the parent session
 # UUID for subagent files (`<uuid>/subagents/agent-*.jsonl`), null for top-level
-# files. Single source of truth for the on-disk session layout — every command
+# files. `modified` and `size` are the `sessions` columns of the same names:
+# the `ls` here already stats each file, so they cost no parse and no second stat.
+# Single source of truth for the on-disk session layout — every command
 # that lists sessions for parsing goes through here, so the name patterns, the
 # subagent walk, and the recency order live in one place. (Two lightweight
 # listers in sessions.nu — `projects` and the sessions completer — stay
@@ -211,7 +405,8 @@ export def discover-session-files [dir: path]: nothing -> table {
     # errors — keeping the empty case graceful without a special branch.
     let top_level = ls $dir
         | where name =~ $UUID_JSONL_PATTERN
-        | each {|f| {path: $f.name parent_session_id: null modified: $f.modified} }
+        | follow-links
+        | each {|f| {path: $f.name parent_session_id: null modified: $f.modified size: $f.size} }
 
     # Why: subagent transcripts are nested out of reach of a flat `ls`, so a glob
     # descends to them. The `**` is load-bearing: Workflow agents nest deeper, at
@@ -223,13 +418,60 @@ export def discover-session-files [dir: path]: nothing -> table {
     # walk; the old `glob | each { ls }` re-stated each file individually (~10x
     # slower on a project with many subagents). `ls` errors on a no-match glob, so
     # try/catch keeps the empty case graceful (matching `glob`'s old behavior).
-    let subagent_files = try { ls (($dir | path join "*/subagents/**/*.jsonl") | into glob) } catch { [] }
+    let listed = try { ls (($dir | path join "*/subagents/**/*.jsonl") | into glob) } catch { [] }
         | where name =~ $AGENT_JSONL_PATTERN
+    let real = $listed | get name | drop-linked-copies $dir
+    let subagent_files = $listed
+        | where name in $real
+        | follow-links
         | each {|f|
-            {path: $f.name parent_session_id: ($f.name | path relative-to $dir | path split | first) modified: $f.modified}
+            {path: $f.name parent_session_id: ($f.name | path relative-to $dir | path split | first) modified: $f.modified size: $f.size}
         }
 
     $top_level | append $subagent_files | sort-by modified --reverse
+}
+
+# `ls` rows with each symlink's `modified` and `size` taken from its target,
+# under the link's own name.
+# Why: `ls` describes the link, and Claude Code writes the subagent transcripts
+# a resumed session inherits as symlinks to the parent's files. The link's
+# mtime is when the session was resumed, not its last record, so the rule every
+# mtime cut stands on — a file is written when its last record is — did not hold.
+export def follow-links []: table -> table {
+    each {|f|
+        if $f.type != "symlink" { return $f }
+        ls ($f.name | path expand) | first | update name $f.name
+    }
+}
+
+# One path per real file among `files`, in their order: a path reached through a
+# symlink below `root` — the file itself or a directory on the way — is dropped
+# when the file's own spelling is among them too.
+# Why the real file and not the link: when a session is resumed, Claude Code
+# makes the new session's `subagents/` entries — a single transcript, or a
+# whole `workflows/wf_*` directory — symlinks into the first session's
+# directory, and keeps writing there: `wf_7b4c85a1-a5c` was made by a7aaed2c
+# (21:42), linked from a7e17f17 on resume (21:44), and 5 of its 9 agents were
+# then written into a7aaed2c's directory with a7e17f17's `sessionId`. So the
+# file lives in the first session's tree, and the parent is read from where it
+# lives — as for any path, and as `drop-copied-records` keeps the copy where a
+# record was first written. The cost: an agent the resumed session started
+# names the first one as its parent; only its records' `sessionId` can tell,
+# and a listing parses no file. A link whose target is not among `files`
+# stays: it is then the only way to that transcript.
+export def drop-linked-copies [root: path]: list<path> -> list<path> {
+    let files = $in
+    let root_real = $root | path expand
+    let rows = $files
+        | each {|f|
+            let real = $f | path expand
+            {path: $f real: $real linked: ($real != ($root_real | path join ($f | path relative-to $root)))}
+        }
+    let direct = $rows | where not linked | get real
+    $rows
+    | where {|r| not $r.linked or $r.real not-in $direct }
+    | uniq-by real
+    | get path
 }
 
 # Top-level (human) session files of the current project, newest first — the
@@ -360,7 +602,7 @@ export def mtime-filter-session-files [since: datetime]: list<path> -> list<path
     # Why one `ls ...$files`: it stats the whole scope in a single call, and a
     # string variable in a glob position is taken literally, so a `[` in a
     # project path cannot turn into a pattern.
-    let kept = ls ...$files | where modified >= $since | get name
+    let kept = ls ...$files | follow-links | where modified >= $since | get name
     # Why match against the input list: it keeps the caller's order and its own
     # spelling of each path (same reason as in rg-filter-session-files).
     $files | where $it in $kept

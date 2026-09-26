@@ -17,6 +17,8 @@ const SESSION_COLUMNS = [
     [summary true]
     [first_timestamp false]
     [last_timestamp true]
+    [size false]
+    [modified false]
     [user_msg_count false]
     [user_msg_length false]
     [response_length false]
@@ -43,7 +45,19 @@ const SESSION_COLUMNS = [
     [assistant_msg_count false]
     [tool_call_count false]
     [token_usage false]
+    [agent_id false]
+    [agent_type false]
+    [workflow false]
+    [agent_label false]
+    [phase false]
 ]
+
+# Columns every `sessions` row carries whatever --columns selects.
+const ROW_COLUMNS = [path parent_session_id]
+
+# Selectable columns read from the file listing, not from the records: a
+# selection of only these opens no session file.
+const LISTING_COLUMNS = [size modified]
 
 # List Claude Code projects under ~/.claude/projects, most recent first.
 # `name` is the last two segments of the real project path; `path` is the
@@ -84,6 +98,10 @@ export def projects []: nothing -> table {
             name: ($cwd | project-display-name)
             path: $dir.name
             count: ($files | length)
+            # Why the same files as `count`: the top-level transcripts only —
+            # no subagent transcripts, no `tool-results/` — so it is what
+            # `projects | sessions` reads, not the disk the store takes (`du`).
+            size: ($files | get size | math sum)
             modified: $dir.modified
         }
     }
@@ -98,8 +116,8 @@ export def "nu-complete claude sessions" []: nothing -> record {
         return {options: {sort: false} completions: []}
     }
 
-    # Not discover-session-files because: the description needs `size`, which
-    # its rows don't carry, and a Tab press shouldn't pay the subagents glob.
+    # Not discover-session-files because: a Tab press shouldn't pay the
+    # subagents glob.
     let completions = ls $sessions_dir
         | where name =~ $UUID_JSONL_PATTERN
         | each {|file|
@@ -136,9 +154,10 @@ export def "nu-complete claude sessions" []: nothing -> record {
 # Extract user messages from Claude Code session files.
 # With no input it reads every top-level session of the current project; scope it
 # by piping session rows in — `sessions --last | messages` for the most recent
-# one, `sessions --session <uuid> | messages` for a named one, `sessions
-# --all-projects | messages` for every project. `sessions` lists only top-level
-# human sessions by default, so these carry no agent turns; add `sessions
+# one, `sessions --session <uuid> | messages` for a named one, `projects |
+# messages` for every project — the fast spelling, since `sessions
+# --all-projects` parses every file for its own columns first. Both scopes are
+# top-level human sessions, so they carry no agent turns; add `sessions
 # --subagents` if you deliberately want subagent transcripts too.
 # Rows come session by session — newest session first, chronological inside each
 # — not as one merged timeline; `sort-by timestamp` if that is what you want.
@@ -164,23 +183,55 @@ export def "nu-complete claude sessions" []: nothing -> record {
 # is what gets filtered, and here a row is one message with a timestamp of its
 # own — so `messages --since 1wk` returns last week's messages, not every
 # message of a session that happens to have been open last week.
+# Every row carries a `kind`: `typed`, `bash-input`, `bash-output`, `system`
+# (only with --include-system) or `response` (only with --include-responses).
+# Why a column and not a flag per kind: the user's own words are
+# `where kind == typed`, and the pasted output of a `!` command stays one
+# `where` away instead of being guessed from the text.
+# `--context N` returns, with each hit, the N rows before and after it in the
+# same session — like `rg --context`. The rows come from the same dialogue the
+# other flags select, so `--include-responses` makes the reply before a prompt
+# a neighbour. Rows then carry `hit`, true for the rows the regex matched, and a
+# row two windows share comes back once.
+# Why the window runs over the rows left after --since/--until and after the
+# copies a resumed session holds are dropped, not over the whole session: a
+# returned row is then always a hit or a neighbour of one that is returned too,
+# in the same session — never context for a hit the window or the copy rule
+# already cut.
 @category claude-nu
+@example "only what the user typed, without `!` commands and their output" { claude-nu messages | where kind == typed }
+@example "each prompt about a rebase with the reply before it and after it" { claude-nu messages 'rebase' --context 1 --include-responses }
 export def messages [
     regex?: string # Filter messages by regex pattern
     --since: any # Only messages at or after this point — a duration means ago (`1wk`), or a datetime/date string
     --until: any # Only messages at or before this point
-    --include-system # Include system/meta messages (not just user-typed)
+    --include-system # Include system/meta messages (not just user-typed), as rows of kind `system`
     --include-thinking # Include assistant thinking blocks (prefixed with [thinking])
     --raw # Return raw message records instead of just content
-    --include-responses # Include assistant responses (text only, interleaved)
+    --include-responses # Include assistant responses (text only, interleaved), as rows of kind `response`
     --no-rg # Skip the ripgrep file pre-filter and match entirely in-engine (exact regex semantics, slower)
-]: [nothing -> table record -> table table -> table] {
+    --context: int # With a regex: also the N rows before and after each hit in its session; adds a `hit` column
+]: [nothing -> table record -> table table -> table list<string> -> table] {
     let input = $in
-    let piped_files = resolve-piped-sessions $input
+    let piped_files = piped-session-files $input
 
     # Why up here: a misspelled bound must fail before any session is opened.
     let since_at = if $since == null { null } else { $since | resolve-time-bound "--since" }
     let until_at = if $until == null { null } else { $until | resolve-time-bound "--until" }
+
+    if $context != null and $regex == null {
+        error make {
+            msg: "--context needs a regex"
+            label: {text: "context around which hits?" span: (metadata $context).span}
+            help: "pass the pattern to match: `messages 'pattern' --context 2`"
+        }
+    }
+    if $context != null and $context < 0 {
+        error make {
+            msg: "--context cannot be negative"
+            label: {text: "rows before and after each hit" span: (metadata $context).span}
+        }
+    }
 
     let scoped_files = if $piped_files != null {
         $piped_files
@@ -228,20 +279,26 @@ export def messages [
         let dialogue = $records
             | if $include_responses { } else { where type? == "user" }
             | extract-dialogue $extract_text --keep-system=$include_system
+            | insert kind {|r| $r | message-kind }
 
         # Why: sorting the ISO-8601 timestamp strings sorts chronologically,
         # so one sort here serves both the --raw and rendered branches.
         let filtered = $dialogue
-            | if $regex == null { } else { where text =~ $regex }
             | if $since_at == null { } else { where {|m| ($m.timestamp | into datetime) >= $since_at } }
             | if $until_at == null { } else { where {|m| ($m.timestamp | into datetime) <= $until_at } }
             | sort-by timestamp
+            | if $regex == null { } else if $context == null { where text =~ $regex } else {
+                insert hit {|m| $m.text =~ $regex }
+            }
 
         if $raw {
             $filtered | reject text
         } else {
             $filtered
-            | each {|msg| {role: $msg.type message: $msg.text timestamp: ($msg.timestamp? | into datetime)} }
+            | each {|msg|
+                {role: $msg.type message: $msg.text timestamp: ($msg.timestamp? | into datetime) uuid: $msg.uuid? kind: $msg.kind}
+                | if $context == null { } else { insert hit $msg.hit }
+            }
             | if $include_responses { } else { reject role }
         }
         # Why: rows are self-describing — the session column makes messages
@@ -255,11 +312,18 @@ export def messages [
         | insert project_name ($records | pick-first $.cwd | project-display-name)
     }
     | flatten
+    | drop-copied-records uuid
+    # Why after the copies are dropped: a hit a resumed session copied can be
+    # dropped from that session, and neighbours chosen before would stay behind
+    # there as context for a hit it no longer returns.
+    | if $context == null { } else {
+        chunk-by {|m| $m.session } | each { keep-context $context } | flatten
+    }
 }
 
 # Extract the tool calls of Claude Code session files — what an agent did, as
 # `messages` is what was said. One row per tool_use block: {tool, input,
-# timestamp, session, project, project_name}, with `input` kept as the raw
+# timestamp, id, uuid, session, project, project_name}, with `input` kept as the raw
 # record so a caller drills into it (`where tool == Bash | get input.command`).
 # Scoping and searching work exactly as in `messages`: no input reads every
 # top-level session of the current project, piped session rows narrow it, the
@@ -273,21 +337,50 @@ export def messages [
 # columns path has no rg pre-filter: the same all-projects sweep costs 42s
 # through `sessions --columns bash_commands` against 2.4s once rg narrows the
 # files first.
-# Why the regex matches the input rendered as NUON, not just the tool name or
-# one preferred field: the interesting string sits in a different field per tool
+# Why the regex matches the whole input, not just the tool name or one
+# preferred field: the interesting string sits in a different field per tool
 # (`command`, `prompt`, `skill`, an MCP tool's own schema), and a search that
 # has to know the field per tool cannot answer "who ran this" across tools.
-# Filtering by tool is `where tool == ...` downstream — no flag, because unlike
-# the regex it buys no pre-filter.
+# Why the input as compact JSON and not NUON: the rg pre-filter reads the raw
+# JSON line, so a NUON pattern spanning a key and its value (`command: "git`)
+# passed no file and returned nothing, while --no-rg found the call.
+# The regex also matches the tool name, so `tool-calls AskUserQuestion` finds
+# the calls a reader means by it; the exact filter is `--tool`.
+# Why `--tool` and not `where tool == ...` downstream: the flag gets its own rg
+# pre-filter, because the tool name sits in the raw line as the fixed string
+# `"name":"<tool>"` — a downstream `where` runs only after every file is parsed.
+# Measured machine-wide for `mcp__nushell__evaluate`: 56 s with the `where`,
+# 11 s with the flag — rg passed 328 of 3225 files, same 3868 rows.
 @category claude-nu
+@example "Only the nushell MCP calls, across every project" {
+    claude-nu projects | claude-nu tool-calls --tool mcp__nushell__evaluate
+}
+@example "Every file read or edit that touched sessions.nu" {
+    claude-nu tool-calls --tool [Read Edit Write] 'sessions\.nu'
+}
 export def tool-calls [
-    regex?: string # Filter tool calls by regex over the call's input (rendered as NUON)
+    regex?: string # Filter tool calls by regex over the tool name or the call's input as compact JSON (`'"command":"git'`)
+    # Why list first: with `string` first the parser takes `[Bash Read]` as the
+    # one string "[Bash Read]", and the filter silently matches nothing.
+    --tool: oneof<list<string>, string> # Only calls to this tool, or to any of a list — exact name, with its own rg pre-filter
     --since: any # Only calls at or after this point — a duration means ago (`1wk`), or a datetime/date string
     --until: any # Only calls at or before this point
-    --no-rg # Skip the ripgrep file pre-filter and match entirely in-engine (exact regex semantics, slower)
-]: [nothing -> table record -> table table -> table] {
+    --no-rg # Skip the ripgrep file pre-filters and match entirely in-engine (exact regex semantics, slower)
+    --results # Add each call's `result` text and `is_error`; the regex then searches the result too
+]: [nothing -> table record -> table table -> table list<string> -> table] {
     let input = $in
-    let piped_files = resolve-piped-sessions $input
+    let piped_files = piped-session-files $input
+
+    let tools = if $tool == null { null } else { [$tool] | flatten }
+    # Why an error and not an empty result: an empty list is almost always a
+    # name query upstream that found nothing, and it would read every file only
+    # to return no rows.
+    if $tools == [] {
+        error make {
+            msg: "--tool: expected a tool name or a non-empty list of them"
+            label: {text: "empty list" span: (metadata $tool).span}
+        }
+    }
 
     # Why up here: same as in `messages` — a bad bound fails before any parsing.
     let since_at = if $since == null { null } else { $since | resolve-time-bound "--since" }
@@ -309,6 +402,7 @@ export def tool-calls [
 
     let session_files = $scoped_files
         | if $since_at == null { } else { mtime-filter-session-files $since_at }
+        | if $tools == null or $no_rg { } else { rg-filter-session-files (tool-name-pattern $tools) }
         | if $regex == null or $no_rg { } else { rg-filter-session-files $regex }
 
     $session_files
@@ -316,11 +410,22 @@ export def tool-calls [
         # Why the pre-screen: tool calls live only on assistant records, which
         # are a minority of the lines — the rest never reach the JSON parser.
         # The `where type?` below still runs, so this only narrows.
+        # Why --results reads the user records too: a result is a tool_result
+        # block on the user record that follows the call, joined by the call's id.
         let records = $session_file
-            | read-session-records --contains '"type":"assistant"'
-            | where type? == "assistant"
+            | if $results { read-session-records } else { read-session-records --contains '"type":"assistant"' }
+        let outcomes = if $results {
+            $records
+            | where type? == "user"
+            | extract-tool-results
+            | each {|r| {id: $r.tool_use_id? result: ($r | tool-result-text) is_error: ($r.is_error? == true)} }
+            # Why: `join` pairs a null key with a null key, so a result naming
+            # no call would attach to a call carrying no id.
+            | where id != null
+        } else { [] }
 
         $records
+        | where type? == "assistant"
         | each {|record|
             $record
             | extract-tool-calls
@@ -328,22 +433,103 @@ export def tool-calls [
             # store carries one (26498 of 26498 checked), so a missing field is
             # a record shape that changed — it must fail here, not silently
             # yield a null column downstream.
-            | each {|call| {tool: ($call.name? | default "") input: ($call.input? | default {}) timestamp: ($record.timestamp | into datetime)} }
+            | each {|call|
+                {
+                    tool: ($call.name? | default "")
+                    input: ($call.input? | default {})
+                    timestamp: ($record.timestamp | into datetime)
+                    id: $call.id?
+                    uuid: $record.uuid?
+                }
+            }
         }
         | flatten
+        | if $tools == null { } else { where tool in $tools }
         | if $since_at == null { } else { where timestamp >= $since_at }
         | if $until_at == null { } else { where timestamp <= $until_at }
-        | if $regex == null { } else { where {|call| ($call.input | to nuon) =~ $regex } }
+        # Why a left join: a call with no result yet (interrupted, or the live
+        # session still running it) keeps its row, with a null result.
+        # Why the defaults: joined against no results at all (a session whose
+        # calls are all still running), `join` adds no columns, and the schema
+        # would depend on the data.
+        | if $results { join --left $outcomes id | default null result | default null is_error } else { }
+        | if $regex == null { } else {
+            where {|call| $call.tool =~ $regex or ($call.input | to json --raw) =~ $regex or ($call.result? | default "") =~ $regex }
+        }
         | insert session ($session_file | session-id-from-path)
         | insert project ($session_file | project-dir-name)
         | insert project_name ($records | pick-first $.cwd | project-display-name)
     }
     | flatten
+    | drop-copied-records id
+}
+
+# The rg pattern for a file holding a call to any of `tools`: the tool_use
+# block's `"name":"<tool>"` as Claude Code writes it, compact, no spaces.
+# Why one escaped alternation and not one rg call per name: each call is a
+# second pass over the files, and the result would be their intersection.
+# Why escaped: a name is the caller's text, and a stray `.` or `(` would widen
+# the pre-filter or make rg fail — the pattern must mean the name literally.
+export def tool-name-pattern [tools: list<string>]: nothing -> string {
+    let names = $tools | each { str replace --all --regex '[\\.^$|?*+()\[\]{}]' '\$0' } | str join '|'
+    '"name":"(?:' + $names + ')"'
+}
+
+# Every raw record of Claude Code session files, one row per JSONL line:
+# {type, uuid, timestamp, record, session, project, project_name}, with the
+# whole decoded line under `record`. Scoping works as in `messages`; the regex
+# matches the record as JSON (`'"type":"system"'`). A record a resumed or
+# forked session copied from its parent comes back once, as in `messages`
+# (`drop-copied-records`); a line with no `uuid` is always kept.
+# Why JSON and not NUON: the rg pre-filter reads the raw
+# JSON line, so a NUON pattern spanning a key and its value (`type: user`)
+# passed no file and returned nothing — 0 rows against 476 with --no-rg.
+# Why a command: the other commands model the record types they know, and past
+# agents kept dropping to jq or to the private `read-session-records` for the
+# rest — system records, hooks, permission modes, the shape of a new field.
+# Why the record is nested, not spread into columns: record types share few
+# fields, so a spread table is mostly nulls and its columns change with the
+# scope; `record` keeps every row the same shape and the line lossless.
+@category claude-nu
+@example "record types of the current project, most common first" { claude-nu records | get type | uniq --count | sort-by count --reverse }
+@example "the permission modes the last session ran in" { claude-nu sessions --last | claude-nu records | where type == permission-mode | get record.permissionMode }
+export def records [
+    regex?: string # Filter records by regex over the record as JSON (`'"type":"system"'`)
+    --no-rg # Skip the ripgrep file pre-filter and match entirely in-engine (exact regex semantics, slower)
+]: [nothing -> table record -> table table -> table list<string> -> table] {
+    let input = $in
+    let piped_files = piped-session-files $input
+
+    let scoped_files = if $piped_files != null {
+        $piped_files
+    } else {
+        top-level-session-files
+        | if ($in | is-empty) { error make "No session files found for the current project" } else { }
+    }
+
+    let missing = $scoped_files | where not ($it | path exists)
+    if ($missing | is-not-empty) {
+        error make $"Session file not found: ($missing | str join ', ')"
+    }
+
+    $scoped_files
+    | if $regex == null or $no_rg { } else { rg-filter-session-files $regex }
+    | each {|session_file|
+        let records = $session_file | read-session-records
+        $records
+        | each {|r| {type: ($r.type? | default "") uuid: $r.uuid? timestamp: ($r.timestamp? | if $in == null { } else { into datetime }) record: $r} }
+        | if $regex == null { } else { where {|row| ($row.record | to json --raw) =~ $regex } }
+        | insert session ($session_file | session-id-from-path)
+        | insert project ($session_file | project-dir-name)
+        | insert project_name ($records | pick-first $.cwd | project-display-name)
+    }
+    | flatten
+    | drop-copied-records uuid
 }
 
 # Extract the slash commands invoked in Claude Code session files — what you
 # typed, as `messages` is what you said and `tool-calls` is what the agent did.
-# One row per invocation: {command, args, timestamp, session, project,
+# One row per invocation: {command, args, timestamp, uuid, session, project,
 # project_name}. Scoping works exactly as in `messages`: no input reads every
 # top-level session of the current project, piped session rows narrow it,
 # `--since`/`--until` cut the window per invocation.
@@ -363,16 +549,16 @@ export def tool-calls [
 # skill on its own, and it is already `tool-calls | where tool == Skill`.
 @category claude-nu
 @example "the commands I use most" { claude-nu slash-commands | histogram command }
-@example "...across every project" { claude-nu sessions --all-projects | claude-nu slash-commands | histogram command }
+@example "...across every project" { claude-nu projects | claude-nu slash-commands | histogram command }
 @example "including the built-ins Claude Code handles itself" { claude-nu slash-commands --all | histogram command | select command count }
 @example "what I passed to a command" { claude-nu slash-commands | where command == '/land-branch' | select timestamp args }
 export def slash-commands [
     --since: any # Only invocations at or after this point — a duration means ago (`1wk`), or a datetime/date string
     --until: any # Only invocations at or before this point
     --all # Keep the built-in commands Claude Code handles itself (/clear, /model, /exit ...)
-]: [nothing -> table record -> table table -> table] {
+]: [nothing -> table record -> table table -> table list<string> -> table] {
     let input = $in
-    let piped_files = resolve-piped-sessions $input
+    let piped_files = piped-session-files $input
 
     # Why up here: same as in `messages` — a bad bound fails before any parsing.
     let since_at = if $since == null { null } else { $since | resolve-time-bound "--since" }
@@ -403,7 +589,7 @@ export def slash-commands [
         | each {|record|
             let invocation = $record | extract-slash-command
             if $invocation == null { } else {
-                $invocation | insert timestamp ($record.timestamp | into datetime)
+                $invocation | insert timestamp ($record.timestamp | into datetime) | insert uuid $record.uuid?
             }
         }
         | if $all { } else { where {|row| not ($row.command | is-builtin-slash-command) } }
@@ -414,6 +600,46 @@ export def slash-commands [
         | insert project_name ($records | pick-first $.cwd | project-display-name)
     }
     | flatten
+    | drop-copied-records uuid
+}
+
+# The rows within `n` rows of a row whose `hit` is true, in their order, each
+# once. The rows are one session's, sorted.
+# Why a sliding window over the hit flags and not a distance to every hit per
+# row: a broad regex makes most rows hits, and the per-row check is then
+# quadratic in the session's length; the window costs 2n+1 per row.
+def keep-context [n: int]: table -> table {
+    let rows = $in
+    if ($rows | is-empty) { return $rows }
+    let pad = 0..<$n | each { false }
+    let near = $pad
+        | append ($rows | get hit)
+        | append $pad
+        | window ($n * 2 + 1)
+        | each { any {|h| $h } }
+    $rows
+    | merge ($near | wrap _near)
+    | where _near
+    | reject _near
+}
+
+# Rows of records that a resumed or forked session copied from its parent,
+# kept once. Claude Code writes the parent's history into the new file under
+# the same record uuid (only `sessionId` changes), so a resumed conversation
+# counted twice: 325 of 3,205 slash-command rows machine-wide were copies.
+# The copy kept is the last in row order. The default order is by file mtime,
+# the last activity, so that is usually the parent, where the record was first
+# written — but a parent resumed after its fork sorts first, and then the fork's
+# copy is kept. A row with no key is kept as it is.
+export def drop-copied-records [key: string]: table -> table {
+    let rows = $in
+    if ($rows | is-empty) { return $rows }
+    $rows
+    | insert _copy_key {|r| $r | get --optional $key | default (random uuid) }
+    | reverse
+    | uniq-by _copy_key
+    | reverse
+    | reject _copy_key
 }
 
 # Parse one session file, computing only the selected columns.
@@ -496,8 +722,10 @@ def parse-session-columns [selected: list<string>]: path -> record {
         let tool_results = $user_records | extract-tool-results
         let stats = $all_tool_calls | extract-tool-stats $tool_results
         # Why: 2.1.x replaced EnterPlanMode tool calls with top-level
-        # permission-mode records. Treat either signal as plan-mode.
-        let from_records = $records | where type? == "permission-mode" | get permissionMode? | any { $in == "plan" }
+        # permission-mode records, and older sessions carry the mode as a
+        # `permissionMode` field on user records (Shift+Tab into plan mode).
+        # Treat any of the three as plan-mode.
+        let from_records = $records | get permissionMode --optional | any { $in == "plan" }
         $stats | upsert plan_mode_used ($stats.plan_mode_used or $from_records)
     } else { {} }
 
@@ -507,6 +735,13 @@ def parse-session-columns [selected: list<string>]: path -> record {
 
     let usage = if ("token_usage" in $selected) {
         $assistant_records | extract-token-usage
+    } else { {} }
+
+    # Why read beside the transcript and not from it: a subagent's records carry
+    # the parent's `sessionId` and nothing naming the agent, so without these
+    # a subagent row could not say which agent it is.
+    let identity = if (do $need [agent_id agent_type workflow agent_label phase]) {
+        $file_path | subagent-identity
     } else { {} }
 
     # Why `select` (not where+reduce): it keeps $selected's order and fails fast
@@ -541,6 +776,11 @@ def parse-session-columns [selected: list<string>]: path -> record {
         assistant_msg_count: $metrics.assistant_msg_count?
         tool_call_count: $metrics.tool_call_count?
         token_usage: $usage
+        agent_id: $identity.agent_id?
+        agent_type: $identity.agent_type?
+        workflow: $identity.workflow?
+        agent_label: $identity.agent_label?
+        phase: $identity.phase?
     }
     | select ...$selected
     | insert path $file_path
@@ -564,6 +804,12 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
     # yields nothing) instead of erroring about columns the caller never chose.
     # Only a non-empty table can be missing them.
     if ($input | is-empty) { return [] }
+    # Why: `glob ... | messages` and `[9787e004 agent-a1] | messages` are the
+    # short spellings of a scope; each wanted `| wrap path` before. A string is
+    # a path when one exists there, otherwise a selector as `--session` reads it.
+    if ($input | describe) =~ '^list<(string|path)' {
+        return ($input | ansi strip | each {|s| if ($s | path exists) { $s } else { resolve-session-file $s } } | uniq)
+    }
     let cols = $input | columns
     # Why: `find` is handy for searching every column at once (it recurses into
     # nested cells like user_messages), but it marks matches by injecting ansi
@@ -575,10 +821,42 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
     if "path" in $cols {
         $input | get path | compact | ansi strip | uniq
     } else if "session" in $cols {
-        $input | get session | compact | ansi strip | uniq | each {|s| resolve-session-file $s }
+        # Why the row's `project`: an id names one transcript per project only,
+        # so a row resolves in the store it was read from, not the first one found.
+        $input
+        | where session != null
+        | each {|row| {session: ($row.session | ansi strip) project: ($row.project? | if $in == null { } else { ansi strip })} }
+        | uniq
+        | each {|row|
+            let dir = if $row.project == null { null } else { projects-root | path join $row.project }
+            resolve-session-file $row.session --sessions-dir $dir
+        }
+        | uniq
     } else {
         error make "Piped input must have 'path' or 'session' column"
     }
+}
+
+# The files a dialogue command reads from its piped input, or null when nothing
+# was piped. A directory — the `path` of a `projects` row — stands for its
+# top-level sessions, the same set a bare call reads for the current project.
+# Why here and not in resolve-piped-sessions: `sessions` shares that one and
+# expands a directory itself, subagent transcripts included for --subagents.
+export def piped-session-files [input: any]: nothing -> any {
+    let piped = resolve-piped-sessions $input
+    if $piped == null { return null }
+    $piped
+    | each {|p|
+        if ($p | path type) == "dir" {
+            discover-session-files $p | where parent_session_id == null | get path
+        } else {
+            [$p]
+        }
+    }
+    | flatten
+    # Why: a directory and a file inside it can both be piped in, and the same
+    # file must not be read twice.
+    | uniq
 }
 
 # Completer for --columns: comma-separated session column names. Returns full
@@ -600,21 +878,30 @@ export def "nu-complete claude session-columns" [context: string]: nothing -> li
 }
 
 # Expand paths (piped or positional) to session-file rows. A directory
-# discovers its sessions; a file is taken as-is, whatever its name — UUID/agent
-# pattern filtering lives in discover-session-files (directory scans only), and
-# a caller naming a file explicitly skips the layout-based parent discovery.
-def expand-session-paths []: list<path> -> table {
+# discovers its sessions, subagent transcripts only with --subagents; a file is
+# taken as-is, whatever its name — UUID/agent pattern filtering lives in
+# discover-session-files (directory scans only).
+# Subagent transcripts hold agent-driven turns, not human messages, so they
+# are opt-in.
+# Why the cut is here, on directories only: a file named explicitly
+# is always read, and its row still carries its parent — the id `messages`
+# names it by has to round-trip, and a subagent row claiming no parent read as
+# a top-level session of the parent's id.
+def expand-session-paths [--subagents]: list<path> -> table {
     each {|p|
         if not ($p | path exists) {
             error make $"Path not found: ($p)"
         }
         if ($p | path type) == "dir" {
             discover-session-files $p
+            | if $subagents { } else { where parent_session_id == null }
         } else {
-            # Why the stat: discover-session-files already carries `modified`,
-            # and the --since/--until window filters on it — so a row made here
-            # has to carry it too, or a named file would drop out of every window.
-            [{path: $p parent_session_id: null modified: (ls $p | get 0.modified)}]
+            # Why the stat: discover-session-files already carries `modified`
+            # and `size`, the --since/--until window filters on the first, and
+            # both are columns — so a row made here has to carry them too, or a
+            # named file would drop out of every window.
+            let stat = ls $p | follow-links | get 0
+            [{path: $p parent_session_id: ($p | parent-session-of) modified: $stat.modified size: $stat.size}]
         }
     }
     | flatten
@@ -625,17 +912,27 @@ def expand-session-paths []: list<path> -> table {
 # omit it for the default overview set, `--all-columns` for everything. Column
 # names are listed in SESSION_COLUMNS (and tab-complete on --columns).
 # By default only top-level (human-driven) sessions are listed; pass --subagents
-# to also include subagent transcripts (those rows carry a non-null parent_session_id).
+# to also include subagent transcripts (those rows carry a non-null parent_session_id;
+# the `agent_*`, `workflow` and `phase` columns say which agent each one is).
+# `size` and `modified` come from the file listing, not the records: `modified`
+# is the file mtime, the clock --since/--until compare, and it can run hours past
+# `last_timestamp` — a record without a timestamp written after the last turn.
+# --active-since/--active-until use record time instead: a session is kept when
+# its span [first_timestamp, last_timestamp] overlaps the window, which costs a
+# parse of every session the mtime cut on --active-since leaves in.
 # Named `main` because a module can't export a command named the same as the
 # module — importing this file yields the `sessions` command.
 @category claude-nu
 @example "sessions that touched a file" { claude-nu sessions --columns edited_files,session_id | where {|r| $r.edited_files | any {|f| $f =~ 'render.nu' } } }
 @example "which skills got used, across every project" { claude-nu sessions --all-projects --columns skill_invocations | get skill_invocations | flatten | uniq --count | sort-by count --reverse }
 @example "sessions by token spend" { claude-nu sessions --columns token_usage,session_id | insert total {|r| $r.token_usage.input_tokens + $r.token_usage.output_tokens } | sort-by total --reverse }
+@example "the largest sessions of every project" { claude-nu sessions --all-projects --columns size,modified | sort-by size --reverse | first 5 }
 @example "what I worked on last week" { claude-nu sessions --all-projects --since 1wk --columns summary,cwd }
+@example "sessions open at some point on a given day" { claude-nu sessions --all-projects --active-since 2026-08-04 --active-until 2026-08-05 --columns summary,first_timestamp,last_timestamp }
+@example "which agents this project spawned, workflow agents by run and phase" { claude-nu sessions --subagents --columns agent_id,agent_type,workflow,agent_label,phase | where parent_session_id != null }
 export def main [
     ...paths: path # Session files or directories to parse (default: current project sessions)
-    --session: string@"nu-complete claude sessions" # Single session: UUID, the name set by /rename or `claude --name`, or path
+    --session: string@"nu-complete claude sessions" # Single session: UUID, a unique UUID prefix (`9787e004`), a subagent id (`agent-…`), the name set by /rename or `claude --name`, or path
     --last # Only the most recent session of the current project
     --all-projects # Enumerate sessions across every project under ~/.claude/projects
     --subagents # Also list subagent transcripts (<uuid>/subagents/agent-*.jsonl); off by default
@@ -643,11 +940,24 @@ export def main [
     --all-columns # Include all columns
     --since: any # Only sessions last active at or after this point — a duration means ago (`1wk`), or a datetime/date string
     --until: any # Only sessions last active at or before this point
-]: [nothing -> table string -> table record -> table table -> table] {
+    --active-since: any # Only sessions whose records reach this point: last_timestamp at or after it — same values as --since
+    --active-until: any # Only sessions whose records start by this point: first_timestamp at or before it
+]: [nothing -> table string -> table record -> table table -> table list<string> -> table] {
     let input = $in
     # Why up here: a misspelled bound must fail before any session is parsed.
     let since_at = if $since == null { null } else { $since | resolve-time-bound "--since" }
     let until_at = if $until == null { null } else { $until | resolve-time-bound "--until" }
+    let active_since_at = if $active_since == null { null } else { $active_since | resolve-time-bound "--active-since" }
+    let active_until_at = if $active_until == null { null } else { $active_until | resolve-time-bound "--active-until" }
+    # Why exclusive: the two pairs ask one question on two clocks — file mtime
+    # and record time — and a call mixing them answers a window nobody named.
+    if ($since_at != null or $until_at != null) and ($active_since_at != null or $active_until_at != null) {
+        error make {
+            msg: "--since/--until and --active-since/--active-until are mutually exclusive"
+            help: "--since/--until compare the file mtime, --active-* the record timestamps — pick one clock"
+        }
+    }
+    let active_window = $active_since_at != null or $active_until_at != null
     # Why: piped string is a target path (`"dir" | sessions`); piped table
     # carries path/session columns like the other commands accept.
     let piped_path = if ($input | describe) == "string" { $input } else { null }
@@ -669,10 +979,11 @@ export def main [
     if ($active_scopes | length) > 1 {
         error make $"($active_scopes | str join ' and ') are mutually exclusive — pick one session scope"
     }
-    # Why: --last/--session resolve to a single top-level file, so there are no
-    # subagents to include — flag it as a no-op rather than silently ignore.
+    # Why: --last/--session resolve to a single file — a subagent one when
+    # --session names `agent-<id>` — so there is nothing to widen with
+    # subagents; flag it as a no-op rather than silently ignore.
     if $subagents and ($last or $session != null) {
-        print --stderr "claude-nu sessions: --subagents has no effect with --last/--session — those select a single top-level session"
+        print --stderr "claude-nu sessions: --subagents has no effect with --last/--session — those select a single session"
     }
 
     let session_rows = if $session != null or $last {
@@ -684,26 +995,20 @@ export def main [
         if not ($projects_dir | path exists) {
             error make "No projects directory found"
         }
-        ls $projects_dir | where type == dir | get name | expand-session-paths
+        ls $projects_dir | where type == dir | get name | expand-session-paths --subagents=$subagents
     } else if $piped_files != null {
         # Why the early return: an empty piped selection is an empty answer, so
         # `sessions | where false | sessions` yields nothing — it must not fall
         # through to the default scope and silently widen back to the project.
         if ($piped_files | is-empty) { return [] }
-        $piped_files | expand-session-paths
+        $piped_files | expand-session-paths --subagents=$subagents
     } else {
         # Why: piped rows and positional paths mean the same thing (`projects |
         # sessions` pipes project dirs), so they share one expansion.
         $paths
         | if ($in | is-empty) { [($piped_path | default (get-sessions-dir))] } else { }
-        | expand-session-paths
+        | expand-session-paths --subagents=$subagents
     }
-
-    # Why: subagent transcripts hold agent-driven turns, not human messages, so
-    # they are opt-in — the default scope is top-level sessions only. Explicitly
-    # named/piped files carry parent_session_id == null, so they always pass.
-    let session_rows = $session_rows
-        | if $subagents { } else { where parent_session_id == null }
 
     if ($session_rows | is-empty) {
         error make "No session files found"
@@ -718,6 +1023,12 @@ export def main [
     let session_rows = $session_rows
         | if $since_at == null { } else { where modified >= $since_at }
         | if $until_at == null { } else { where modified <= $until_at }
+        # Why a first cut on mtime: a file is written when a record is appended,
+        # so its mtime is never earlier than its last record — a file untouched
+        # since before --active-since cannot reach into the window, and it is
+        # skipped unparsed. --active-until has no such cut: a file written today
+        # may have started months ago.
+        | if $active_since_at == null { } else { where modified >= $active_since_at }
 
     let all_names = $SESSION_COLUMNS | get name
 
@@ -749,19 +1060,47 @@ export def main [
     } else {
         # Why: fail fast on a typo'd column name — parse-session-columns would
         # otherwise silently omit it, hiding the mistake.
-        let unknown = $requested | difference $all_names
+        # Why the two row columns are accepted and dropped here: every row
+        # carries them anyway, and the help names them, so asking for one is
+        # not a typo — it was refused as an unknown column.
+        let unknown = $requested | difference $all_names | difference $ROW_COLUMNS
         if ($unknown | is-not-empty) {
             error make {
                 msg: $"Unknown session column\(s): ($unknown | str join ', ')"
                 label: {text: "not a session column" span: (metadata $columns).span}
-                help: $"valid columns: ($all_names | str join ', ')"
+                help: $"valid columns: ($all_names | append $ROW_COLUMNS | str join ', ')"
             }
         }
-        $requested
+        $requested | difference $ROW_COLUMNS
     }
 
+    let listed = $selected | where $it in $LISTING_COLUMNS
+    # Why the span is parsed with the selection: the overlap needs it, and a
+    # separate pass would read every file in the window twice.
+    let parsed = $selected
+        | where $it not-in $LISTING_COLUMNS
+        | if $active_window { append [first_timestamp last_timestamp] | uniq } else { }
+
     $session_rows | each {|row|
-        $row.path | parse-session-columns $selected | insert parent_session_id $row.parent_session_id
+        # Why the listing columns bypass the parse: past agents mostly listed
+        # sessions to sort them by size or mtime, and `--columns size,modified`
+        # over every project should cost one `ls`, not a read of every file.
+        let from_records = if ($parsed | is-empty) { {} } else { $row.path | parse-session-columns $parsed | reject path }
+        # Why overlap and not containment: the question is "what was I doing
+        # then", and a session open across the whole window was doing it.
+        # A session with no timestamped record has no span, so it is never in one.
+        let in_window = not $active_window or (
+            $from_records.first_timestamp != null
+            and ($active_since_at == null or $from_records.last_timestamp >= $active_since_at)
+            and ($active_until_at == null or $from_records.first_timestamp <= $active_until_at)
+        )
+        if not $in_window { return null }
+        let from_listing = if ($listed | is-empty) { {} } else { $row | select ...$listed }
+        $from_records
+        | merge $from_listing
+        | select ...$selected
+        | insert path $row.path
+        | insert parent_session_id $row.parent_session_id
     }
 }
 
@@ -778,9 +1117,9 @@ export def main [
 export def export-session [
     title?: string # Title for the exported doc, used as given (default: session summary)
     --tools # Keep tool calls: each tool_use input in full as a fenced NUON block, each result as a char count (default: drop)
-]: [nothing -> string record -> string table -> list<string>] {
+]: [nothing -> string record -> any table -> list<string> list<string> -> list<string>] {
     let input = $in
-    let piped_files = resolve-piped-sessions $input
+    let piped_files = piped-session-files $input
 
     if $piped_files != null and $title != null {
         error make {
@@ -824,6 +1163,16 @@ export def export-session [
         # Extract dialogue: user messages and assistant responses
         let dialogue = $records
             | extract-dialogue {|r| if $tools { $r | render-content --tools } else { $r | extract-text-content }}
+            # Why: a tool result rides on a user record, but nobody typed it —
+            # it continues the assistant's turn. Left as `user`, --tools gave
+            # every result its own `## User` header: 95 for 23 typed messages.
+            # The same holds for the text Claude Code writes beside a result
+            # ("Tool loaded."): only text the user wrote makes it a user turn.
+            | update type {|r|
+                let blocks = $r.message?.content? | content-blocks
+                let typed = $blocks | where type? == "text" | any {|b| $b.text | is-user-text }
+                if ($blocks | any {|b| $b.type? == "tool_result" }) and not $typed { "assistant" } else { $r.type }
+            }
             | select type text
             | rename role content
             # Merge consecutive same-role messages
@@ -858,9 +1207,12 @@ export def export-session [
     if $piped_files != null {
         $piped_files
         | each {|f| do $export_one $f }
-        # A single piped row means one session: hand back its markdown, not a
-        # one-element list.
-        | if ($input | is-record) { first } else { }
+        # A single piped row that names one session: hand back its markdown,
+        # not a one-element list. A row that names a project directory stands
+        # for all its sessions and keeps the list — `first` silently dropped
+        # every session but the newest. The row decides, not the count: a
+        # project holding one session is still a project.
+        | if ($input | is-record) and ($piped_files | length) == 1 and ($input.path? | default "" | ansi strip | path type) != "dir" { first } else { }
     } else {
         do $export_one (resolve-session-file)
     }

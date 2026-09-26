@@ -31,6 +31,10 @@ const SYSTEM_PREFIXES = [
     "<task-notification>"
     "<system-reminder>"
     "Caveat:"
+    # Written by Claude Code on Esc, with or without " for tool use".
+    "[Request interrupted by user"
+    # The text block Claude Code puts beside ToolSearch's tool_result.
+    "Tool loaded."
 ]
 
 # Commands Claude Code runs itself — the ones `slash-commands` leaves out by
@@ -131,8 +135,37 @@ export def is-user-text []: string -> bool {
     $SYSTEM_PREFIXES | all {|p| not ($text | str starts-with $p) }
 }
 
+# What a dialogue record is, as a `messages` row names it: `response` for an
+# assistant turn; for a user turn `bash-input` (the `!` command), `bash-output`
+# (what it printed), `system` (a meta turn, a compaction summary, or a wrapper
+# Claude Code wrote), or `typed` — what the user wrote, an editor selection
+# included.
+# Why the raw content and not the rendered text: rendering turns the bash
+# wrappers into markdown fences, so a pasted `git log` in a fence and the output
+# of `!git log` read the same — past agents guessed from that text and dropped
+# both. The tags on the record are the only thing that tells them apart.
+export def message-kind []: record -> string {
+    let record = $in
+    if $record.type? == "assistant" { return "response" }
+    if $record.isMeta? == true or $record.isCompactSummary? == true { return "system" }
+    let content = $record.message?.content?
+    let raw = if ($content | describe) == "string" { $content } else {
+        $content | content-blocks | where type? == "text" | get text --optional | str join
+    }
+    if ($raw | str starts-with "<bash-input>") {
+        "bash-input"
+    } else if ($raw | str starts-with "<bash-stdout>") or ($raw | str starts-with "<bash-stderr>") {
+        "bash-output"
+    } else if ($raw | is-user-text) {
+        "typed"
+    } else {
+        "system"
+    }
+}
+
 # Build a dialogue table from raw session records: the user and assistant turns
-# with their visible text. Drops meta turns, empty-text turns, and the user-side
+# with their visible text. Drops meta turns, the compaction summary, empty-text
+# turns, and the user-side
 # system/command wrappers Claude Code synthesizes. `extract` renders each record's
 # text, so callers pick plain text, +thinking, or +tool calls. Pass
 # --keep-system to retain meta and system-wrapper turns (messages --include-system).
@@ -140,7 +173,7 @@ export def is-user-text []: string -> bool {
 # source keeps the system-prefix rule from drifting between them.
 export def extract-dialogue [extract: closure --keep-system]: table -> table {
     where type? in ["user" "assistant"]
-    | if $keep_system { } else { where isMeta? != true }
+    | if $keep_system { } else { where isMeta? != true and isCompactSummary? != true }
     | insert text {|r| do $extract $r }
     | where {|r| $r.text | str trim | is-not-empty }
     | if $keep_system { } else {
@@ -287,8 +320,6 @@ export def extract-agents []: table -> table {
 }
 
 # Extract tool statistics from tool calls and results
-# Why: tool catalog grew in 2.1.x; count newly-added names so users can see
-# whether/how often they appear in a session.
 export def extract-tool-stats [
     tool_results: table
 ]: table -> record {
@@ -301,14 +332,29 @@ export def extract-tool-stats [
         tool_errors: ($tool_results | where is_error? == true | length)
         ask_user_count: ($tool_calls | where name? == "AskUserQuestion" | length)
         plan_mode_used: ($tool_calls | where name? == "EnterPlanMode" | is-not-empty)
-        tool_counts: {
-            TaskCreate: ($tool_calls | where name? == "TaskCreate" | length)
-            TaskUpdate: ($tool_calls | where name? == "TaskUpdate" | length)
-            TaskStop: ($tool_calls | where name? == "TaskStop" | length)
-            Monitor: ($tool_calls | where name? == "Monitor" | length)
-            ToolSearch: ($tool_calls | where name? == "ToolSearch" | length)
-        }
+        # Why every name and not a fixed list: the column promised a count per
+        # tool while reading five, so a session of 127 calls showed Bash, Read
+        # and Agent nowhere. Most-called first; a tool never called is absent.
+        tool_counts: ($tool_calls
+            | get name --optional
+            | compact
+            | uniq --count
+            | sort-by count --reverse
+            | reduce --fold {} {|it acc| $acc | insert $it.value $it.count })
     }
+}
+
+# Assistant records collapsed to one per API message. Claude Code writes a
+# reply as one record per content block (text, thinking, each tool_use), and
+# every one of them repeats the message's `id` and `usage` — so anything
+# counted per record counts a reply once per block. The last record of an id
+# is kept; a record with no `message.id` stands for itself.
+export def one-per-message []: table -> table {
+    let records = $in
+    let keyed = $records | where {|r| $r.message?.id? != null }
+    $records
+    | where {|r| $r.message?.id? == null }
+    | append ($keyed | insert _mid {|r| $r.message.id } | reverse | uniq-by _mid | reverse | reject _mid)
 }
 
 # Extract derived metrics from session data
@@ -321,7 +367,7 @@ export def extract-derived-metrics [
         # user_msg_* columns and `messages` (tool-result, meta, and command/
         # caveat wrapper records all excluded), so the metrics can't disagree.
         turn_count: ($in | user-message-texts | length)
-        assistant_msg_count: ($assistant_records | length)
+        assistant_msg_count: ($assistant_records | one-per-message | length)
         tool_call_count: ($tool_calls | length)
     }
 }
@@ -338,7 +384,7 @@ export def sum-or-zero []: list -> int {
 # the nested `iterations`/`cache_creation` breakdowns are ignored — the
 # top-level fields already hold the per-message totals.
 export def extract-token-usage []: table -> record {
-    let usages = get message.usage --optional | compact
+    let usages = one-per-message | get message.usage --optional | compact
     # Cell-path, not a string, so this closure reads like `last-of`/`pick-first`
     # above — one spelling for "a field of a record" across the file.
     let sum = {|field: cell-path| $usages | get $field --optional | compact | sum-or-zero }
