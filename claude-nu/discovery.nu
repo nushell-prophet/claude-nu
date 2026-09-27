@@ -45,6 +45,7 @@ export def get-sessions-dir []: nothing -> path {
 export def project-dir-name []: path -> string {
     let file = $in
     let rel = try { $file | path relative-to (projects-root) } catch { null }
+
     if $rel == null {
         $file | path dirname | path basename
     } else {
@@ -59,6 +60,7 @@ export def project-dir-name []: path -> string {
 # there is no cwd to shorten, so a caller can join without a null check.
 export def project-display-name []: string -> string {
     let cwd = $in
+
     if $cwd == "" { "" } else { $cwd | path split | last 2 | path join }
 }
 
@@ -82,6 +84,7 @@ export def resolve-session-file [
         # after a prefix: `/rename` can call a session `agent-refactor`.
         if $session =~ $AGENT_ID_PATTERN {
             let by_id = find-session-file $dir $"*/subagents/**/($session).jsonl" $session
+
             if $by_id != null { return $by_id }
             return (resolve-session-name $session --sessions-dir $dir)
         }
@@ -92,10 +95,12 @@ export def resolve-session-file [
             let by_prefix = if $session =~ '^[0-9a-f][0-9a-f-]{5,34}$' {
                 find-session-file $dir $"($session)*.jsonl" $session
             }
+
             if $by_prefix != null { return $by_prefix }
             return (resolve-session-name $session --sessions-dir $dir)
         }
         let found = find-session-file $dir $"($session).jsonl" $session
+
         if $found == null {
             error make $"Session not found in any project: ($session)"
         }
@@ -135,15 +140,22 @@ def find-session-file [
         glob ($dir | path join $pattern) | drop-linked-copies $dir
     } else { [] }
     let found = $local
-        | if ($in | is-empty) { glob (projects-root | path join "*" $pattern) | drop-linked-copies (projects-root) } else { }
+        | if ($in | is-empty) {
+            glob (projects-root | path join "*" $pattern)
+            | drop-linked-copies (projects-root)
+        } else { }
         | where ($it | path basename) =~ $'($UUID_JSONL_PATTERN)|^($AGENT_JSONL_PATTERN)'
+
     if ($found | length) < 2 { return ($found | get 0?) }
     let ids = $found | each { session-id-from-path } | uniq
+
     if ($ids | length) == 1 {
         let rows = $found | each {|file| $"  ($file)" } | str join "\n"
+
         error make $"($selector) names more than one transcript, pick one by its path:\n($rows)"
     }
     let rows = $found | each {|file| $"  ($file | session-id-from-path)  ($file | project-dir-name)" } | str join "\n"
+
     error make $"Session id prefix is ambiguous, give more characters: ($selector)\n($rows)"
 }
 
@@ -156,6 +168,7 @@ def find-session-file [
 export def parent-session-of []: path -> any {
     let file = $in | path expand
     let top = $file | top-level-session-file
+
     if $top == $file { null } else { $top | session-id-from-path }
 }
 
@@ -166,9 +179,15 @@ export def parent-session-of []: path -> any {
 # nothing below `<uuid>/subagents/` is named so.
 export def top-level-session-file []: path -> path {
     let file = $in
+
     if ($file | path basename) !~ $AGENT_JSONL_PATTERN { return $file }
     let parts = $file | path split
-    let at = $parts | enumerate | where item == "subagents" | get index | last
+    let at = $parts
+        | enumerate
+        | where item == "subagents"
+        | get index
+        | last
+
     if $at == null or $at == 0 { return $file }
     $"($parts | first $at | path join).jsonl"
 }
@@ -204,6 +223,7 @@ export def workflow-state-files []: path -> list<path> {
         | get name
         | path basename
     } else { [] }
+
     $from_state
     | append $from_agents
     | uniq
@@ -221,6 +241,7 @@ export def workflow-state-files []: path -> list<path> {
 export def read-workflow-state []: path -> record {
     let state = open --raw $in | from json
     let progress = $state.workflowProgress? | default []
+
     {
         id: $state.runId?
         name: $state.workflowName?
@@ -252,6 +273,7 @@ export def read-workflow-state []: path -> record {
 export def subagent-identity []: path -> record {
     let file = $in
     let none = {agent_id: null agent_type: null workflow: null agent_label: null phase: null}
+
     if ($file | path basename) !~ $AGENT_JSONL_PATTERN { return $none }
 
     let agent_id = $file | session-id-from-path
@@ -265,7 +287,12 @@ export def subagent-identity []: path -> record {
     let listed = if $workflow != null and ($meta.description? == null or $meta.workflowPhase? == null) {
         $file
         | workflow-state-file $workflow
-        | if $in == null { } else { read-workflow-state | get agents | where agent_id == $agent_id | get 0? }
+        | if $in == null { } else {
+            read-workflow-state
+            | get agents
+            | where agent_id == $agent_id
+            | get 0?
+        }
     }
 
     {
@@ -286,8 +313,10 @@ export def subagent-identity []: path -> record {
 def workflow-state-file [workflow: string]: path -> any {
     let session_dir = $in | top-level-session-file | str replace --regex '\.jsonl$' ''
     let own = $session_dir | path join "workflows" $"($workflow).json"
+
     if ($own | path exists) { return $own }
     let pattern = $session_dir | path dirname | path join "*" "workflows" $"($workflow).json"
+
     try { ls ($pattern | into glob) | get name.0? } catch { null }
 }
 
@@ -310,6 +339,7 @@ def resolve-session-name [
             | where $it =~ $UUID_JSONL_PATTERN
             | sessions-named $name
         } else { }
+
     match ($found | length) {
         0 => (error make $"Session not found in any project: ($name)")
         1 => ($found | first)
@@ -317,9 +347,11 @@ def resolve-session-name [
             let rows = $found
                 | each {|file|
                     let age = ls $file | get 0.modified | date humanize
+
                     $"  ($file | session-id-from-path)  ($age)  ($file | project-dir-name)"
                 }
                 | str join "\n"
+
             error make $"Session name is ambiguous, pick a UUID: ($name)\n($rows)"
         }
     }
@@ -332,6 +364,7 @@ def resolve-session-name [
 def sessions-named [name: string]: list<path> -> list<path> {
     let files = $in
     let marker = $'"customTitle":($name | to json --raw)'
+
     $files
     | rg-filter-session-files $marker --fixed-strings
     | where {
@@ -370,6 +403,7 @@ export def read-session-records [--contains: string]: path -> table {
     let raw = open --raw $file
         | str trim --right --char (char nul)
         | if $contains == null { } else { lines | where ($it | str contains $contains) | str join "\n" }
+
     # Why: `from json --objects` is lazy, so its error surfaces wherever the
     # caller consumes the table — pointing at some pipeline in discovery.nu and
     # naming no file (a transcript padded with NUL bytes cost a scan of every
@@ -380,6 +414,7 @@ export def read-session-records [--contains: string]: path -> table {
         $raw | from json --objects | collect
     } catch {|e|
         let detail = $e.details.inner? | get --optional 0.labels.0.text | default $e.msg
+
         error make --unspanned {
             msg: $"Session file is not valid JSONL: ($file)\n($detail)"
             help: "one JSON record per line"
@@ -465,11 +500,13 @@ export def drop-linked-copies [root: path]: list<path> -> list<path> {
     let rows = $files
         | each {|f|
             let real = $f | path expand
+
             {path: $f real: $real linked: ($real != ($root_real | path join ($f | path relative-to $root)))}
         }
     let direct = $rows | where not linked | get real
+
     $rows
-    | where {|r| not $r.linked or $r.real not-in $direct }
+    | where not linked or real not-in $direct
     | uniq-by real
     | get path
 }
@@ -479,6 +516,7 @@ export def drop-linked-copies [root: path]: list<path> -> list<path> {
 # they carry no human-typed messages, and asking for them is `sessions --subagents`.
 export def top-level-session-files []: nothing -> list<path> {
     let dir = get-sessions-dir
+
     if not ($dir | path exists) { return [] }
     discover-session-files $dir | where parent_session_id == null | get path
 }
@@ -497,6 +535,7 @@ def batch-by-argv-bytes [budget: int]: list<path> -> list<list<path>> {
     reduce --fold {batches: [] used: 0} {|file acc|
         # +1: argv charges each entry its bytes plus the terminating NUL
         let cost = ($file | str length) + 1
+
         if ($acc.batches | is-empty) or ($acc.used + $cost) > $budget {
             {batches: ($acc.batches | append [[$file]]) used: $cost}
         } else {
@@ -527,6 +566,7 @@ export def rg-filter-session-files [
     --fixed-strings # Match `pattern` as a literal substring, not a regex
 ]: list<path> -> list<path> {
     let files = $in
+
     if ($files | is-empty) or (which rg | is-empty) { return $files }
     let mode = if $fixed_strings { ["--fixed-strings"] } else { [] }
     # Why chunked: the paths travel through argv, so one call over a large enough
@@ -543,6 +583,7 @@ export def rg-filter-session-files [
             let res = with-env {RIPGREP_CONFIG_PATH: null} {
                 rg --no-ignore --hidden --files-with-matches ...$mode --regexp $pattern -- ...$chunk | complete
             }
+
             match $res.exit_code {
                 0 => ($res.stdout | lines)
                 1 => []
@@ -550,6 +591,7 @@ export def rg-filter-session-files [
             }
         }
         | flatten
+
     # Why match against the input list (not rg's output): it keeps the caller's
     # order and its own spelling of each path, whatever rg echoes back.
     $files | where $it in $matched
@@ -564,6 +606,7 @@ export def rg-filter-session-files [
 export def resolve-time-bound [flag: string]: any -> datetime {
     peek | metadata access {|md|
         let value = $in
+
         match $md.peek.type {
             "datetime" => $value
             "duration" => ((date now) - $value)
@@ -596,13 +639,18 @@ export def resolve-time-bound [flag: string]: any -> datetime {
 # cannot contribute one.
 export def mtime-filter-session-files [since: datetime]: list<path> -> list<path> {
     let files = $in
+
     # Why the guard: `ls` with no arguments lists the working directory, so an
     # empty scope would come back as whatever happens to sit in it.
     if ($files | is-empty) { return $files }
     # Why one `ls ...$files`: it stats the whole scope in a single call, and a
     # string variable in a glob position is taken literally, so a `[` in a
     # project path cannot turn into a pattern.
-    let kept = ls ...$files | follow-links | where modified >= $since | get name
+    let kept = ls ...$files
+        | follow-links
+        | where modified >= $since
+        | get name
+
     # Why match against the input list: it keeps the caller's order and its own
     # spelling of each path (same reason as in rg-filter-session-files).
     $files | where $it in $kept

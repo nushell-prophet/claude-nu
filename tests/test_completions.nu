@@ -22,6 +22,7 @@ def "parse-script-commands extracts flags per subcommand" [] {
     let cmds = parse-script-commands $FIXTURE_MULTIWORD
 
     let bar_baz = $cmds | where name == 'bar baz' | get flags.0 | sort
+
     assert equal $bar_baz ['depth' 'verbose']
 }
 

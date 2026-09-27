@@ -10,8 +10,8 @@
 # Why `def main` and not a bare `$in` at the top level: nu 0.114 fails to
 # compile a top-level `$in` in a script ("block is missing compiled
 # representation").
-use ./gi.nu ["gi check"]
+use ./gi.nu [ "gi check" ]
 
-def main []: [string -> any, nothing -> any] {
-    $in | gi check
+def main []: [string -> any nothing -> any] {
+    gi check
 }

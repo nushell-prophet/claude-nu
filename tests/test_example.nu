@@ -51,7 +51,7 @@ def "slugify keeps only the menu columns" [] {
 }
 
 @test
-def "an unknown slug is an error, not silence" [] {
+def "an unknown slug is an error and not silence" [] {
     let err = try { example "no-such-example"; "" } catch {|e| $e.msg }
 
     assert str contains $err "no example named 'no-such-example'"

@@ -37,6 +37,7 @@ def prompt-history []: nothing -> path {
 # `path expand` keeps a trailing slash that `cwd` never has.
 def normalize-project-path []: path -> path {
     let expanded = $in | path expand --no-symlink | str trim --right --char '/'
+
     if ($expanded | is-empty) { "/" } else { $expanded }
 }
 
@@ -53,13 +54,12 @@ def jsonl-files [dir: path]: nothing -> list<path> {
     | each {|entry|
         if $entry.type == "dir" {
             jsonl-files $entry.name
-        } else if ($entry.name | str ends-with ".jsonl") {
-            [($entry.name | path expand)]
         } else {
-            []
+            [($entry.name | path expand)]
         }
     }
     | flatten
+    | where $it ends-with ".jsonl"
 }
 
 # Every file under `dir`, at any depth, as a path relative to `dir`.
@@ -98,7 +98,7 @@ def count-of [needle: string]: string -> int {
 }
 
 # How many times `needle` occurs in a file.
-def count-in-file [file: path, needle: string]: nothing -> int {
+def count-in-file [file: path needle: string]: nothing -> int {
     read-text $file | count-of $needle
 }
 
@@ -123,9 +123,10 @@ def count-in-file [file: path, needle: string]: nothing -> int {
 # The same touch also lands on ~/.claude.json and history.jsonl: nothing is known
 # to order by their mtime, and a special case would cost more than the uniformity
 # buys.
-def swap-in-file [file: path, needle: string, replacement: string]: nothing -> nothing {
+def swap-in-file [file: path needle: string replacement: string]: nothing -> nothing {
     let before = ls $file | get 0.modified
     let tmp = $"($file).claude-nu-move"
+
     cp $file $tmp
     open --raw $file
     | into string
@@ -153,15 +154,17 @@ def swap-in-file [file: path, needle: string, replacement: string]: nothing -> n
 # its first turn — this store holds such a zero-byte transcript today. It points
 # at no project, so it strands nothing, and reading it as a stranger's would
 # refuse a move nobody can then make.
-def refuse-shared-dir [scanned: table, src: path, old: path]: nothing -> nothing {
+def refuse-shared-dir [scanned: table src: path old: path]: nothing -> nothing {
     let foreign = $scanned
         | where scan.records_cwd and scan.old == 0 and scan.new == 0
         | sort-by source
+
     if ($foreign | is-not-empty) {
         let file = $foreign | get 0.source
         # Re-read on the error path only: the scan keeps a substring test, which
         # a 185 MB store can afford per file where a regex over every one cannot.
         let cwd = read-text $file | parse --regex '"cwd":"([^"]*)"' | get 0.capture0
+
         error make {msg: $"($src) holds sessions for more than one project: ($file) records ($cwd), not ($old). The encoded directory name is lossy, so both projects share it — renaming it would carry those transcripts to the new name while the entry that points at them keeps the old path."}
     }
 }
@@ -172,7 +175,7 @@ def refuse-shared-dir [scanned: table, src: path, old: path]: nothing -> nothing
 # conversation. Identical falls out of the same test, which is why there is no
 # third verdict for it. Only a pair where neither copy contains the other is a
 # real disagreement, and that one is not ours to resolve.
-def fold-verdict [from: binary, to: binary]: nothing -> string {
+def fold-verdict [from: binary to: binary]: nothing -> string {
     if ($to | bytes starts-with $from) {
         "keep-destination"
     } else if ($from | bytes starts-with $to) {
@@ -187,9 +190,9 @@ def fold-verdict [from: binary, to: binary]: nothing -> string {
 # Claude already knows, so a collision is the normal end state, not a mistake.
 # The question worth asking is not "does the destination exist" but "does it hold
 # anything the source doesn't" — and that is computed, not asked of the user.
-def plan-fold [src: path, dst: path, rewriting: list<string>, needle: string, replacement: string]: nothing -> table {
+def plan-fold [src: path dst: path rewriting: list<string> needle: string replacement: string]: nothing -> table {
     relative-files $src
-    | where {|rel| $dst | path join $rel | path exists }
+    | where ($dst | path join $it | path exists)
     | sort
     | each {|rel|
         let from = $src | path join $rel
@@ -202,12 +205,13 @@ def plan-fold [src: path, dst: path, rewriting: list<string>, needle: string, re
         # source copy the destination does not actually contain.
         # Byte-level rather than text, because this walks every file and only
         # transcripts are known to be UTF-8.
-        let after = if $from in $rewriting {
-            open --raw $from | into binary | bytes replace --all ($needle | into binary) ($replacement | into binary)
-        } else {
-            open --raw $from | into binary
-        }
+        let after = open --raw $from
+            | into binary
+            | if $from in $rewriting {
+                bytes replace --all ($needle | into binary) ($replacement | into binary)
+            } else { }
         let verdict = fold-verdict $after (open --raw $to | into binary)
+
         if $verdict == "conflict" {
             error make {msg: $"($rel) exists in both stores and neither copy contains the other: ($from) and ($to). Nothing was written — settle that file by hand, then rerun."}
         }
@@ -218,7 +222,7 @@ def plan-fold [src: path, dst: path, rewriting: list<string>, needle: string, re
 # Plan rows for the sessions directory: the relocation itself, plus every JSONL
 # under it that records the old cwd. `source` is where the file is read and
 # written now; `path` is where it ends up, since the relocation comes last.
-def plan-sessions [src: path, dst: path, old: path, new: path]: nothing -> table {
+def plan-sessions [src: path dst: path old: path new: path]: nothing -> table {
     if not ($src | path exists) { return [] }
 
     let needle = $'"cwd":"($old)"'
@@ -230,6 +234,7 @@ def plan-sessions [src: path, dst: path, old: path, new: path]: nothing -> table
         | wrap source
         | insert scan {|row|
             let text = read-text $row.source
+
             {
                 old: ($text | count-of $needle)
                 new: ($text | count-of $replacement)
@@ -270,6 +275,7 @@ def plan-sessions [src: path, dst: path, old: path, new: path]: nothing -> table
         $files
     } else {
         let relocation = if $folding { "sessions-fold" } else { "sessions-dir" }
+
         [{kind: $relocation path: $dst replaced: null source: $src needle: null replacement: null}]
         | append $fold
         | append $files
@@ -280,15 +286,18 @@ def plan-sessions [src: path, dst: path, old: path, new: path]: nothing -> table
 # file, applying the verdicts the plan settled. A directory rename cannot merge,
 # and every file here is either already accounted for at the destination or has
 # a name no destination file holds.
-def fold-into [src: path, dst: path, plan: table]: nothing -> nothing {
+def fold-into [src: path dst: path plan: table]: nothing -> nothing {
     let dropped = $plan | where kind == "keep-destination" | get source
+
     relative-files $src
     | each {|rel|
         let from = $src | path join $rel
+
         if $from in $dropped {
             rm --force $from
         } else {
             let to = $dst | path join $rel
+
             mkdir ($to | path dirname)
             # A rename inside one directory tree, so the mtime that orders a
             # project's sessions survives without being put back by hand.
@@ -306,9 +315,10 @@ def fold-into [src: path, dst: path, plan: table]: nothing -> nothing {
 }
 
 # Plan row for a single file whose path references are a quoted JSON string.
-def plan-swap [file: path, kind: string, needle: string, replacement: string]: nothing -> table {
+def plan-swap [file: path kind: string needle: string replacement: string]: nothing -> table {
     if not ($file | path exists) { return [] }
     let hits = count-in-file $file $needle
+
     if $hits == 0 {
         []
     } else {
@@ -348,6 +358,7 @@ export def main [
 ]: nothing -> table {
     let old = $from | normalize-project-path
     let new = $to | normalize-project-path
+
     if $old == $new {
         error make {
             msg: $"Nothing to move: both paths normalize to ($old)"
@@ -380,6 +391,7 @@ export def main [
         and (count-in-file $config $'"($new)"') > 0
         and (count-in-file $config $'"($old)"') > 0
     )
+
     if $merges_config {
         # The two entries are printed rather than diffed: which side wins is a
         # judgement per field, so the useful thing to hand over is both records.
@@ -415,8 +427,8 @@ export def main [
     # rewritten report zero occurrences and drop out of the next plan, and what
     # is left gets done. It is also gated on the plan: a project Claude knows
     # only from its config has no directory to move.
-    if ($plan | any {|row| $row.kind == "sessions-dir" }) { mv $src $dst }
-    if ($plan | any {|row| $row.kind == "sessions-fold" }) { fold-into $src $dst $plan }
+    if "sessions-dir" in $plan.kind { mv $src $dst }
+    if "sessions-fold" in $plan.kind { fold-into $src $dst $plan }
 
     $plan | reject source needle replacement
 }

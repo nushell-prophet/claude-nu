@@ -9,6 +9,7 @@ use ../claude-nu/sessions.nu *
 # One session file with a Bash, a Read and an MCP call, each answered.
 def write-mixed-session []: nothing -> path {
     let file = $nu.temp-dir | path join $"test-tool-flag-(random uuid).jsonl"
+
     [
         '{"type":"assistant","uuid":"a-1","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls sessions.nu"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","uuid":"u-1","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"sessions.nu"}]},"timestamp":"2024-01-15T10:00:01Z"}'
@@ -23,6 +24,7 @@ def write-mixed-session []: nothing -> path {
 def "tool-calls --tool keeps only calls to that tool" [] {
     let file = write-mixed-session
     let result = {path: $file} | tool-calls --tool Bash
+
     rm $file
 
     assert equal ($result | get id) ["toolu_1"]
@@ -32,18 +34,20 @@ def "tool-calls --tool keeps only calls to that tool" [] {
 def "tool-calls --tool takes a list of names" [] {
     let file = write-mixed-session
     let result = {path: $file} | tool-calls --tool [Read mcp__nushell__evaluate]
+
     rm $file
 
     assert equal ($result | get id) ["toolu_2" "toolu_3"]
 }
 
 @test
-def "tool-calls --tool matches the name exactly, not as a regex" [] {
+def "tool-calls --tool matches the name exactly and not as a regex" [] {
     # Why: `mcp__nushell` is a prefix of the MCP tool and `B.sh` a regex for
     # Bash; an exact filter must take neither.
     let file = write-mixed-session
     let prefix = {path: $file} | tool-calls --tool mcp__nushell
     let dotted = {path: $file} | tool-calls --tool 'B.sh' --no-rg
+
     rm $file
 
     assert equal $prefix []
@@ -54,6 +58,7 @@ def "tool-calls --tool matches the name exactly, not as a regex" [] {
 def "tool-calls --tool composes with the regex" [] {
     let file = write-mixed-session
     let result = {path: $file} | tool-calls --tool [Bash Read] 'sessions\.nu'
+
     rm $file
 
     assert equal ($result | get id) ["toolu_1" "toolu_2"]
@@ -63,6 +68,7 @@ def "tool-calls --tool composes with the regex" [] {
 def "tool-calls --tool composes with --results" [] {
     let file = write-mixed-session
     let result = {path: $file} | tool-calls --tool Read --results 'export def'
+
     rm $file
 
     assert equal ($result | select id result) [{id: "toolu_2" result: "export def tool-calls"}]
@@ -74,12 +80,14 @@ def "tool-calls --tool pre-filters files by the raw name string" [] {
     # compact. A line spelled with a space passes the in-engine filter but not
     # rg — so the file dropped here proves rg ran, and --no-rg brings it back.
     let dir = $nu.temp-dir | path join $"test-tool-flag-(random uuid)"
+
     mkdir $dir
     '{"type":"assistant","uuid":"a-1","message":{"content":[{"type":"tool_use","id":"toolu_1","name": "Bash","input":{"command":"ls"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
     | save ($dir | path join 11111111-1111-1111-1111-111111111111.jsonl)
 
     let filtered = {path: $dir} | tool-calls --tool Bash
     let unfiltered = {path: $dir} | tool-calls --tool Bash --no-rg
+
     rm --recursive $dir
 
     assert equal $filtered []
@@ -90,6 +98,7 @@ def "tool-calls --tool pre-filters files by the raw name string" [] {
 def "tool-calls --tool with an empty list is an error" [] {
     let file = write-mixed-session
     let result = try { {path: $file} | tool-calls --tool []; "no error" } catch {|e| $e.msg }
+
     rm $file
 
     assert str contains $result "non-empty list"

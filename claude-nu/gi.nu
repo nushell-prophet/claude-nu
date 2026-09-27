@@ -69,7 +69,7 @@
 # so there is nothing to switch off. A repo set up by the older, repo-wide gi
 # keeps working from its own settings until those keys are deleted by hand.
 
-use sessions.nu [export-session resolve-session-file read-session-records user-message-texts "nu-complete claude sessions"]
+use sessions.nu [ export-session resolve-session-file read-session-records user-message-texts "nu-complete claude sessions" ]
 
 # The output-style name gi passes to `claude --settings` at launch: the plugin's
 # name, a colon, then the `name:` frontmatter of the style file it ships.
@@ -138,15 +138,17 @@ const GI_PROTECTED_BRANCHES = ["main" "master"]
 # match, so every path comparison downstream stays within one path family.
 def gi-repo-root [dir?: path]: nothing -> path {
     let dir = $dir | default $env.PWD
-    let top = do { ^git -C $dir rev-parse --show-toplevel } | complete
+    let top = ^git -C $dir rev-parse --show-toplevel | complete
+
     if $top.exit_code == 0 { $top.stdout | str trim } else { $dir | path expand }
 }
 
 # Current branch at root, or null outside a repo / on detached HEAD — nothing
 # to protect there, so the branch guard passes.
 def gi-branch [root: path]: nothing -> any {
-    let out = do { ^git -C $root branch --show-current } | complete
+    let out = ^git -C $root branch --show-current | complete
     let branch = $out.stdout | str trim
+
     if $out.exit_code == 0 and ($branch | is-not-empty) { $branch }
 }
 
@@ -156,9 +158,10 @@ def gi-branch [root: path]: nothing -> any {
 # user is in the middle of something there, so the switch stays theirs; the
 # launch note still names it.
 # A branch that already exists fails here, with git's own message.
-def gi-leave-trunk [dir: path, name: string]: nothing -> nothing {
+def gi-leave-trunk [dir: path name: string]: nothing -> nothing {
     if (gi-branch $dir) not-in $GI_PROTECTED_BRANCHES { return }
-    let staged = do { ^git -C $dir diff --cached --quiet } | complete
+    let staged = ^git -C $dir diff --cached --quiet | complete
+
     if $staged.exit_code != 0 { return }
     ^git -C $dir switch --create $name
 }
@@ -188,9 +191,10 @@ def gi-run-dir [root?: path]: nothing -> path {
 # and `path expand` resolves symlinks only for paths that do — this still lets
 # an absolute path arriving through a symlink (cozy's ~/repos) come back
 # relative.
-def gi-doc-path [dir: path, doc: path]: nothing -> record {
+def gi-doc-path [dir: path doc: path]: nothing -> record {
     let joined = $dir | path join $doc
     let abs = $joined | path dirname | path expand | path join ($joined | path basename)
+
     {
         abs: $abs
         rel: (if ($abs | str starts-with $"($dir)/") { $abs | path relative-to $dir } else { $abs })
@@ -209,6 +213,7 @@ def gi-doc-path [dir: path, doc: path]: nothing -> record {
 # of the prefix: without it `/a/bc` counts as under `/a/b`.
 def cwd-relative []: path -> path {
     let p = $in
+
     if ($p | str starts-with ($env.PWD | path join "")) {
         $p | path relative-to $env.PWD
     } else {
@@ -226,7 +231,7 @@ def cwd-relative []: path -> path {
 # No --force: both callers write a path they have just proved free (the template
 # only inside `if not ($doc_abs | path exists)`, a fork at the next unused `_n`).
 # A save that finds a file there means that proof broke, and it should say so.
-def copy-file [src: path, dst: path]: nothing -> nothing {
+def copy-file [src: path dst: path]: nothing -> nothing {
     open --raw $src | save --raw $dst
 }
 
@@ -265,17 +270,18 @@ def gi-default-doc [dir: path]: nothing -> string {
 # repo — a chat pointer, a commit body — and the canvas folder is untracked by default, so
 # nothing would stop a deleted `plan_1.md` from being handed to a different
 # canvas later. Exported for tests.
-export def gi-fork-name [name: string, siblings: list<string>]: nothing -> string {
+export def gi-fork-name [name: string siblings: list<string>]: nothing -> string {
     let parsed = $name | path parse
     let stem = $parsed.stem | str replace --regex '_\d+$' ''
     let taken = $siblings
-        | each {|s| $s | path parse }
+        | path parse
         | where extension == $parsed.extension
         | get stem
         | parse --regex '^(?<base>.+)_(?<n>\d+)$'
         | where base == $stem
         | get n
         | into int
+
     $parsed | update stem $"($stem)_(($taken | append 0 | math max) + 1)" | path join
 }
 
@@ -302,6 +308,7 @@ export def gi-fork-canvas [src: path]: nothing -> path {
     gi-frontmatter-split $src | ignore
     let dir = $src | path dirname
     let dst = $dir | path join (gi-fork-name ($src | path basename) (ls $dir | get name | path basename))
+
     copy-file $src $dst
     $dst
 }
@@ -314,6 +321,7 @@ export def gi-fork-canvas [src: path]: nothing -> path {
 # when unset — no fallback, since the wrong import is worse than none.
 def gi-session-id []: nothing -> string {
     let sid = $env.CLAUDE_CODE_SESSION_ID? | default ""
+
     if ($sid | is-empty) {
         error make --unspanned {
             msg: "no live session: $env.CLAUDE_CODE_SESSION_ID is unset"
@@ -347,6 +355,7 @@ export def gi-import-text [
     }
     let gap = if $live { " The turn that ran the import is missing — Claude Code writes the session log as the turn runs." }
     let note = $"> ($source) on (date now | format date '%Y-%m-%d %H:%M').($gap | default '') ($left_out); the full record is `($file)`."
+
     # Replace the H1 rather than prepend the header: export-session titles the
     # doc from the session summary, and two H1s in a committed doc is noise.
     # First match only (no --all) — later `# ` lines belong to the dialogue.
@@ -384,7 +393,7 @@ export def main []: nothing -> record {
 # The file name a slug gets: the day, then the slug. The date is a parameter
 # and not read inside, so the format and the collision are testable on a day
 # that is not today. Exported for tests.
-export def gi-new-name [slug: string, date: string]: nothing -> string {
+export def gi-new-name [slug: string date: string]: nothing -> string {
     $"($date)-($slug).md"
 }
 
@@ -439,8 +448,9 @@ def gi-editor []: nothing -> string {
 # when one is set, and that is configured for reading scrollback — here a helix
 # with soft-wrap off and the cursor forced to the end. `zellij run` starts the
 # user's own editor, as `cmd+e` does.
-def gi-edit [doc: path, editor: string]: nothing -> nothing {
+def gi-edit [doc: path editor: string]: nothing -> nothing {
     let line = (open --raw $doc | lines | length) + 1
+
     if ($env.ZELLIJ? | is-not-empty) {
         ^zellij run --close-on-exit -- $editor $"+($line)" $doc
     } else {
@@ -482,7 +492,7 @@ export def --wrapped "gi new" [
         }
     }
     let extra = if $dangerously_skip_permissions { ["--dangerously-skip-permissions"] } else { [] }
-    | append $rest
+        | append $rest
     # Before the canvas is written, not when it is opened: see gi-editor.
     let editor = if $no_editor { null } else { gi-editor }
     let dir = gi-run-dir $root
@@ -491,6 +501,7 @@ export def --wrapped "gi new" [
     let today = date now | format date '%J'
     let doc = $folder | default (gi-canvas-folder $dir) | path join (gi-new-name $slug $today)
     let paths_doc = gi-doc-path $dir $doc
+
     # The same slug on the same day names the canvas that is already there, and
     # that is nearly always the one meant. Not todo.nu's `-1` suffix because:
     # that rule exists for a name with nothing in it but the date, where a
@@ -557,7 +568,8 @@ export def --wrapped "gi open" [
     # parses in either position. It is also the one pass-through worth showing in
     # `help gi open`.
     let extra = if $dangerously_skip_permissions { ["--dangerously-skip-permissions"] } else { [] }
-    | append $rest
+        | append $rest
+
     # The other half of the same parsing rule: an undeclared flag typed before
     # the doc lands in the doc. A canvas path never starts with a dash, so say
     # so here — otherwise a typo silently creates a canvas named `--modle`, and
@@ -612,8 +624,9 @@ export def "gi import" [
     # Why --to and not a second positional: the common in-session call names a
     # path but no session, and a positional cannot be skipped.
     let default_doc = gi-canvas-folder $dir
-    | path join (gi-new-name $"session-(gi-session-key $file)" (date now | format date '%J'))
+        | path join (gi-new-name $"session-(gi-session-key $file)" (date now | format date '%J'))
     let paths_doc = gi-doc-path $dir ($to | default $default_doc)
+
     # Check before reading the session: a doc that already holds work must not
     # be reported as a near-miss after a long export.
     if ($paths_doc.abs | path exists) {
@@ -625,6 +638,7 @@ export def "gi import" [
     # Build the import before anything is written: a session that can't be read
     # must leave no half-written canvas behind.
     let imported = gi-import-text $file --tools=$tools --live=($session == null)
+
     mkdir ($paths_doc.abs | path dirname)
     $imported | save --force $paths_doc.abs
 
@@ -640,8 +654,13 @@ export def "gi import" [
         let ignore_file = $paths_doc.abs | path dirname | path join ".gitignore"
         let entry = $paths_doc.abs | path basename
         let lines = if ($ignore_file | path exists) { open --raw $ignore_file | lines } else { [] }
+
         if $entry not-in $lines {
-            $lines | append $entry | append "" | str join "\n" | save --force $ignore_file
+            $lines
+            | append $entry
+            | append ""
+            | str join "\n"
+            | save --force $ignore_file
         }
     }
     if $commit {
@@ -675,9 +694,11 @@ export def "gi import" [
 # to nushell, and the frontmatter is between the first two `---` lines.
 export def gi-frontmatter-session [file: path]: nothing -> any {
     let raw = open --raw $file
+
     if not ($raw | str starts-with "---") { return null }
     let block = $raw | lines | skip 1 | take until {|l| $l == "---" }
     let meta = try { $block | str join "\n" | from yaml } catch { {} }
+
     $meta.session?
 }
 
@@ -687,8 +708,9 @@ export def gi-frontmatter-session [file: path]: nothing -> any {
 # keep a side record: an imported canvas already carries this key, so
 # both origins end up with one mechanism, and the binding travels with the file
 # — move or copy a canvas and it still names its session. Exported for tests.
-export def gi-stamp-session [file: path, sid: string]: nothing -> nothing {
+export def gi-stamp-session [file: path sid: string]: nothing -> nothing {
     let split = gi-frontmatter-split $file
+
     if $split.head == null {
         return ($"---\nsession: ($sid)\n---\n\n($split.body)" | save --force $file)
     }
@@ -696,7 +718,8 @@ export def gi-stamp-session [file: path, sid: string]: nothing -> nothing {
     # start with `session:` is never touched. The body is passed through
     # untouched, trailing newline and all.
     let head = $split.head
-    | if ($in =~ '(?m)^session:') { str replace --regex --multiline '^session:.*$' $"session: ($sid)" } else { $"($in)\nsession: ($sid)" }
+        | if ($in =~ '(?m)^session:') { str replace --regex --multiline '^session:.*$' $"session: ($sid)" } else { $"($in)\nsession: ($sid)" }
+
     $"($head)\n---\n($split.body)" | save --force $file
 }
 
@@ -707,8 +730,10 @@ export def gi-stamp-session [file: path, sid: string]: nothing -> nothing {
 # anything, instead of the copy discovering it while being stamped.
 def gi-frontmatter-split [file: path]: nothing -> record {
     let raw = open --raw $file
-    if not ($raw | str starts-with "---\n") { return {head: null, body: $raw} }
+
+    if not ($raw | str starts-with "---\n") { return {head: null body: $raw} }
     let parts = $raw | split row --number 2 "\n---\n"
+
     if ($parts | length) < 2 {
         # Say which file and what is wrong with it. Indexing past the split
         # would throw "Row number too large", which names neither.
@@ -717,7 +742,7 @@ def gi-frontmatter-split [file: path]: nothing -> record {
             help: "the block opened by `---` needs a closing `---` line of its own before the body"
         }
     }
-    {head: $parts.0, body: $parts.1}
+    {head: $parts.0 body: $parts.1}
 }
 
 # Which session a launch runs on, decided from what the canvas records. Split
@@ -730,8 +755,9 @@ def gi-frontmatter-split [file: path]: nothing -> record {
 #   the canvas is untracked by default, so git may not hold the old id and
 #   nothing else records it.
 # Exported for tests.
-export def gi-session-plan [recorded: any, --new-session]: nothing -> record {
+export def gi-session-plan [recorded: any --new-session]: nothing -> record {
     let resume = (not $new_session) and ($recorded | is-not-empty)
+
     {
         sid: (if $resume { $recorded } else { random uuid })
         resume: $resume
@@ -761,6 +787,7 @@ const GI_OWNED_FLAGS = ["--settings" "--session-id" "--resume" "-r" "--continue"
 # the canvas is written.
 export def gi-reject-owned-flags [extra: list<string>]: nothing -> nothing {
     let owned = $extra | where ($it | split row "=" | first) in $GI_OWNED_FLAGS
+
     if ($owned | is-not-empty) {
         error make --unspanned {
             msg: $"gi sets ($owned | str join ', ') itself — a canvas launch cannot pass it through"
@@ -786,7 +813,7 @@ export def gi-reject-owned-flags [extra: list<string>]: nothing -> nothing {
 # reads it.
 # `extra` is the caller's own `claude` flags, appended last and untouched — gi
 # has no opinion on them beyond the one rule gi-reject-owned-flags states.
-export def gi-launch-args [sid: string, doc: string, --resume, ...extra: string]: nothing -> list<string> {
+export def gi-launch-args [sid: string doc: string --resume ...extra: string]: nothing -> list<string> {
     if $resume { ["--resume" $sid] } else { ["--session-id" $sid] }
     | append ["--name" $doc]
     | append ["--append-system-prompt" $"This session's canvas is `($doc)` — the one file the Canvas output style is about. Read it before your first answer; do not search for it."]
@@ -819,9 +846,10 @@ def gi-launch [
     # session plan, the stamp, GI_CANVAS, --name — sees only the file being
     # opened. From this line on a fork is an ordinary canvas.
     let paths_doc = gi-doc-path $dir $doc
-    | if $fork { gi-doc-path $dir (gi-fork-canvas $in.abs) } else { }
+        | if $fork { gi-doc-path $dir (gi-fork-canvas $in.abs) } else { }
     let doc_abs = $paths_doc.abs
     let doc_rel = $paths_doc.rel
+
     # The canvas exists before a session is bound to it: a new one is stamped
     # with the id gi mints, and there must be a file to stamp.
     if not ($doc_abs | path exists) {
@@ -839,23 +867,28 @@ def gi-launch [
     # conversation — the thing forking exists to avoid. The id it drops is the
     # source's, so the note below names the session this fork grew out of.
     let plan = gi-session-plan (gi-frontmatter-session $doc_abs) --new-session=($new_session or $fork)
+
     if not $plan.resume {
         if ($plan.replaced | is-not-empty) {
-            print (if $fork {
-                $"note: ($doc_rel) is a fork of session (gi-session-key $plan.replaced) and starts one of its own"
-            } else {
-                $"note: replacing session (gi-session-key $plan.replaced) recorded in ($doc_rel)"
-            })
+            print (
+                if $fork {
+                    $"note: ($doc_rel) is a fork of session (gi-session-key $plan.replaced) and starts one of its own"
+                } else {
+                    $"note: replacing session (gi-session-key $plan.replaced) recorded in ($doc_rel)"
+                }
+            )
         }
         gi-stamp-session $doc_abs $plan.sid
     }
     # Same guard the hook enforces, surfaced before the session starts — a
     # branch switch now beats being blocked mid-session with commits already made.
     let branch = gi-branch $root
+
     if $hook and ($branch in $GI_PROTECTED_BRANCHES) {
         print $"note: this repo is on ($branch) — gi commits belong on a work branch; the Stop hook will block turns until you switch."
     }
     let args = gi-launch-args $plan.sid $doc_rel --resume=$plan.resume ...$extra
+
     print $"canvas ($doc_rel), session (gi-session-key $plan.sid)(if $hook { '' } else { ', no Stop hook' })"
     # cd only matters when --root sent the launch elsewhere; without it this is
     # already where the user stands. It is not needed to find the style or the
@@ -863,7 +896,7 @@ def gi-launch [
     # launch stands in can change what loads.
     do {
         cd $dir
-        with-env { GI_CANVAS: $doc_abs } {
+        with-env {GI_CANVAS: $doc_abs} {
             ^claude --plugin-dir $GI_PLUGIN_DIR --settings (gi-launch-settings --hook=$hook) ...$args
         }
     }
@@ -894,12 +927,13 @@ def gi-status []: nothing -> record {
 # serves — the rules deal in records only. Also accepts nothing: run by hand
 # with no stdin, the normalization below treats it as an empty event.
 # Exported so the hook can import it, but kept out of mod.nu: nobody types this.
-export def "gi check" []: [string -> any, nothing -> any] {
-    let payload = try { $in | default "" | from json } catch { {} }
+export def "gi check" []: [string -> any nothing -> any] {
+    let payload = try { default "" | from json } catch { {} }
     # Valid JSON need not be an object ("hi", 123, null, [1]) — normalize to a
     # record: anything else would throw in the guard below or entering the
     # rules, above/outside the contract boundary.
     let payload = if ($payload | describe | str starts-with "record") { $payload } else { {} }
+
     # Already continuing from a prior block — let it end to avoid a loop.
     if ($payload.stop_hook_active? | default false) { return }
 
@@ -912,6 +946,7 @@ export def "gi check" []: [string -> any, nothing -> any] {
     let decision = try { $payload | gi-check-rules } catch {|err|
         {decision: "block" reason: $"gi check failed internally — fix this before continuing: ($err.msg)"}
     }
+
     if $decision != null { $decision | to json --raw }
 }
 
@@ -924,6 +959,7 @@ def gi-check-rules []: record -> any {
     # the canvas to move the answer into. Unset, there is no canvas, no gi
     # session, and nothing to enforce; the turn ends. No second source to consult.
     let canvas = $env.GI_CANVAS? | default ""
+
     if ($canvas | is-empty) { return }
 
     # The chat aside, before every rule: the user asked something in chat and
@@ -943,12 +979,15 @@ def gi-check-rules []: record -> any {
     # a turn on a protected branch — gi commits are internal working history,
     # and the sooner the agent hears it, the fewer commits there are to move.
     let branch = gi-branch $root
+
     if $branch in $GI_PROTECTED_BRANCHES {
         let reason = $"You are on `($branch)` — gi commits are internal working history and must not land here. Switch to a work branch \(`git switch -c <topic>`, moving any commits already made); it gets squash-merged into `($branch)` after finalization."
+
         return {decision: "block" reason: $reason}
     }
 
     let message = $payload.last_assistant_message? | default ""
+
     if (gi-allowed $message) { return }
 
     # Name the canvas the short way when it is under the session's directory —
@@ -961,6 +1000,7 @@ def gi-check-rules []: record -> any {
     # follow-up whatever it says — a misfire can redirect one reply, never trap
     # the agent.
     let reason = $"Chat may carry only one short line — `done`, a status note, or a pointer to where the answer landed. Move the full answer into `($doc)` and commit it; leave only that one line in chat. If this block looks like a misfire — wrong canvas, no gi work in this session — don't move anything: reply with one short line telling the user to read your previous message above in the chat and to check the session's canvas \(`claude-nu gi`)."
+
     {decision: "block" reason: $reason}
 }
 
@@ -1010,8 +1050,10 @@ const GI_HOOK_MAX_BREAKS = 3
 # already use it).
 export def gi-allowed [message: string]: nothing -> bool {
     let text = $message | str trim
+
     if ($text | is-empty) { return true }
 
     let max = $env.GI_HOOK_MAX_LEN? | default 480 | into int
+
     (($text | lines | length) <= ($GI_HOOK_MAX_BREAKS + 1)) and (($text | str length) <= $max)
 }

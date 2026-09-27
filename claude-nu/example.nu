@@ -28,6 +28,7 @@ export def main [
     if $slug == null { return (example-table) }
 
     let found = example-table | where slug == $slug
+
     if ($found | is-empty) {
         error make {
             msg: $"no example named '($slug)'"
@@ -52,6 +53,7 @@ export def example-table []: nothing -> table<slug: string, description: string,
     # `scope modules` gives the module-relative names and their decl_id, which
     # both import forms share, so the menu and its slugs come out identical.
     let exported = scope modules | where name == $MODULE | get 0?.commands? | default []
+
     if ($exported | is-empty) { return [] }
 
     let examples = scope commands | where decl_id in $exported.decl_id | select decl_id examples
@@ -107,7 +109,7 @@ def dedupe-slugs []: table -> table {
     | each {|entry|
         # Not `$it`: `where` binds `$it` to its own row, which shadows the outer
         # one and makes every comparison true.
-        let taken = $rows | first $entry.index | where {|r| $r.slug == $entry.item.slug } | length
+        let taken = $rows | first $entry.index | where slug == $entry.item.slug | length
 
         if $taken == 0 { $entry.item } else { $entry.item | update slug $"($entry.item.slug)-($taken + 1)" }
     }

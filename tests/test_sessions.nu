@@ -35,7 +35,7 @@ def "get-sessions-dir returns valid path for current directory" [] {
 # =============================================================================
 
 @test
-def "messages drops every system/command wrapper prefix" [] {
+def "messages drops every system and command wrapper prefix" [] {
     # Why: drive one message per real prefix
     # through `messages` so renaming/removing any one is caught here. (The list
     # mirrors SYSTEM_PREFIXES; feeding a prefix that the source no longer filters
@@ -54,6 +54,7 @@ def "messages drops every system/command wrapper prefix" [] {
         '{"type":"user","message":{"content":[{"type":"text","text":"[Request interrupted by user]"}]},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let result = {path: $temp_file} | messages | get message
@@ -73,6 +74,7 @@ def "messages keeps a message that only ends with a system reminder" [] {
     let lines = [
         '{"type":"user","message":{"content":"fix the parser\n<system-reminder>some injected context</system-reminder>"},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let result = {path: $temp_file} | messages | get message
@@ -90,6 +92,7 @@ def "messages --include-system keeps the wrapper messages" [] {
         '{"type":"user","message":{"content":"real human message"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<command-name>foo</command-name>"},"timestamp":"2024-01-15T10:00:01Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let result = {path: $temp_file} | messages --include-system | get message
@@ -101,10 +104,11 @@ def "messages --include-system keeps the wrapper messages" [] {
 }
 
 @test
-def "messages renders ! bash commands as user turns" [] {
+def "messages renders bang bash commands as user turns" [] {
     # Why: a `!` command is a real user action; its <bash-input>/<bash-stdout>
     # wrappers must surface as readable markdown, not be dropped as system noise.
     let f = $nu.temp-dir | path join $"test-bash-(random uuid).jsonl"
+
     [
         '{"type":"user","message":{"content":"<bash-input>git diff</bash-input>"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<bash-stdout>+ added &lt;tag&gt;</bash-stdout><bash-stderr>warn: x</bash-stderr>"},"timestamp":"2024-01-15T10:00:01Z"}'
@@ -121,8 +125,9 @@ def "messages renders ! bash commands as user turns" [] {
 }
 
 @test
-def "export-session merges a ! command and its output into one user turn" [] {
+def "export-session merges a bang command and its output into one user turn" [] {
     let f = $nu.temp-dir | path join $"test-bash-export-(random uuid).jsonl"
+
     [
         '{"type":"user","message":{"content":"<bash-input>ls</bash-input>"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<bash-stdout>file.txt</bash-stdout><bash-stderr></bash-stderr>"},"timestamp":"2024-01-15T10:00:01Z"}'
@@ -187,7 +192,7 @@ def "extract-text-content handles null message" [] {
 # =============================================================================
 
 @test
-def "extract-tool-calls returns tool_use items" [] {
+def "extract-tool-calls returns tool use items" [] {
     let record = {
         message: {
             content: [
@@ -213,7 +218,7 @@ def "extract-tool-calls returns empty for string content" [] {
 }
 
 @test
-def "extract-tool-calls returns empty for no tool_use" [] {
+def "extract-tool-calls returns empty for no tool use" [] {
     let record = {
         message: {
             content: [
@@ -232,7 +237,7 @@ def "extract-tool-calls returns empty for no tool_use" [] {
 # =============================================================================
 
 @test
-def "sessions mentioned_files extracts @path mentions with prefixes" [] {
+def "sessions mentioned files extracts at-path mentions with prefixes" [] {
     # Why: replaces a shadow test that ran a copy of the regex. Driving the
     # real `sessions` extraction keeps the pattern from drifting untested.
     let temp_file = $nu.temp-dir | path join $"test-mentioned-(random uuid).jsonl"
@@ -241,6 +246,7 @@ def "sessions mentioned_files extracts @path mentions with prefixes" [] {
         '{"type":"user","message":{"content":"check @README.md and @docs/guide.md"},"timestamp":"2024-01-15T10:00:01Z"}'
         '{"type":"user","message":{"content":"also @/absolute/path.rs and @./relative/file.nu and @~/home/config.toml"},"timestamp":"2024-01-15T10:00:02Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let mentioned = sessions $temp_file --columns mentioned_files | first | get mentioned_files
@@ -256,7 +262,7 @@ def "sessions mentioned_files extracts @path mentions with prefixes" [] {
 }
 
 @test
-def "sessions mentioned_files rejects false positives" [] {
+def "sessions mentioned files rejects false positives" [] {
     # Emails, jj revsets, nushell annotations, extension-less @words, and
     # trailing punctuation must not be picked up as file mentions.
     let temp_file = $nu.temp-dir | path join $"test-mentioned-(random uuid).jsonl"
@@ -266,6 +272,7 @@ def "sessions mentioned_files rejects false positives" [] {
         '{"type":"user","message":{"content":"the @\"nu-complete sessions\" annotation"},"timestamp":"2024-01-15T10:00:02Z"}'
         '{"type":"user","message":{"content":"use @example attribute, end with @) or @:"},"timestamp":"2024-01-15T10:00:03Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let mentioned = sessions $temp_file --columns mentioned_files | first | get mentioned_files
@@ -353,7 +360,7 @@ def "sessions extracts all overview fields from session file" [] {
 }
 
 @test
-def "sessions user_msg_count and turn_count exclude tool-result user records" [] {
+def "sessions user message count and turn count exclude tool-result user records" [] {
     # Why: Claude Code stores tool results as type:"user" records whose content
     # is tool_result blocks (no text). Counting them inflated both metrics wildly
     # (e.g. 175 records for 3 real messages). Both must count authored text only,
@@ -421,7 +428,7 @@ def "sessions handles empty file" [] {
 }
 
 @test
-def "sessions timestamps span all records, not just user turns" [] {
+def "sessions timestamps span all records and not just user turns" [] {
     # Why: a session can have zero user turns (e.g. open Claude, run /usage,
     # quit) yet hold timestamped system records. User-only extraction gave it
     # last_timestamp null, and sort-by places null after every datetime — so
@@ -512,7 +519,7 @@ def "session-columns completer accumulates comma-separated picks" [] {
     assert ("version,cwd" in $offered)
     assert ("version,git_branch" in $offered)
     assert ("version,version" not-in $offered)
-    assert ($offered | all {|c| $c | str starts-with "version," })
+    assert ($offered | all { str starts-with "version," })
 }
 
 @test
@@ -598,6 +605,7 @@ def "piping top-level sessions into messages excludes subagents" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let sessions_dir = $fake_home | path join ".claude" "projects" "-work-proj"
     let parent_uuid = "11111111-1111-1111-1111-111111111111"
+
     mkdir ($sessions_dir | path join $parent_uuid "subagents")
 
     '{"type":"user","message":{"content":"alpha top message"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -626,10 +634,12 @@ def "sessions --all-projects piped into messages covers every session" [] {
     let projects_dir = $fake_home | path join ".claude" "projects"
     let proj_a = $projects_dir | path join "-proj-a"
     let proj_b = $projects_dir | path join "-proj-b"
+
     mkdir $proj_a $proj_b
 
     let a_old = $proj_a | path join "11111111-1111-1111-1111-111111111111.jsonl"
     let a_new = $proj_a | path join "22222222-2222-2222-2222-222222222222.jsonl"
+
     '{"type":"user","message":{"content":"a-old"},"timestamp":"2024-01-15T10:00:00Z"}' | save --force $a_old
     '{"type":"user","message":{"content":"a-new"},"timestamp":"2024-01-15T10:00:00Z"}' | save --force $a_new
     '{"type":"user","message":{"content":"b-only"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -642,6 +652,7 @@ def "sessions --all-projects piped into messages covers every session" [] {
     rm --recursive --force $fake_home
 
     let all = $result | get message
+
     assert ("a-old" in $all)
     assert ("a-new" in $all)
     assert ("b-only" in $all)
@@ -656,9 +667,11 @@ def "messages with no input reads every session of the current project" [] {
     # A real proj dir + cd so get-sessions-dir resolves to the fixture dir.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+
     mkdir $proj_dir
     let encoded = $proj_dir | path expand | str replace --all '/' '-'
     let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+
     mkdir $sessions_dir
 
     '{"type":"user","message":{"content":"the needle is here"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -686,6 +699,7 @@ def "messages errors when the current project has no sessions" [] {
     # hiding a wrong cwd or a missing HOME.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+
     mkdir $proj_dir $fake_home
 
     let result = with-env {HOME: $fake_home} {
@@ -704,9 +718,11 @@ def "a search matching nothing is an empty result that still pipes on" [] {
     # selection is not input missing its path/session column.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+
     mkdir $proj_dir
     let encoded = $proj_dir | path expand | str replace --all '/' '-'
     let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+
     mkdir $sessions_dir
 
     '{"type":"user","message":{"content":"only hay here"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -750,6 +766,7 @@ def "sessions --all-projects piped into messages searches every project" [] {
     let projects_dir = $fake_home | path join ".claude" "projects"
     let proj_a = $projects_dir | path join "-proj-a"
     let proj_b = $projects_dir | path join "-proj-b"
+
     mkdir $proj_a $proj_b
 
     '{"type":"user","message":{"content":"needle in A"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -766,6 +783,7 @@ def "sessions --all-projects piped into messages searches every project" [] {
     rm --recursive --force $fake_home
 
     let msgs = $result | get message
+
     assert equal ($result | length) 2
     assert ("needle in A" in $msgs)
     assert ("needle in B" in $msgs)
@@ -780,10 +798,12 @@ def "messages with no input skips subagent transcripts" [] {
     # | messages` is how you ask for them.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+
     mkdir $proj_dir
     let encoded = $proj_dir | path expand | str replace --all '/' '-'
     let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
     let sub = $sessions_dir | path join "11111111-1111-1111-1111-111111111111" "subagents"
+
     mkdir $sub
 
     '{"type":"user","message":{"content":"needle in top level"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -802,15 +822,17 @@ def "messages with no input skips subagent transcripts" [] {
 }
 
 @test
-def "messages matches a regex, not just a literal" [] {
+def "messages matches a regex and not just a literal" [] {
     # Why: rg pre-filters the files, then `messages` re-applies the regex to the
     # extracted text — both use Rust's regex engine, so an actual pattern
     # (alternation here) must survive the round-trip and a non-match must drop.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+
     mkdir $proj_dir
     let encoded = $proj_dir | path expand | str replace --all '/' '-'
     let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+
     mkdir $sessions_dir
 
     '{"type":"user","message":{"content":"deploy to staging now"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -827,9 +849,10 @@ def "messages matches a regex, not just a literal" [] {
     rm --recursive --force $fake_home $proj_dir
 
     let msgs = $result | get message
+
     assert equal ($result | length) 2
-    assert ($msgs | any {|m| $m | str contains "staging" })
-    assert ($msgs | any {|m| $m | str contains "prod" })
+    assert ($msgs | any { str contains "staging" })
+    assert ($msgs | any { str contains "prod" })
 }
 
 @test
@@ -841,9 +864,11 @@ def "messages ignores a ripgrep rc file in the pre-filter" [] {
     # that". Same class as --max-filesize or --type in someone's rc.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+
     mkdir $proj_dir
     let encoded = $proj_dir | path expand | str replace --all '/' '-'
     let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+
     mkdir $sessions_dir
 
     '{"type":"user","message":{"content":"deploy to staging now"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -852,6 +877,7 @@ def "messages ignores a ripgrep rc file in the pre-filter" [] {
         | save --force ($sessions_dir | path join "22222222-2222-2222-2222-222222222222.jsonl")
 
     let rc = $fake_home | path join "ripgreprc"
+
     "--fixed-strings\n" | save --force $rc
 
     let result = with-env {HOME: $fake_home RIPGREP_CONFIG_PATH: $rc} {
@@ -871,9 +897,11 @@ def "messages --no-rg matches an anchored pattern the rg pre-filter misses" [] {
     # message that actually starts with "deploy".
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+
     mkdir $proj_dir
     let encoded = $proj_dir | path expand | str replace --all '/' '-'
     let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+
     mkdir $sessions_dir
 
     '{"type":"user","message":{"content":"deploy to staging"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -904,6 +932,7 @@ def "tool-calls yields one row per tool use block" [] {
         '{"type":"user","message":{"content":"go"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","message":{"content":[{"type":"text","text":"running two things"},{"type":"tool_use","name":"Bash","input":{"command":"npm test"}},{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/a.txt"}}]},"timestamp":"2024-01-15T10:00:01Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let result = {path: $temp_file} | tool-calls
@@ -922,13 +951,16 @@ def "a project row piped in reads the top-level sessions of that project" [] {
     # file it failed with "Is a directory", and with a regex rg searched the
     # directory and matched nothing, silently.
     let dir = $nu.temp-dir | path join $"test-project-(random uuid)"
+
     mkdir ($dir | path join 11111111-1111-1111-1111-111111111111 subagents)
     let call = {|cmd| $'{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"($cmd)"}}]},"timestamp":"2024-01-15T10:00:00Z"}' }
+
     do $call "top level" | save ($dir | path join 11111111-1111-1111-1111-111111111111.jsonl)
     do $call "in a subagent" | save ($dir | path join 11111111-1111-1111-1111-111111111111 subagents agent-a1.jsonl)
 
     let plain = {path: $dir} | tool-calls
     let searched = {path: $dir} | tool-calls 'top'
+
     rm --recursive $dir
 
     assert equal ($plain | get input.command) ["top level"]
@@ -944,6 +976,7 @@ def "tool-calls sees a tool call that bash commands cannot" [] {
     let lines = [
         '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__nushell__evaluate","input":{"input":"claude-nu sessions --last"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let via_columns = sessions $temp_file --columns bash_commands | first | get bash_commands
@@ -957,7 +990,7 @@ def "tool-calls sees a tool call that bash commands cannot" [] {
 }
 
 @test
-def "tool-calls matches the regex over the whole input, not one preferred field" [] {
+def "tool-calls matches the regex over the whole input and not one preferred field" [] {
     # Why: the searched string sits in a different field per tool — `command` for
     # Bash, `prompt` for Agent, an MCP tool's own schema for the rest. Matching a
     # short list of known fields would answer "who ran this" for Bash only.
@@ -966,6 +999,7 @@ def "tool-calls matches the regex over the whole input, not one preferred field"
         '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"description":"mine sessions","prompt":"run claude-nu projects and report"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls /tmp"}}]},"timestamp":"2024-01-15T10:00:01Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let result = {path: $temp_file} | tool-calls 'claude-nu projects'
@@ -977,11 +1011,12 @@ def "tool-calls matches the regex over the whole input, not one preferred field"
 }
 
 @test
-def "tool-calls project_name is the readable cwd, not the encoded dir" [] {
+def "tool-calls project name is the readable cwd and not the encoded dir" [] {
     # Why: `project` is the `-`-encoded directory name (lossy, unjoinable by
     # hand); `project_name` is the same shape `projects.name` shows, so a
     # cross-project search can be grouped or joined without decoding.
     let temp_file = $nu.temp-dir | path join $"test-toolcalls-projname-(random uuid).jsonl"
+
     '{"type":"assistant","cwd":"/Users/test/work/demo","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
     | save --force $temp_file
 
@@ -997,6 +1032,7 @@ def "tool-calls rows carry session and project" [] {
     # Why: same self-describing contract as `messages` — the session column is a
     # valid selector, so a filtered result pipes back into the other commands.
     let temp_file = $nu.temp-dir | path join $"test-toolcalls-cols-(random uuid).jsonl"
+
     '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
     | save --force $temp_file
 
@@ -1014,9 +1050,11 @@ def "tool-calls with no input reads every session of the current project" [] {
     # sessions, and the rg pre-filter runs over exactly those files.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+
     mkdir $proj_dir
     let encoded = $proj_dir | path expand | str replace --all '/' '-'
     let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+
     mkdir $sessions_dir
 
     '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"claude-nu sessions --last"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -1100,6 +1138,7 @@ def "slash-commands drops the built-ins unless --all" [] {
         '{"type":"user","message":{"content":"<command-message>land-branch</command-message>\n<command-name>/land-branch</command-name>"},"timestamp":"2024-01-15T10:00:01Z"}'
         '{"type":"user","message":{"content":"just a message"},"timestamp":"2024-01-15T10:00:02Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let default = {path: $temp_file} | slash-commands
@@ -1116,6 +1155,7 @@ def "slash-commands counts a command that no longer exists" [] {
     # Why: the ranking is a record of what was used, so a skill since renamed or
     # deleted keeps its rows — nothing is resolved against what is installed now.
     let temp_file = $nu.temp-dir | path join $"test-slash-gone-(random uuid).jsonl"
+
     '{"type":"user","message":{"content":"<command-message>gone</command-message>\n<command-name>/a-skill-deleted-long-ago</command-name>"},"timestamp":"2024-01-15T10:00:00Z"}'
     | save --force $temp_file
 
@@ -1127,8 +1167,9 @@ def "slash-commands counts a command that no longer exists" [] {
 }
 
 @test
-def "slash-commands rows carry args, session and project" [] {
+def "slash-commands rows carry args and session and project" [] {
     let temp_file = $nu.temp-dir | path join $"test-slash-cols-(random uuid).jsonl"
+
     '{"type":"user","message":{"content":"<command-message>land-branch</command-message>\n<command-name>/land-branch</command-name>\n<command-args>--grouped</command-args>"},"timestamp":"2024-01-15T10:00:00Z"}'
     | save --force $temp_file
 
@@ -1149,6 +1190,7 @@ def "slash-commands honours the time window" [] {
         '{"type":"user","message":{"content":"<command-name>/old-skill</command-name>"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<command-name>/new-skill</command-name>"},"timestamp":"2024-03-15T10:00:00Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let result = {path: $temp_file} | slash-commands --since 2024-02-01
@@ -1159,25 +1201,31 @@ def "slash-commands honours the time window" [] {
 }
 
 @test
-def "bare claude-nu answers with guidance, not command not found" [] {
+def "bare claude-nu answers with guidance and not command not found" [] {
     # Why: a directory module with no `main` makes the bare name fall through to
     # an external-command lookup — "command not found" one line after `claude-nu
     # sessions` worked. The signpost takes no search term (scope lives left of
     # the pipe), so it can only name the subcommands and point at the examples.
     let err = try { claude-nu; null } catch {|e| $e }
+
     assert equal $err.msg "claude-nu needs a subcommand"
     assert ($err.details.help | str contains "claude-nu example")
 
     # The search shapes are `@example` blocks, so they
     # are asserted where they live — one copy, reachable from help, from
     # `claude-nu example` and from `dotnu examples-update`.
-    let examples = scope commands | where name == "claude-nu" | get examples | first | get example
-    assert ($examples | any {|e| $e == "claude-nu messages 'regex'" })
-    assert ($examples | any {|e| $e == "claude-nu projects | claude-nu messages 'regex'" })
+    let examples = scope commands
+        | where name == "claude-nu"
+        | get examples
+        | first
+        | get example
+
+    assert ("claude-nu messages 'regex'" in $examples)
+    assert ("claude-nu projects | claude-nu messages 'regex'" in $examples)
 }
 
 @test
-def "messages keys subagent rows by real project, not the subagents folder" [] {
+def "messages keys subagent rows by real project and not the subagents folder" [] {
     # Why: subagent transcripts live at <proj>/<uuid>/subagents/agent-*.jsonl, so
     # `path dirname` labelled them "subagents". project-dir-name resolves both
     # layouts to the same project, so rows from a session and from its subagent
@@ -1185,6 +1233,7 @@ def "messages keys subagent rows by real project, not the subagents folder" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj = $fake_home | path join ".claude" "projects" "-proj-a"
     let sub = $proj | path join "11111111-1111-1111-1111-111111111111" "subagents"
+
     mkdir $sub
 
     '{"type":"user","message":{"content":"top-level msg"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -1200,13 +1249,15 @@ def "messages keys subagent rows by real project, not the subagents folder" [] {
 
     assert equal ($result.project | uniq) ["-proj-a"]
     let all = $result | get message
+
     assert ("top-level msg" in $all)
     assert ("subagent msg" in $all)
 }
 
 @test
-def "messages project_name is the readable cwd, not the encoded dir" [] {
+def "messages project name is the readable cwd and not the encoded dir" [] {
     let temp_file = $nu.temp-dir | path join $"test-messages-projname-(random uuid).jsonl"
+
     '{"type":"user","cwd":"/Users/test/work/demo","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
     | save --force $temp_file
 
@@ -1218,8 +1269,9 @@ def "messages project_name is the readable cwd, not the encoded dir" [] {
 }
 
 @test
-def "messages project_name is empty, not an error, when the session carries no cwd" [] {
+def "messages project name is empty and not an error when the session carries no cwd" [] {
     let temp_file = $nu.temp-dir | path join $"test-messages-nocwd-(random uuid).jsonl"
+
     '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
     | save --force $temp_file
 
@@ -1235,7 +1287,7 @@ def "messages project_name is empty, not an error, when the session carries no c
 # =============================================================================
 
 @test
-def "sessions extracts session_id from first record" [] {
+def "sessions extracts the session id from the first record" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1286,7 +1338,7 @@ def "sessions extracts cwd from first record" [] {
 }
 
 @test
-def "sessions extracts git_branch from first record" [] {
+def "sessions extracts the git branch from the first record" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1428,7 +1480,7 @@ def "sessions drops the synthetic placeholder from the model list" [] {
 # =============================================================================
 
 @test
-def "sessions extracts bash_commands list" [] {
+def "sessions extracts the bash commands list" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1468,7 +1520,7 @@ def "sessions counts bash commands correctly" [] {
 }
 
 @test
-def "sessions extracts skill_invocations list" [] {
+def "sessions extracts the skill invocations list" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1489,7 +1541,7 @@ def "sessions extracts skill_invocations list" [] {
 }
 
 @test
-def "sessions counts tool_errors from tool_result" [] {
+def "sessions counts tool errors from tool results" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1508,7 +1560,7 @@ def "sessions counts tool_errors from tool_result" [] {
 }
 
 @test
-def "sessions counts ask_user_count" [] {
+def "sessions counts ask user calls" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1528,7 +1580,7 @@ def "sessions counts ask_user_count" [] {
 }
 
 @test
-def "sessions detects plan_mode_used true" [] {
+def "sessions detects plan mode as used" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1546,7 +1598,7 @@ def "sessions detects plan_mode_used true" [] {
 }
 
 @test
-def "sessions detects plan_mode_used false" [] {
+def "sessions detects plan mode as unused" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1568,7 +1620,7 @@ def "sessions detects plan_mode_used false" [] {
 # =============================================================================
 
 @test
-def "sessions counts turn_count excluding meta messages" [] {
+def "sessions counts turns excluding meta messages" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1588,7 +1640,7 @@ def "sessions counts turn_count excluding meta messages" [] {
 }
 
 @test
-def "sessions counts assistant_msg_count" [] {
+def "sessions counts assistant messages" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1609,7 +1661,7 @@ def "sessions counts assistant_msg_count" [] {
 }
 
 @test
-def "sessions counts tool_call_count" [] {
+def "sessions counts tool calls" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
@@ -1699,7 +1751,7 @@ def "sessions --all-columns includes all columns" [] {
 # =============================================================================
 
 @test
-def "extract-tool-results extracts tool_result from user records" [] {
+def "extract-tool-results extracts tool results from user records" [] {
     let records = [
         {message: {content: [{type: "tool_result" tool_use_id: "123" content: "success"}]}}
         {message: {content: [{type: "tool_result" tool_use_id: "456" content: "done"}]}}
@@ -1736,7 +1788,7 @@ def "extract-tool-results flattens results from multiple records" [] {
 }
 
 @test
-def "extract-tool-results filters non-tool_result items" [] {
+def "extract-tool-results filters items that are not tool results" [] {
     let records = [
         {message: {content: [{type: "tool_result" tool_use_id: "1" content: "result"} {type: "text" text: "some text"}]}}
     ]
@@ -1754,6 +1806,7 @@ def "extract-tool-results filters non-tool_result items" [] {
 @test
 def "sessions parses single file" [] {
     let temp_dir = $nu.temp-dir | path join $"test-sessions-(random uuid)"
+
     mkdir $temp_dir
     let temp_file = $temp_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
 
@@ -1761,6 +1814,7 @@ def "sessions parses single file" [] {
         '{"type":"summary","summary":"Test session"}'
         '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let result = sessions $temp_file
@@ -1774,6 +1828,7 @@ def "sessions parses single file" [] {
 @test
 def "sessions parses directory of files" [] {
     let temp_dir = $nu.temp-dir | path join $"test-sessions-(random uuid)"
+
     mkdir $temp_dir
 
     let file1 = $temp_dir | path join "11111111-1111-1111-1111-111111111111.jsonl"
@@ -1792,6 +1847,7 @@ def "sessions parses directory of files" [] {
 @test
 def "sessions ignores non-uuid files in directory" [] {
     let temp_dir = $nu.temp-dir | path join $"test-sessions-(random uuid)"
+
     mkdir $temp_dir
 
     let valid_file = $temp_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
@@ -1826,6 +1882,7 @@ def "sessions --all-projects iterates every project dir" [] {
     let projects_dir = $fake_home | path join ".claude" "projects"
     let proj_a = $projects_dir | path join "-fake-proj-a"
     let proj_b = $projects_dir | path join "-fake-proj-b"
+
     mkdir $proj_a $proj_b
 
     '{"type":"summary","summary":"From A"}'
@@ -1839,6 +1896,7 @@ def "sessions --all-projects iterates every project dir" [] {
 
     assert equal ($result | length) 2
     let summaries = $result | get summary | sort
+
     assert equal $summaries ["From A" "From B"]
 }
 
@@ -1860,27 +1918,32 @@ def "sessions lists subagents only with --subagents" [] {
     let parent_uuid = "b370af1e-c96f-46a2-a3fe-66b16f38bc03"
 
     let default = null | sessions $FIXTURES_SESSIONS_DIR
+
     assert (($default | where parent_session_id == null | length) > 0)
     assert equal ($default | where parent_session_id == $parent_uuid | length) 0
 
     let opted_in = null | sessions $FIXTURES_SESSIONS_DIR --subagents
+
     assert (($opted_in | where parent_session_id == $parent_uuid | length) > 0)
     assert (($opted_in | where parent_session_id == null | length) > 0)
 }
 
 @test
-def "sessions adds parent_session_id column to every row" [] {
+def "sessions adds the parent session id column to every row" [] {
     let result = null | sessions $FIXTURES_SESSIONS_DIR
     let cols = $result | columns
+
     assert ("parent_session_id" in $cols)
 }
 
 @test
 def "discover-session-files yields null parent for top-level files" [] {
     let temp_dir = $nu.temp-dir | path join $"test-discover-(random uuid)"
+
     mkdir $temp_dir
 
     let top_file = $temp_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
+
     "" | save --force $top_file
 
     let result = discover-session-files $temp_dir
@@ -1897,9 +1960,11 @@ def "discover-session-files extracts parent UUID from subagent path" [] {
     let temp_dir = $nu.temp-dir | path join $"test-discover-(random uuid)"
     let parent_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     let subagents_dir = $temp_dir | path join $parent_uuid "subagents"
+
     mkdir $subagents_dir
 
     let agent_file = $subagents_dir | path join "agent-deadbeef1234.jsonl"
+
     "" | save --force $agent_file
 
     let result = discover-session-files $temp_dir
@@ -1907,6 +1972,7 @@ def "discover-session-files extracts parent UUID from subagent path" [] {
     rm --recursive --force $temp_dir
 
     let agent_rows = $result | where parent_session_id == $parent_uuid
+
     assert equal ($agent_rows | length) 1
     assert equal $agent_rows.0.path $agent_file
 }
@@ -1919,9 +1985,11 @@ def "discover-session-files finds workflow-nested subagents" [] {
     let temp_dir = $nu.temp-dir | path join $"test-discover-(random uuid)"
     let parent_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     let nested = $temp_dir | path join $parent_uuid "subagents" "workflows" "wf_abc123"
+
     mkdir $nested
 
     let agent_file = $nested | path join "agent-deadbeef1234.jsonl"
+
     "" | save --force $agent_file
 
     let result = discover-session-files $temp_dir
@@ -1929,6 +1997,7 @@ def "discover-session-files finds workflow-nested subagents" [] {
     rm --recursive --force $temp_dir
 
     let agent_rows = $result | where parent_session_id == $parent_uuid
+
     assert equal ($agent_rows | length) 1
     assert equal $agent_rows.0.path $agent_file
 }
@@ -1938,10 +2007,12 @@ def "discover-session-files orders rows newest first" [] {
     # Why: the recency callers (most-recent session, newest-of-each-project)
     # trust this order instead of re-sorting, so it is a contract.
     let temp_dir = $nu.temp-dir | path join $"test-discover-(random uuid)"
+
     mkdir $temp_dir
 
     let older = $temp_dir | path join "11111111-1111-1111-1111-111111111111.jsonl"
     let newer = $temp_dir | path join "22222222-2222-2222-2222-222222222222.jsonl"
+
     "" | save --force $older
     "" | save --force $newer
     touch --modified --timestamp ((date now) - 2hr) $older
@@ -1964,6 +2035,7 @@ def "nu-complete returns empty for non-existent sessions dir" [] {
     # Why: a fake HOME guarantees the sessions dir is absent — with the real
     # HOME the test breaks on machines that have Claude sessions for /tmp.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+
     mkdir $fake_home
     let result = with-env {HOME: $fake_home} {
         do {
@@ -1971,6 +2043,7 @@ def "nu-complete returns empty for non-existent sessions dir" [] {
             nu-complete claude sessions
         }
     }
+
     rm --recursive --force $fake_home
 
     assert equal $result.completions []
@@ -1981,9 +2054,11 @@ def "nu-complete returns empty for non-existent sessions dir" [] {
 def "nu-complete claude sessions shows latest ai-title in description" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+
     mkdir $proj_dir
     let encoded = $proj_dir | path expand | str replace --all '/' '-'
     let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+
     mkdir $sessions_dir
 
     # ai-title sits beyond any fixed head window and is rewritten later
@@ -1996,6 +2071,7 @@ def "nu-complete claude sessions shows latest ai-title in description" [] {
         '{"type":"ai-title","aiTitle":"Old title"}'
         '{"type":"ai-title","aiTitle":"Current title"}'
     ]
+
     $lines | str join "\n"
         | save --force ($sessions_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl")
 
@@ -2013,12 +2089,14 @@ def "nu-complete claude sessions shows latest ai-title in description" [] {
 }
 
 @test
-def "nu-complete claude sessions shows the /rename name over the ai-title" [] {
+def "nu-complete claude sessions shows the rename command name over the ai-title" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+
     mkdir $proj_dir
     let encoded = $proj_dir | path expand | str replace --all '/' '-'
     let sessions_dir = $fake_home | path join ".claude" "projects" $encoded
+
     mkdir $sessions_dir
 
     # Why: the completer pre-filters raw lines by record type, and a rename
@@ -2032,6 +2110,7 @@ def "nu-complete claude sessions shows the /rename name over the ai-title" [] {
         '{"type":"ai-title","aiTitle":"Generated title"}'
         '{"type":"custom-title","customTitle":"my-rename"}'
     ]
+
     $lines | str join "\n"
         | save --force ($sessions_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl")
 
@@ -2051,6 +2130,7 @@ def "nu-complete claude sessions shows the /rename name over the ai-title" [] {
 def "projects recovers name from session cwd and counts sessions" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let sessions_dir = $fake_home | path join ".claude" "projects" "-some-encoded-dir"
+
     mkdir $sessions_dir
 
     # Why: the encoded dir name is lossy — `name` must come from cwd,
@@ -2058,6 +2138,7 @@ def "projects recovers name from session cwd and counts sessions" [] {
     let lines = [
         '{"type":"user","cwd":"/real/parent/proj","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
+
     $lines | str join "\n"
         | save --force ($sessions_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl")
     $lines | str join "\n"
@@ -2077,11 +2158,13 @@ def "projects recovers name from session cwd and counts sessions" [] {
 def "projects falls back to older sessions when newest lacks cwd" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let sessions_dir = $fake_home | path join ".claude" "projects" "-some-encoded-dir"
+
     mkdir $sessions_dir
 
     # Why: a summary-only file (a real Claude Code artifact) carries no cwd;
     # when it is the newest, the project must not vanish from the listing.
     let old_file = $sessions_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
+
     '{"type":"user","cwd":"/real/parent/proj","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
         | save --force $old_file
     touch --modified --timestamp ((date now) - 1hr) $old_file
@@ -2100,6 +2183,7 @@ def "projects falls back to older sessions when newest lacks cwd" [] {
 @test
 def "projects skips dirs without session files" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+
     mkdir ($fake_home | path join ".claude" "projects" "-empty-project")
 
     let result = with-env {HOME: $fake_home} { projects }
@@ -2125,7 +2209,7 @@ def "sessions expands piped project dirs like positional dirs" [] {
 # =============================================================================
 
 @test
-def "extract-agents recognizes Agent tool name in 2.1.x" [] {
+def "extract-agents recognizes the Agent tool name of Claude Code 2 dot 1" [] {
     let tool_calls = [
         {name: "Agent" input: {subagent_type: "Explore" description: "Find files"}}
         {name: "Read" input: {file_path: "/test.txt"}}
@@ -2154,6 +2238,7 @@ def "extract-agents ignores the retired Task tool name" [] {
 def "sessions finds agents in Agent-tool fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
     let result = sessions $p --columns agents | first
+
     assert (($result.agents | length) > 0)
 }
 
@@ -2192,6 +2277,7 @@ def "extract-session-metadata returns empty defaults when no records carry a fie
 def "sessions metadata works for file-history-snapshot-first fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_TASKFAMILY
     let result = sessions $p --columns session_id,cwd,version,git_branch | first
+
     assert (($result.session_id | str length) > 0)
     assert (($result.cwd | str length) > 0)
     assert (($result.version | str length) > 0)
@@ -2201,6 +2287,7 @@ def "sessions metadata works for file-history-snapshot-first fixture" [] {
 def "sessions metadata works for permission-mode-first fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
     let result = sessions $p --columns session_id,cwd,version,git_branch | first
+
     assert (($result.session_id | str length) > 0)
     assert (($result.cwd | str length) > 0)
     assert (($result.version | str length) > 0)
@@ -2210,6 +2297,7 @@ def "sessions metadata works for permission-mode-first fixture" [] {
 def "sessions metadata still works for older user-first fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST
     let result = sessions $p --columns session_id,cwd,version,git_branch | first
+
     assert (($result.session_id | str length) > 0)
     assert (($result.cwd | str length) > 0)
     assert equal $result.version "2.1.129"
@@ -2220,6 +2308,7 @@ def "sessions falls back to ai-title aiTitle when no summary record" [] {
     # All vendored fixtures lack a summary record but have ai-title
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
     let result = sessions $p --columns summary | first
+
     assert (($result.summary | str length) > 0)
 }
 
@@ -2231,9 +2320,11 @@ def "sessions uses summary record when present in preference to ai-title" [] {
         '{"type":"ai-title","aiTitle":"AI title fallback"}'
         '{"type":"user","sessionId":"x","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let result = sessions $temp_file --columns summary | first
+
     rm $temp_file
 
     assert equal $result.summary "Real summary record"
@@ -2246,40 +2337,46 @@ def "sessions falls back to ai-title aiTitle for summary" [] {
         '{"type":"ai-title","aiTitle":"My AI title"}'
         '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let result = sessions $temp_file | first
+
     rm $temp_file
 
     assert equal $result.summary "My AI title"
 }
 
 @test
-def "sessions derives plan_mode_used true from permission-mode record" [] {
+def "sessions derives plan mode as used from a permission-mode record" [] {
     # Why: 2.1.x replaced EnterPlanMode tool calls with top-level
     # permission-mode records carrying permissionMode value
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
     let result = sessions $p --columns plan_mode_used | first
+
     assert equal $result.plan_mode_used true
 }
 
 @test
-def "sessions plan_mode_used false when no plan in permission-mode" [] {
+def "sessions plan mode is unused when no permission-mode record names plan" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
     let result = sessions $p --columns plan_mode_used | first
+
     assert equal $result.plan_mode_used false
 }
 
 @test
-def "sessions plan_mode_used still detects legacy EnterPlanMode tool" [] {
+def "sessions plan mode still detects the legacy EnterPlanMode tool" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
     let lines = [
         '{"type":"user","message":{"content":"plan this"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"EnterPlanMode","input":{}}]}}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let result = sessions $temp_file --columns plan_mode_used | first
+
     rm $temp_file
 
     assert equal $result.plan_mode_used true
@@ -2328,6 +2425,7 @@ def "extract-tool-stats keeps backward-compat columns" [] {
 def "sessions counts new tool names from fixture" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_TASKFAMILY
     let result = sessions $p --columns tool_counts | first
+
     # ae3bbbf7 fixture has TaskCreate, TaskUpdate, TaskStop calls
     assert ($result.tool_counts.TaskCreate > 0)
     assert ($result.tool_counts.TaskUpdate > 0)
@@ -2341,10 +2439,12 @@ def "sessions --all-columns includes new tool-stat columns" [] {
         '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Monitor","input":{}}]}}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let result = sessions $temp_file --all-columns | first
     let cols = $result | columns
+
     rm $temp_file
 
     assert ("tool_counts" in $cols)
@@ -2360,9 +2460,11 @@ def "sessions token-usage sums usage across turns" [] {
         '{"type":"assistant","message":{"content":[{"type":"text","text":"a"}],"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":5,"cache_read_input_tokens":1}}}'
         '{"type":"assistant","message":{"content":[{"type":"text","text":"b"}],"usage":{"input_tokens":3,"output_tokens":7,"cache_creation_input_tokens":0,"cache_read_input_tokens":2}}}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let u = sessions $temp_file --columns token_usage | first | get token_usage
+
     rm $temp_file
 
     assert equal $u.input_tokens 13
@@ -2405,6 +2507,7 @@ def "export-session default omits tool blocks" [] {
 @test
 def "export-session ends with exactly one newline" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
+
     for md in [({path: $p} | export-session) ({path: $p} | export-session --tools)] {
         assert ($md | str ends-with "\n")
         assert not ($md | str ends-with "\n\n")
@@ -2412,7 +2515,7 @@ def "export-session ends with exactly one newline" [] {
 }
 
 @test
-def "export-session --tools renders tool_use as a header and a NUON block" [] {
+def "export-session with tools renders tool use as a header and a NUON block" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
     let md = {path: $p} | export-session --tools
 
@@ -2423,7 +2526,7 @@ def "export-session --tools renders tool_use as a header and a NUON block" [] {
 }
 
 @test
-def "export-session --tools renders tool_result placeholder with char count" [] {
+def "export-session with tools renders a tool result placeholder with char count" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_FHS_AGENT
     let md = {path: $p} | export-session --tools
 
@@ -2431,16 +2534,18 @@ def "export-session --tools renders tool_result placeholder with char count" [] 
 }
 
 @test
-def "export-session --tools renders tool_result error marker" [] {
+def "export-session with tools renders a tool result error marker" [] {
     let temp_file = $nu.temp-dir | path join $"test-export-(random uuid).jsonl"
     let lines = [
         '{"type":"user","message":{"content":"do thing"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"false"}}]}}'
         '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"x","is_error":true,"content":"command not found"}]}}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let md = {path: $temp_file} | export-session --tools
+
     rm $temp_file
 
     assert ($md =~ '> \[result error: \d+ chars\]')
@@ -2455,9 +2560,11 @@ def "export-session --tools keeps a Tool loaded record out of the user turns" []
         '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"tool_reference","tool_name":"Read"}]},{"type":"text","text":"Tool loaded."}]}}'
         '{"type":"assistant","message":{"content":[{"type":"text","text":"read it"}]}}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let md = {path: $temp_file} | export-session --tools
+
     rm $temp_file
 
     assert equal ($md | split row "## User" | length) 2 "one user turn: the typed one"
@@ -2474,9 +2581,11 @@ def "export-session --tools keeps every field of the input record" [] {
         '{"type":"user","message":{"content":"edit it"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/src/main.rs","old_string":"fn old","new_string":"fn new"}}]}}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let md = {path: $temp_file} | export-session --tools
+
     rm $temp_file
 
     assert ($md | str contains "> [Edit]")
@@ -2492,12 +2601,19 @@ def "export-session --tools emits a NUON block that reads back" [] {
         '{"type":"user","message":{"content":"edit it"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/src/main.rs","old_string":"fn old","new_string":"fn new"}}]}}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let md = {path: $temp_file} | export-session --tools
+
     rm $temp_file
 
-    let nuon = $md | split row "```nuon\n" | get 1 | split row "\n```" | get 0
+    let nuon = $md
+        | split row "```nuon\n"
+        | get 1
+        | split row "\n```"
+        | get 0
+
     assert equal ($nuon | from nuon) {file_path: "/src/main.rs" old_string: "fn old" new_string: "fn new"}
 }
 
@@ -2509,9 +2625,11 @@ def "export-session --tools does not truncate a long command" [] {
         '{"type":"user","message":{"content":"do thing"},"timestamp":"2024-01-15T10:00:00Z"}'
         ('{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"' + $long_cmd + '"}}]}}')
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let md = {path: $temp_file} | export-session --tools
+
     rm $temp_file
 
     assert ($md | str contains $long_cmd)
@@ -2519,16 +2637,18 @@ def "export-session --tools does not truncate a long command" [] {
 }
 
 @test
-def "export-session --tools does not inline tool_result content" [] {
+def "export-session with tools does not inline tool result content" [] {
     let temp_file = $nu.temp-dir | path join $"test-export-(random uuid).jsonl"
     let lines = [
         '{"type":"user","message":{"content":"do thing"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"false"}}]}}'
         '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"x","content":"command not found"}]}}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let md = {path: $temp_file} | export-session --tools
+
     rm $temp_file
 
     assert ($md =~ '> \[result: \d+ chars\]')
@@ -2545,7 +2665,7 @@ def "messages default drops thinking-only assistant turns" [] {
     let result = {path: $p} | messages --include-responses
 
     # No [thinking] prefix should leak when --include-thinking is absent
-    assert not ($result | get message | any { $in | str contains "[thinking]" })
+    assert not ($result | get message | any { str contains "[thinking]" })
 }
 
 @test
@@ -2566,12 +2686,15 @@ def "messages --include-thinking prefixes thinking blocks" [] {
         '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"pondering the question"},{"type":"text","text":"answer"}]},"timestamp":"2024-01-15T10:00:01Z"}'
     ]
+
     $lines | str join "\n" | save --force $temp_file
 
     let result = {path: $temp_file} | messages --include-responses --include-thinking
+
     rm $temp_file
 
     let assistant_msg = $result | where role == "assistant" | first | get message
+
     assert ($assistant_msg | str contains "[thinking] pondering the question")
     assert ($assistant_msg | str contains "answer")
 }
@@ -2581,7 +2704,7 @@ def "messages --include-thinking prefixes thinking blocks" [] {
 # =============================================================================
 
 @test
-def "resolve-session-file passes through a .jsonl path unchanged" [] {
+def "resolve-session-file passes through a jsonl path unchanged" [] {
     # Why: an explicit path is taken as-is (no existence check); UUID lookup is
     # the only branch that touches disk.
     assert equal (resolve-session-file "/made/up/path.jsonl") "/made/up/path.jsonl"
@@ -2590,8 +2713,10 @@ def "resolve-session-file passes through a .jsonl path unchanged" [] {
 @test
 def "resolve-session-file resolves a bare UUID against the sessions dir" [] {
     let dir = $nu.temp-dir | path join $"test-resolve-(random uuid)"
+
     mkdir $dir
     let uuid = "12345678-1234-1234-1234-123456789abc"
+
     "" | save --force ($dir | path join $"($uuid).jsonl")
 
     let result = resolve-session-file $uuid --sessions-dir $dir
@@ -2607,10 +2732,13 @@ def "resolve-session-file finds a UUID in another project via glob" [] {
     # by scanning every project under ~/.claude when it is not in the local dir.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj = $fake_home | path join ".claude" "projects" "-proj-x"
+
     mkdir $proj
     let uuid = "abcdabcd-1234-1234-1234-123456789abc"
+
     "" | save --force ($proj | path join $"($uuid).jsonl")
     let empty_dir = $nu.temp-dir | path join $"empty-(random uuid)"
+
     mkdir $empty_dir
 
     let result = with-env {HOME: $fake_home} {
@@ -2625,8 +2753,10 @@ def "resolve-session-file finds a UUID in another project via glob" [] {
 @test
 def "resolve-session-file errors when a UUID exists nowhere" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+
     mkdir ($fake_home | path join ".claude" "projects")
     let empty_dir = $nu.temp-dir | path join $"empty-(random uuid)"
+
     mkdir $empty_dir
 
     let err = with-env {HOME: $fake_home} {
@@ -2654,8 +2784,10 @@ def named-session-lines [...names: string]: nothing -> string {
 @test
 def "resolve-session-file resolves a name against the sessions dir" [] {
     let dir = $nu.temp-dir | path join $"test-resolve-(random uuid)"
+
     mkdir $dir
     let uuid = "12345678-1234-1234-1234-123456789abc"
+
     named-session-lines "old name" "auth (refactor)" | save --force ($dir | path join $"($uuid).jsonl")
     named-session-lines "other" | save --force ($dir | path join "abcdabcd-1234-1234-1234-123456789abc.jsonl")
 
@@ -2671,8 +2803,10 @@ def "resolve-session-file resolves a name against the sessions dir" [] {
 @test
 def "resolve-session-file does not resolve a name a session was renamed away from" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+
     mkdir ($fake_home | path join ".claude" "projects")
     let dir = $nu.temp-dir | path join $"test-resolve-(random uuid)"
+
     mkdir $dir
     named-session-lines "old name" "new name" | save --force ($dir | path join "12345678-1234-1234-1234-123456789abc.jsonl")
 
@@ -2692,10 +2826,13 @@ def "resolve-session-file does not resolve a name a session was renamed away fro
 def "resolve-session-file finds a name in another project" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj = $fake_home | path join ".claude" "projects" "-proj-x"
+
     mkdir $proj
     let uuid = "abcdabcd-1234-1234-1234-123456789abc"
+
     named-session-lines "todo/plan.md" | save --force ($proj | path join $"($uuid).jsonl")
     let empty_dir = $nu.temp-dir | path join $"empty-(random uuid)"
+
     mkdir $empty_dir
 
     let result = with-env {HOME: $fake_home} {
@@ -2712,9 +2849,11 @@ def "resolve-session-file errors on an ambiguous name and lists both sessions" [
     # Why: a name is unique only among live sessions, so two files can carry it;
     # picking one silently would read the wrong session
     let dir = $nu.temp-dir | path join $"test-resolve-(random uuid)"
+
     mkdir $dir
     let first = "12345678-1234-1234-1234-123456789abc"
     let second = "abcdabcd-1234-1234-1234-123456789abc"
+
     named-session-lines "twice" | save --force ($dir | path join $"($first).jsonl")
     named-session-lines "twice" | save --force ($dir | path join $"($second).jsonl")
 
@@ -2740,14 +2879,16 @@ def "resolve-piped-sessions returns null for nothing input" [] {
 }
 
 @test
-def "resolve-piped-sessions reads the path column, deduped" [] {
+def "resolve-piped-sessions reads and dedups the path column" [] {
     let result = resolve-piped-sessions [{path: "/a.jsonl"} {path: "/a.jsonl"} {path: "/b.jsonl"}]
+
     assert equal $result ["/a.jsonl" "/b.jsonl"]
 }
 
 @test
 def "resolve-piped-sessions accepts a record as a 1-row table" [] {
     let result = resolve-piped-sessions {path: "/a.jsonl"}
+
     assert equal $result ["/a.jsonl"]
 }
 
@@ -2755,20 +2896,23 @@ def "resolve-piped-sessions accepts a record as a 1-row table" [] {
 def "resolve-piped-sessions resolves the session column via UUID lookup" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj = $fake_home | path join ".claude" "projects" "-proj-x"
+
     mkdir $proj
     let uuid = "abcdabcd-1234-1234-1234-123456789abc"
+
     "" | save --force ($proj | path join $"($uuid).jsonl")
 
     let result = with-env {HOME: $fake_home} { resolve-piped-sessions [{session: $uuid}] }
 
     rm --recursive --force $fake_home
 
-    assert equal ($result | each { path basename }) [$"($uuid).jsonl"]
+    assert equal ($result | path basename) [$"($uuid).jsonl"]
 }
 
 @test
 def "resolve-piped-sessions errors on input lacking path or session" [] {
     let err = try { resolve-piped-sessions [{foo: 1}]; "" } catch {|e| $e.msg }
+
     assert str contains $err "must have 'path' or 'session' column"
 }
 
@@ -2779,6 +2923,7 @@ def "resolve-piped-sessions errors on input lacking path or session" [] {
 @test
 def "messages --raw returns raw records without the rendered text column" [] {
     let f = $nu.temp-dir | path join $"test-raw-(random uuid).jsonl"
+
     [
         '{"type":"user","message":{"content":"hello"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<command-name>noise</command-name>"},"timestamp":"2024-01-15T10:00:01Z"}'
@@ -2798,6 +2943,7 @@ def "messages --raw returns raw records without the rendered text column" [] {
 @test
 def "messages regex argument filters by rendered text" [] {
     let f = $nu.temp-dir | path join $"test-regex-(random uuid).jsonl"
+
     [
         '{"type":"user","message":{"content":"deploy the service"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"write the tests"},"timestamp":"2024-01-15T10:00:01Z"}'
@@ -2821,10 +2967,12 @@ def "export-session gives a string for one session and a list for many" [] {
     # one markdown string per session, never concatenated (the frontmatter
     # blocks would land mid-file).
     let dir = $nu.temp-dir | path join $"md-in-(random uuid)"
+
     mkdir $dir
     let files = ["aaaa1111-1111-1111-1111-111111111111" "bbbb2222-2222-2222-2222-222222222222"]
         | each {|id|
             let f = $dir | path join $"($id).jsonl"
+
             [
                 '{"type":"summary","summary":"my topic"}'
                 '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -2834,6 +2982,7 @@ def "export-session gives a string for one session and a list for many" [] {
 
     let one = {path: $files.0.path} | export-session
     let many = $files | export-session
+
     rm --recursive --force $dir
 
     assert equal ($one | describe) "string"
@@ -2851,6 +3000,7 @@ def "export-session strips trailing whitespace from every line" [] {
     # line of the assistant reply can too. Invisible in the editor, real in a
     # git diff — a canvas kept picking up whitespace-only changes.
     let f = $nu.temp-dir | path join $"test-trailing-(random uuid).jsonl"
+
     [
         '{"type":"user","message":{"content":"asked something "},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","message":{"content":[{"type":"text","text":"one\t\ntwo \n \nthree"}]},"timestamp":"2024-01-15T10:00:01Z"}'
@@ -2871,6 +3021,7 @@ def "export-session merges consecutive same-role turns" [] {
     # Why: two user turns with no assistant between them collapse into one
     # "## User" section joined by a blank line, not two headers.
     let f = $nu.temp-dir | path join $"test-merge-(random uuid).jsonl"
+
     [
         '{"type":"user","message":{"content":"first"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"second"},"timestamp":"2024-01-15T10:00:01Z"}'
@@ -2907,6 +3058,7 @@ def "resolve-time-bound takes a date string and a datetime as given" [] {
     assert equal ("2026-08-01" | resolve-time-bound "--since") ("2026-08-01" | into datetime)
 
     let dt = "2026-08-01T10:00:00Z" | into datetime
+
     assert equal ($dt | resolve-time-bound "--since") $dt
 }
 
@@ -2916,6 +3068,7 @@ def "resolve-time-bound rejects a value that is neither a duration nor a date" [
         "sometime" | resolve-time-bound "--since"
         ""
     } catch {|e| $e.msg }
+
     assert str contains $msg "--since"
     assert str contains $msg "sometime"
 
@@ -2923,6 +3076,7 @@ def "resolve-time-bound rejects a value that is neither a duration nor a date" [
         5 | resolve-time-bound "--until"
         ""
     } catch {|e| $e.msg }
+
     assert str contains $type_msg "--until"
     assert str contains $type_msg "int"
 }
@@ -2930,9 +3084,11 @@ def "resolve-time-bound rejects a value that is neither a duration nor a date" [
 @test
 def "mtime-filter-session-files keeps only the files written since the bound" [] {
     let dir = $nu.temp-dir | path join $"test-mtime-(random uuid)"
+
     mkdir $dir
     let fresh = $dir | path join "fresh.jsonl"
     let stale = $dir | path join "stale.jsonl"
+
     "" | save --force $fresh
     "" | save --force $stale
     touch --modified --timestamp ((date now) - 10day) $stale
@@ -2956,6 +3112,7 @@ def "messages --since and --until filter by the timestamp of each message" [] {
     # --until — the message from 2024 still has to come back.
     let f = $nu.temp-dir | path join $"test-window-(random uuid).jsonl"
     let recent = (date now) - 1hr | format date "%+"
+
     [
         '{"type":"user","message":{"content":"old message"},"timestamp":"2024-01-15T10:00:00Z"}'
         $'{"type":"user","message":{"content":"recent message"},"timestamp":"($recent)"}'
@@ -2976,6 +3133,7 @@ def "messages --since and --until filter by the timestamp of each message" [] {
 def "tool-calls --since filters by the timestamp of the call" [] {
     let f = $nu.temp-dir | path join $"test-window-(random uuid).jsonl"
     let recent = (date now) - 1hr | format date "%+"
+
     [
         '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"old"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
         $'{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"new"}}]},"timestamp":"($recent)"}'
@@ -2995,10 +3153,12 @@ def "sessions --since filters by the mtime of the session file" [] {
     # Why mtime: a window over sessions that parsed every session to decide
     # which ones it wants would cost exactly what it saves.
     let dir = $nu.temp-dir | path join $"test-window-(random uuid)"
+
     mkdir $dir
     let fresh = $dir | path join $"(random uuid).jsonl"
     let stale = $dir | path join $"(random uuid).jsonl"
     let line = '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
+
     $line | save --force $fresh
     $line | save --force $stale
     touch --modified --timestamp ((date now) - 10day) $stale
@@ -3018,6 +3178,7 @@ def "a window that matches nothing is empty rather than an error" [] {
     # answer. A file named on the command line also has to carry its mtime into
     # the window, the way a discovered one does.
     let f = $nu.temp-dir | path join $"test-window-(random uuid).jsonl"
+
     '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
         | save --force $f
     touch --modified --timestamp ((date now) - 10day) $f
@@ -3039,9 +3200,11 @@ def "read-session-records reads through a trailing run of NUL bytes" [] {
     # trims whitespace only.
     let f = $nu.temp-dir | path join $"test-nul-tail-(random uuid).jsonl"
     let tail = 0x[00 00 00 00 00 00 00 00]
+
     ('{"type":"user","message":{"role":"user","content":"hi"}}' + "\n" | into binary) ++ $tail | save --force --raw $f
 
     let got = $f | read-session-records
+
     rm $f
 
     assert equal ($got | length) 1
@@ -3050,9 +3213,11 @@ def "read-session-records reads through a trailing run of NUL bytes" [] {
 @test
 def "read-session-records names the file when a line is not JSON" [] {
     let f = $nu.temp-dir | path join $"test-cut-line-(random uuid).jsonl"
+
     '{"type":"user","message":{"role":"user","content":"hi"}}' + "\n" + '{"type":"assi' | save --force --raw $f
 
     let msg = try { $f | read-session-records; "" } catch {|e| $e.msg }
+
     rm $f
 
     assert ($msg | str contains $f) $"error names the file: ($msg)"
@@ -3075,33 +3240,38 @@ def "tool-calls regex matches the tool name" [] {
     # Why: the regex searched the input alone, so `tool-calls AskUserQuestion`
     # returned nothing with no warning while `where tool ==` found the calls.
     let temp_file = $nu.temp-dir | path join $"test-toolcalls-name-(random uuid).jsonl"
+
     '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"AskUserQuestion","input":{"questions":[]}},{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]},"timestamp":"2024-01-15T10:00:00Z"}' | save --force $temp_file
 
     let result = {path: $temp_file} | tool-calls 'AskUserQuestion'
+
     rm $temp_file
 
     assert equal ($result | get tool) ["AskUserQuestion"]
 }
 
 @test
-def "sessions plan_mode_used reads permissionMode on user records" [] {
+def "sessions plan mode reads permissionMode on user records" [] {
     # Why: older sessions have no permission-mode record; the mode rides on
     # the user record typed after Shift+Tab.
     let temp_file = $nu.temp-dir | path join $"test-plan-user-(random uuid).jsonl"
+
     '{"type":"user","permissionMode":"plan","message":{"content":"plan it"},"timestamp":"2024-01-15T10:00:00Z"}' | save --force $temp_file
 
     let result = sessions $temp_file --columns plan_mode_used | first
+
     rm $temp_file
 
     assert equal $result.plan_mode_used true
 }
 
 @test
-def "token_usage and assistant_msg_count count a reply once" [] {
+def "token usage and assistant message count count a reply once" [] {
     # Why: one reply is written as a record per content block, each repeating
     # the message id and its usage; summing records doubled the tokens.
     let temp_file = $nu.temp-dir | path join $"test-usage-(random uuid).jsonl"
     let block = {|content| $'{"type":"assistant","message":{"id":"msg_1","usage":{"input_tokens":10,"output_tokens":7},"content":[($content)]},"timestamp":"2024-01-15T10:00:00Z"}' }
+
     [
         '{"type":"user","message":{"content":"go"},"timestamp":"2024-01-15T10:00:00Z"}'
         (do $block '{"type":"text","text":"running"}')
@@ -3109,6 +3279,7 @@ def "token_usage and assistant_msg_count count a reply once" [] {
     ] | str join "\n" | save --force $temp_file
 
     let result = sessions $temp_file --columns token_usage,assistant_msg_count,tool_call_count | first
+
     rm $temp_file
 
     assert equal $result.token_usage.output_tokens 7
@@ -3118,18 +3289,20 @@ def "token_usage and assistant_msg_count count a reply once" [] {
 }
 
 @test
-def "a record copied into a resumed session comes back once, from the older file" [] {
+def "a record copied into a resumed session comes back once from the older file" [] {
     # Why: a resumed session repeats its parent's records under the same uuid,
     # so every count over a project doubled the resumed conversation.
     # Why a directory scope and set mtimes: it lists sessions newest first, and
     # the copy kept is the last listed; the older file is written second, so
     # write order alone would put it first and keep the newer copy.
     let dir = $nu.temp-dir | path join $"test-resume-(random uuid)"
+
     mkdir $dir
     let said = '{"type":"user","uuid":"u-1","message":{"content":"said once"},"timestamp":"2024-01-15T10:00:00Z"}'
     let call = '{"type":"assistant","uuid":"a-1","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}}]},"timestamp":"2024-01-15T10:00:01Z"}'
     let older = $dir | path join 11111111-1111-1111-1111-111111111111.jsonl
     let newer = $dir | path join 22222222-2222-2222-2222-222222222222.jsonl
+
     [$said $call '{"type":"user","uuid":"u-2","message":{"content":"said after resuming"},"timestamp":"2024-01-16T10:00:00Z"}'] | str join "\n" | save $newer
     [$said $call] | str join "\n" | save $older
     ^touch --date 2024-01-15T10:00:00Z $older
@@ -3139,6 +3312,7 @@ def "a record copied into a resumed session comes back once, from the older file
     let messages = $rows | messages
     let calls = $rows | tool-calls
     let records = $rows | records
+
     rm --recursive $dir
 
     assert equal ($messages | select message uuid session) [
@@ -3158,6 +3332,7 @@ def "a record copied into a resumed session comes back once, from the older file
 @test
 def "tool-calls --results joins each call with its result" [] {
     let temp_file = $nu.temp-dir | path join $"test-toolcalls-results-(random uuid).jsonl"
+
     [
         '{"type":"assistant","uuid":"a-1","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","uuid":"u-1","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"a.txt\nb.txt"}]},"timestamp":"2024-01-15T10:00:01Z"}'
@@ -3169,6 +3344,7 @@ def "tool-calls --results joins each call with its result" [] {
     let all = {path: $temp_file} | tool-calls --results
     let searched = {path: $temp_file} | tool-calls --results 'does not exist'
     let plain = {path: $temp_file} | tool-calls
+
     rm $temp_file
 
     assert equal ($all | select id result is_error) [
@@ -3183,9 +3359,11 @@ def "tool-calls --results joins each call with its result" [] {
 @test
 def "tool-calls --results on a session with no calls is empty" [] {
     let temp_file = $nu.temp-dir | path join $"test-toolcalls-none-(random uuid).jsonl"
+
     '{"type":"user","uuid":"u-1","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}' | save --force $temp_file
 
     let result = {path: $temp_file} | tool-calls --results
+
     rm $temp_file
 
     assert equal $result []
@@ -3195,12 +3373,14 @@ def "tool-calls --results on a session with no calls is empty" [] {
 def "resolve-session-file takes a unique id prefix" [] {
     # Why: notes and agents quote a session by its first eight characters.
     let dir = $nu.temp-dir | path join $"test-prefix-(random uuid)"
+
     mkdir $dir
     '' | save ($dir | path join 9787e004-1111-1111-1111-111111111111.jsonl)
     '' | save ($dir | path join 9787e0ff-2222-2222-2222-222222222222.jsonl)
 
     let one = resolve-session-file 9787e004 --sessions-dir $dir
     let many = try { resolve-session-file 9787e0 --sessions-dir $dir; "" } catch {|e| $e.msg }
+
     rm --recursive $dir
 
     assert equal ($one | path basename) 9787e004-1111-1111-1111-111111111111.jsonl
@@ -3215,8 +3395,10 @@ const TWICE_SESSION = '11111111-1111-4111-8111-111111111111'
 
 def two-project-store []: nothing -> path {
     let home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+
     for project in ["-proj-a" "-proj-b"] {
         let dir = $home | path join ".claude" "projects" $project
+
         mkdir ($dir | path join $TWICE_SESSION subagents)
         $'{"type":"user","message":{"content":"top ($project)"},"timestamp":"2024-01-15T10:00:00Z"}' | save ($dir | path join $"($TWICE_SESSION).jsonl")
         $'{"type":"user","message":{"content":"agent ($project)"},"timestamp":"2024-01-15T10:00:00Z"}' | save ($dir | path join $TWICE_SESSION subagents agent-aaaa.jsonl)
@@ -3228,6 +3410,7 @@ def two-project-store []: nothing -> path {
 def "a piped row resolves its subagent id in its own project" [] {
     let home = two-project-store
     let path = with-env {HOME: $home} { {session: agent-aaaa project: "-proj-b"} | resolve-piped-sessions $in | first }
+
     rm --recursive --force $home
 
     assert equal $path ($home | path join ".claude" "projects" "-proj-b" $TWICE_SESSION subagents agent-aaaa.jsonl)
@@ -3243,6 +3426,7 @@ def "an id in two projects is an error naming both paths" [] {
             try { resolve-session-file $selector --sessions-dir ($home | path join "elsewhere"); "" } catch {|e| $e.msg }
         }
     }
+
     rm --recursive --force $home
 
     for err in $errors {
@@ -3258,13 +3442,17 @@ def "a name shaped like a subagent id resolves as a name" [] {
     # Why: `/rename` accepts any text, so `agent-refactor` is a session name
     # as well as the shape of a subagent id; the id is tried first.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+
     mkdir ($fake_home | path join ".claude" "projects")
     let dir = $nu.temp-dir | path join $"test-resolve-(random uuid)"
+
     mkdir $dir
     let uuid = "12345678-1234-1234-1234-123456789abc"
+
     named-session-lines "agent-refactor" | save ($dir | path join $"($uuid).jsonl")
 
     let result = with-env {HOME: $fake_home} { resolve-session-file agent-refactor --sessions-dir $dir }
+
     rm --recursive --force $fake_home $dir
 
     assert equal ($result | path basename) $"($uuid).jsonl"
@@ -3306,7 +3494,11 @@ def "a plain list of paths or ids scopes like session rows" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST
     let by_rows = {path: $p} | messages
     let by_list = [$p] | messages
-    let by_dir = [$FIXTURES_SESSIONS_DIR] | tool-calls | get session | uniq | sort
+    let by_dir = [$FIXTURES_SESSIONS_DIR]
+        | tool-calls
+        | get session
+        | uniq
+        | sort
 
     assert equal $by_list $by_rows
     assert equal ($by_dir | length) 5 "a directory stands for its top-level sessions"
@@ -3315,6 +3507,7 @@ def "a plain list of paths or ids scopes like session rows" [] {
 @test
 def "records yields every line with its type and the whole record" [] {
     let temp_file = $nu.temp-dir | path join $"test-records-(random uuid).jsonl"
+
     [
         '{"type":"permission-mode","permissionMode":"plan","sessionId":"s"}'
         '{"type":"user","uuid":"u-1","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
@@ -3323,6 +3516,7 @@ def "records yields every line with its type and the whole record" [] {
 
     let all = [$temp_file] | records
     let searched = [$temp_file] | records '"type":"system"'
+
     rm $temp_file
 
     assert equal ($all | get type) [permission-mode user system]
@@ -3335,6 +3529,7 @@ def "records yields every line with its type and the whole record" [] {
 @test
 def "export-session --tools keeps a tool result inside the assistant turn" [] {
     let temp_file = $nu.temp-dir | path join $"test-export-results-(random uuid).jsonl"
+
     [
         '{"type":"user","uuid":"u-1","message":{"content":"list files"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","uuid":"a-1","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}}]},"timestamp":"2024-01-15T10:00:01Z"}'
@@ -3343,6 +3538,7 @@ def "export-session --tools keeps a tool result inside the assistant turn" [] {
     ] | str join "\n" | save --force $temp_file
 
     let md = {path: $temp_file} | export-session --tools
+
     rm $temp_file
 
     assert equal ($md | lines | where $it starts-with "## " ) ["## User" "## Assistant"]
@@ -3352,6 +3548,7 @@ def "export-session --tools keeps a tool result inside the assistant turn" [] {
 @test
 def "messages --include-thinking skips a redacted thinking block" [] {
     let temp_file = $nu.temp-dir | path join $"test-thinking-redacted-(random uuid).jsonl"
+
     [
         '{"type":"user","uuid":"u-1","message":{"content":"go"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","uuid":"a-1","message":{"content":[{"type":"thinking","thinking":"","signature":"x"}]},"timestamp":"2024-01-15T10:00:01Z"}'
@@ -3359,6 +3556,7 @@ def "messages --include-thinking skips a redacted thinking block" [] {
     ] | str join "\n" | save --force $temp_file
 
     let result = {path: $temp_file} | messages --include-responses --include-thinking | get message
+
     rm $temp_file
 
     assert equal $result ["go" "[thinking] plan it"]
@@ -3370,12 +3568,14 @@ def "a subagent id with words in it is listed and keeps its parent" [] {
     # a hex-only pattern skipped them in listings and lost their parent.
     let dir = $nu.temp-dir | path join $"test-agent-words-(random uuid)"
     let sub = $dir | path join 11111111-1111-1111-1111-111111111111 subagents
+
     mkdir $sub
     '{"type":"user","uuid":"u-1","message":{"content":"go"},"timestamp":"2024-01-15T10:00:00Z"}' | save ($dir | path join 11111111-1111-1111-1111-111111111111.jsonl)
     '{"type":"user","uuid":"u-2","message":{"content":"fork"},"timestamp":"2024-01-15T10:00:00Z"}' | save ($sub | path join agent-afork-59b4cf88f115039f.jsonl)
 
     let listed = discover-session-files $dir | get parent_session_id
     let named = sessions ($sub | path join agent-afork-59b4cf88f115039f.jsonl) --columns turn_count | get 0.parent_session_id
+
     rm --recursive $dir
 
     assert equal ($listed | length) 2
@@ -3410,10 +3610,12 @@ def "export-session of a project row holding one session still gives a list" [] 
     # directory happens to hold — a project that grows a second session must
     # not change a `| each` written against it.
     let dir = $nu.temp-dir | path join $"md-proj-(random uuid)"
+
     mkdir $dir
     cp ($FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST) $dir
 
     let docs = {path: $dir} | export-session
+
     rm --recursive --force $dir
 
     assert equal ($docs | describe | str replace ' (stream)' '') "list<string>"
@@ -3423,9 +3625,11 @@ def "export-session of a project row holding one session still gives a list" [] 
 @test
 def "tool-calls --results keeps its columns when no call has a result yet" [] {
     let temp_file = $nu.temp-dir | path join $"test-toolcalls-pending-(random uuid).jsonl"
+
     '{"type":"assistant","uuid":"a-1","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"sleep 100"}}]},"timestamp":"2024-01-15T10:00:00Z"}' | save --force $temp_file
 
     let result = {path: $temp_file} | tool-calls --results
+
     rm $temp_file
 
     assert equal ($result | select id result is_error) [{id: "toolu_1" result: null is_error: null}]

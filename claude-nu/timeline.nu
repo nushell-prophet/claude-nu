@@ -56,6 +56,7 @@ export def main [
     # Why here, before rg: same reason as in `messages` — rg's own "No such
     # file" would mask this and discard the matches it did find.
     let missing = $scoped_files | where not ($it | path exists)
+
     if ($missing | is-not-empty) {
         error make $"Session file not found: ($missing | str join ', ')"
     }
@@ -71,7 +72,7 @@ export def main [
             | each { record-blocks }
             | flatten
             | if $include_system { } else {
-                where {|b| $b.role != "user" or $b.kind != "text" or ($b.text | is-user-text) }
+                where role != "user" or kind != "text" or ($it.text | is-user-text)
             }
         # Why the join covers the whole file, before the time window: a result
         # inside the window names a call that may sit just outside it.
@@ -88,11 +89,12 @@ export def main [
         # column, and the next line would fail on a session with no tools.
         | join --left $names id
         | default null call_tool
-        | each {|b| $b | update tool ($b.tool | default $b.call_tool) | reject call_tool }
+        | update tool {|b| default $b.call_tool }
+        | reject call_tool
         | if $since_at == null { } else { where timestamp >= $since_at }
         | if $until_at == null { } else { where timestamp <= $until_at }
         | if $regex == null { } else {
-            where {|b| $b.text =~ $regex or ($b.tool | default "") =~ $regex }
+            where text =~ $regex or ($it.tool | default "") =~ $regex
         }
         | insert session ($session_file | session-id-from-path)
         | insert project ($session_file | project-dir-name)
@@ -125,9 +127,10 @@ def record-blocks []: record -> table {
 
     $blocks
     | enumerate
-    | where {|b| $b.item.type? in $KINDS }
+    | where item.type? in $KINDS
     | each {|b|
         let fields = $b.item | block-fields
+
         {
             role: $record.type
             kind: $fields.kind
@@ -143,12 +146,13 @@ def record-blocks []: record -> table {
             _block_key: (if $record.uuid? == null { null } else { $"($record.uuid)/($b.index)" })
         }
     }
-    | where {|r| $r.kind in ["tool_use" "tool_result"] or ($r.text | str trim | is-not-empty) }
+    | where kind in ["tool_use" "tool_result"] or ($it.text | str trim | is-not-empty)
 }
 
 # The kind-specific fields of one content block whose type is in KINDS.
 def block-fields []: record -> record {
     let block = $in
+
     match $block.type? {
         "text" => {kind: "text" text: ($block.text? | default "")}
         "thinking" => {kind: "thinking" text: ($block.thinking? | default "")}

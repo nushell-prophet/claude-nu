@@ -8,18 +8,19 @@ const log_targets = [stdout stderr mixed file]
 
 export def parse-script-commands [script: string]: nothing -> table {
     ast --flatten (open $script --raw)
-    | where { $in.shape != shape_flag }
+    | where shape != shape_flag
     | window 3 --remainder
-    | where { $in.0.shape == shape_internalcall and ($in.0.content in [def "export def"]) }
+    | where $it.0.shape == shape_internalcall and ($it.0.content in [def "export def"])
     | each {|w|
         let name = $w.1.content | str trim --char "'" | str trim --char '"'
         let sig = $w | get 2?.content? | default ''
+
         {
             name: $name
             flags: ($sig | parse --regex '--(\w[\w-]*)' | get capture0)
         }
     }
-    | where { $in.name starts-with 'main ' }
+    | where name starts-with 'main '
     | update name { str replace 'main ' '' }
 }
 
@@ -27,7 +28,7 @@ export def "nu-complete nu subcommands" [context: string]: nothing -> any {
     let script = $context
         | split row --regex '\s+'
         | skip 1
-        | where { ($in | str ends-with '.nu') and ($in | path exists) }
+        | where $it ends-with '.nu' and ($it | path exists)
         | get 0?
 
     if $script == null { return null }
@@ -38,14 +39,14 @@ export def "nu-complete nu subcommands" [context: string]: nothing -> any {
     let typed_args = $context
         | split row --regex '\s+'
         | skip 1
-        | where { not ($in | str starts-with '-') and not ($in | str ends-with '.nu') }
+        | where $it !~ '^-' and $it !~ '\.nu$'
 
     # Why: subcommand names can be multi-word ("bar baz" from `def "main bar baz"`).
     # Join typed args and find the longest name that prefixes the joined string,
     # otherwise multi-word subcommands never match and flag completion breaks.
     let joined = $typed_args | str join ' '
     let matched_name = $subcmd_names
-        | where { |n| $joined == $n or ($joined | str starts-with $"($n) ") }
+        | where $joined == $it or $joined starts-with $"($it) "
         | sort-by { str length } --reverse
         | get 0?
 

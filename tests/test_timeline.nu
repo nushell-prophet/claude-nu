@@ -12,6 +12,7 @@ const CLAUDE_NU_MODULE = path self ../claude-nu
 # A temp session file holding the given JSONL lines; the caller removes it.
 def session-file [lines: list<string>]: nothing -> path {
     let file = $nu.temp-dir | path join $"test-timeline-(random uuid).jsonl"
+
     $lines | str join "\n" | save --force $file
     $file
 }
@@ -29,6 +30,7 @@ const TURN = [
 def "timeline yields one row per block in file order" [] {
     let file = session-file $TURN
     let rows = {path: $file} | timeline
+
     rm $file
 
     assert equal ($rows | select role kind text tool id is_error) [
@@ -57,6 +59,7 @@ def "timeline drops system wrappers and meta turns unless asked" [] {
     ]
     let plain = {path: $file} | timeline | get text
     let all = {path: $file} | timeline --include-system | get text
+
     rm $file
 
     # Why the tool_result survives on the wrapped record: the check is per block,
@@ -71,13 +74,14 @@ def "timeline drops redacted thinking and other block kinds" [] {
         '{"type":"assistant","uuid":"a-1","message":{"content":[{"type":"thinking","thinking":"","signature":"x"},{"type":"server_tool_use","id":"srv_1","name":"advisor","input":{}},{"type":"text","text":"done"}]},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
     let rows = {path: $file} | timeline
+
     rm $file
 
     assert equal ($rows | select kind text) [{kind: text text: done}]
 }
 
 @test
-def "timeline regex matches text and tool name, with and without rg" [] {
+def "timeline regex matches text and tool name with and without rg" [] {
     let file = session-file $TURN
     # Why every pattern runs twice: the rg pre-filter reads the raw JSON line,
     # the in-engine regex reads the rows — the two must agree.
@@ -88,6 +92,7 @@ def "timeline regex matches text and tool name, with and without rg" [] {
             rg: ({path: $file} | timeline $p | select kind id)
             no_rg: ({path: $file} | timeline $p --no-rg | select kind id)
         } }
+
     rm $file
 
     for f in $found { assert equal $f.rg $f.no_rg }
@@ -101,6 +106,7 @@ def "tool-calls regex over the input means the same with and without rg" [] {
     let file = session-file $TURN
     let rg = {path: $file} | tool-calls '"command":"ls"' | get id
     let no_rg = {path: $file} | tool-calls '"command":"ls"' --no-rg | get id
+
     rm $file
 
     assert equal $rg [toolu_1]
@@ -111,6 +117,7 @@ def "tool-calls regex over the input means the same with and without rg" [] {
 def "timeline --since and --until cut the window per block" [] {
     let file = session-file $TURN
     let rows = {path: $file} | timeline --since 2024-01-15T10:00:02Z --until 2024-01-15T10:00:04Z
+
     rm $file
 
     # Why the result at 10:00:02 keeps its tool: the join runs over the whole
@@ -126,26 +133,30 @@ def "timeline --since and --until cut the window per block" [] {
 def "timeline on a session with no tool calls keeps its schema" [] {
     let file = session-file ['{"type":"user","uuid":"u-1","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}']
     let rows = {path: $file} | timeline
+
     rm $file
 
     assert equal ($rows | select kind text tool) [{kind: text text: hi tool: null}]
 }
 
 @test
-def "a block copied into a resumed session comes back once, and its siblings stay" [] {
+def "a block copied into a resumed session comes back once and its siblings stay" [] {
     # Why: a resumed session repeats its parent's records under the same uuid,
     # and one user record carries every result of a turn — deduping on the
     # record uuid alone would keep only one of them.
     let dir = $nu.temp-dir | path join $"test-timeline-resume-(random uuid)"
+
     mkdir $dir
     let calls = '{"type":"assistant","uuid":"a-1","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}},{"type":"tool_use","id":"toolu_2","name":"Bash","input":{"command":"pwd"}}]},"timestamp":"2024-01-15T10:00:00Z"}'
     let results = '{"type":"user","uuid":"u-1","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"a.txt"},{"type":"tool_result","tool_use_id":"toolu_2","content":"/tmp"}]},"timestamp":"2024-01-15T10:00:01Z"}'
     let older = $dir | path join 11111111-1111-1111-1111-111111111111.jsonl
     let newer = $dir | path join 22222222-2222-2222-2222-222222222222.jsonl
+
     [$calls $results] | str join "\n" | save $older
     [$calls $results '{"type":"user","uuid":"u-2","message":{"content":"after resuming"},"timestamp":"2024-01-16T10:00:00Z"}'] | str join "\n" | save $newer
 
     let rows = [{path: $newer} {path: $older}] | timeline
+
     rm --recursive $dir
 
     assert equal ($rows | select text session) [
@@ -187,6 +198,7 @@ def "the example of what the agent said before a call keeps only the words of th
     # as users load it.
     let pipeline = $example | str replace 'claude-nu sessions --last' $"[($file | to nuon)]"
     let said = ^$nu.current-exe --commands $"use ($CLAUDE_NU_MODULE); ($pipeline) | to nuon" | from nuon
+
     rm $file
 
     assert equal $said [{said: "Now read it." tool: Read}]

@@ -11,7 +11,11 @@ use fixture-home.nu
 fixture-home
 
 # Search by regex. Each row carries `uuid`, the record's own id: the address.
-claude-nu messages 'rename' | select message uuid | update message { lines | first | str substring 0..40 } | update uuid { str substring 0..8 } | print $in
+claude-nu messages 'rename'
+| select message uuid
+| update message { lines | first | str substring 0..40 }
+| update uuid { str substring 0..8 }
+| print $in
 # => ╭───┬───────────────────────────────────────────┬───────────╮
 # => │ # │                  message                  │   uuid    │
 # => ├───┼───────────────────────────────────────────┼───────────┤
@@ -24,7 +28,10 @@ claude-nu messages 'rename' | select message uuid | update message { lines | fir
 # The turns around a hit: `--context N` adds the N rows before and after each
 # hit in its session, like `rg --context`, and a `hit` column marks the match.
 # With `--include-responses` the assistant reply is a neighbour too.
-claude-nu messages 'dropped --rename' --context 1 --include-responses | select hit kind message | update message { lines | first | str substring 0..45 } | print $in
+claude-nu messages 'dropped --rename' --context 1 --include-responses
+| select hit kind message
+| update message { lines | first | str substring 0..45 }
+| print $in
 # => ╭─────┬─────────┬────────────┬─────────────────────────────────────────────────╮
 # => │   # │   hit   │    kind    │                     message                     │
 # => ├─────┼─────────┼────────────┼─────────────────────────────────────────────────┤
@@ -55,7 +62,11 @@ claude-nu messages | where kind == typed | length | print $in
 # A time window is per message, by its own timestamp.
 # Rows come session by session, chronological inside each; `sort-by timestamp`
 # gives one timeline.
-claude-nu messages --since 2026-05-09T18:40:00Z --until 2026-05-09T19:00:00Z | select timestamp message | update timestamp { format date '%T' } | update message { lines | first | str substring 0..40 } | print $in
+claude-nu messages --since 2026-05-09T18:40:00Z --until 2026-05-09T19:00:00Z
+| select timestamp message
+| update timestamp { format date '%T' }
+| update message { lines | first | str substring 0..40 }
+| print $in
 # => ╭───┬───────────┬───────────────────────────────────────────╮
 # => │ # │ timestamp │                  message                  │
 # => ├───┼───────────┼───────────────────────────────────────────┤
@@ -70,7 +81,10 @@ claude-nu messages --since 2026-05-09T18:40:00Z --until 2026-05-09T19:00:00Z | s
 # => ╰───┴───────────┴───────────────────────────────────────────╯
 
 # How much the user said per session, the census past agents built with jq.
-claude-nu messages | group-by session | items {|s rows| {session: ($s | str substring 0..8) messages: ($rows | length) chars: ($rows.message | str length | math sum)} } | print $in
+claude-nu messages
+| group-by session
+| items {|s rows| {session: ($s | str substring 0..8) messages: ($rows | length) chars: ($rows.message | str length | math sum)} }
+| print $in
 # => ╭───┬───────────┬──────────┬───────╮
 # => │ # │  session  │ messages │ chars │
 # => ├───┼───────────┼──────────┼───────┤

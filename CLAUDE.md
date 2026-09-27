@@ -160,7 +160,7 @@ That is what makes a canvas answer readable from the log without opening the can
 Follow the nushell-style skill (install via `/plugin install nushell-style@nushell-skills`).
 Key patterns:
 
-- Leading `|` on continuation lines, aligned with `let`
+- Leading `|` on continuation lines; those of a `let` pipeline are indented one level (4 spaces) from the `let`, as topiary formats it
 - Empty `{ }` for pass-through branches: `| if $cond { } else { transform }`
 - Use `where` for filtering (not `each {if} | compact`)
 - Include type signatures: `]: nothing -> table {`

@@ -16,7 +16,11 @@ fixture-home --workflows
 # a workflow agent has its run, its label and its phase. They are null on
 # top-level rows and outside the default set. An attempt a resumed run replaced
 # is not in the run's state, so its label stays null.
-claude-nu sessions --subagents --columns agent_id,agent_type,workflow,agent_label,phase | where parent_session_id != null | select agent_id agent_type agent_label | update agent_id { str substring 0..8 } | print $in
+claude-nu sessions --subagents --columns agent_id,agent_type,workflow,agent_label,phase
+| where parent_session_id != null
+| select agent_id agent_type agent_label
+| update agent_id { str substring 0..8 }
+| print $in
 # => ╭───┬───────────┬───────────────────┬────────────────────────╮
 # => │ # │ agent_id  │    agent_type     │      agent_label       │
 # => ├───┼───────────┼───────────────────┼────────────────────────┤
@@ -27,7 +31,11 @@ claude-nu sessions --subagents --columns agent_id,agent_type,workflow,agent_labe
 # => ╰───┴───────────┴───────────────────┴────────────────────────╯
 
 # The workflow agents alone, by run and phase.
-claude-nu sessions --subagents --columns agent_id,workflow,phase | where workflow != null | select agent_id workflow phase | update agent_id { str substring 0..8 } | print $in
+claude-nu sessions --subagents --columns agent_id,workflow,phase
+| where workflow != null
+| select agent_id workflow phase
+| update agent_id { str substring 0..8 }
+| print $in
 # => ╭───┬───────────┬─────────────────┬────────╮
 # => │ # │ agent_id  │    workflow     │ phase  │
 # => ├───┼───────────┼─────────────────┼────────┤

@@ -27,7 +27,10 @@ claude-nu projects | claude-nu messages 'docker' | length | print $in
 
 # The sessions of the current project, with the columns you ask for.
 # A datetime renders as "4 months ago"; `format date` keeps these outputs stable.
-claude-nu sessions --columns session_id,first_timestamp,turn_count | select session_id first_timestamp turn_count | update first_timestamp { format date '%F %R' } | print $in
+claude-nu sessions --columns session_id,first_timestamp,turn_count
+| select session_id first_timestamp turn_count
+| update first_timestamp { format date '%F %R' }
+| print $in
 # => ╭────┬───────────────────────────────────────┬───────────────────┬─────────────╮
 # => │  # │              session_id               │  first_timestamp  │ turn_count  │
 # => ├────┼───────────────────────────────────────┼───────────────────┼─────────────┤
@@ -41,7 +44,10 @@ claude-nu sessions --columns session_id,first_timestamp,turn_count | select sess
 # `size` and `modified` come from the file listing, so asking for only these
 # opens no transcript. `modified` is the file mtime, the clock `--since` and
 # `--until` compare; it can run hours past `last_timestamp`.
-claude-nu sessions --columns size,modified | select size modified | update modified { format date '%F %R' } | print $in
+claude-nu sessions --columns size,modified
+| select size modified
+| update modified { format date '%F %R' }
+| print $in
 # => ╭───┬──────────┬──────────────────╮
 # => │ # │   size   │     modified     │
 # => ├───┼──────────┼──────────────────┤
@@ -85,7 +91,10 @@ claude-nu sessions --session '99bf0e5b' --columns turn_count,git_branch | select
 # => ╰───┴────────────┴────────────╯
 
 # Subagent transcripts are left out unless asked for. Each row names its parent.
-claude-nu sessions --subagents --columns turn_count | where parent_session_id != null | select parent_session_id turn_count | print $in
+claude-nu sessions --subagents --columns turn_count
+| where parent_session_id != null
+| select parent_session_id turn_count
+| print $in
 # => ╭───┬──────────────────────────────────────┬────────────╮
 # => │ # │          parent_session_id           │ turn_count │
 # => ├───┼──────────────────────────────────────┼────────────┤
@@ -101,7 +110,11 @@ claude-nu sessions --session agent-c2f7cc67968140b5a --columns turn_count | get 
 
 # A plain list is a scope as well: paths, directories, ids, id prefixes.
 # Quote an id prefix: `99bf0e5b` alone parses as a file size.
-['99bf0e5b' 'ef27ae6d'] | claude-nu messages | get session | uniq --count | print $in
+['99bf0e5b' 'ef27ae6d']
+| claude-nu messages
+| get session
+| uniq --count
+| print $in
 # => ╭───┬──────────────────────────────────────┬───────╮
 # => │ # │                value                 │ count │
 # => ├───┼──────────────────────────────────────┼───────┤

@@ -83,11 +83,11 @@ export def is-builtin-slash-command []: string -> bool {
 export def extract-slash-command []: record -> any {
     let record = $in
     let text = [$record.message?.content? $record.content?]
-        | where {|c| ($c | describe) == "string" }
+        | where ($it | describe) == "string"
         | get 0?
         | default ""
 
-    if not ($text | str contains "<command-name>") { return null }
+    if $text !~ '<command-name>' { return null }
 
     {
         # Why the name stops at the next `<` instead of at its closing tag: a
@@ -105,8 +105,7 @@ export def extract-slash-command []: record -> any {
 # The `value` capture of `$pattern` in the piped text, trimmed; "" when it does
 # not match.
 def capture-first [pattern: string]: string -> string {
-    $in
-    | parse --regex $pattern
+    parse --regex $pattern
     | get value.0?
     | default ""
     | str trim
@@ -132,6 +131,7 @@ export def extract-text-with-thinking []: record -> string {
 # synthesizes around a turn — i.e. not a human-typed message (see SYSTEM_PREFIXES).
 export def is-user-text []: string -> bool {
     let text = $in
+
     $SYSTEM_PREFIXES | all {|p| not ($text | str starts-with $p) }
 }
 
@@ -146,12 +146,18 @@ export def is-user-text []: string -> bool {
 # both. The tags on the record are the only thing that tells them apart.
 export def message-kind []: record -> string {
     let record = $in
+
     if $record.type? == "assistant" { return "response" }
     if $record.isMeta? == true or $record.isCompactSummary? == true { return "system" }
     let content = $record.message?.content?
     let raw = if ($content | describe) == "string" { $content } else {
-        $content | content-blocks | where type? == "text" | get text --optional | str join
+        $content
+        | content-blocks
+        | where type? == "text"
+        | get text --optional
+        | str join
     }
+
     if ($raw | str starts-with "<bash-input>") {
         "bash-input"
     } else if ($raw | str starts-with "<bash-stdout>") or ($raw | str starts-with "<bash-stderr>") {
@@ -175,9 +181,9 @@ export def extract-dialogue [extract: closure --keep-system]: table -> table {
     where type? in ["user" "assistant"]
     | if $keep_system { } else { where isMeta? != true and isCompactSummary? != true }
     | insert text {|r| do $extract $r }
-    | where {|r| $r.text | str trim | is-not-empty }
+    | where ($it.text | str trim | is-not-empty)
     | if $keep_system { } else {
-        where {|r| $r.type? != "user" or ($r.text | is-user-text) }
+        where type? != "user" or ($it.text | is-user-text)
     }
 }
 
@@ -217,10 +223,12 @@ export def extract-summary []: table -> string {
     # Why the last record of each kind: Claude Code rewrites both titles as the
     # session evolves, so the final one is what the app shows.
     let from_custom = $records | where type? == "custom-title" | last-of $.customTitle
+
     if ($from_custom | is-not-empty) {
         return $from_custom
     }
     let from_summary = $records | where type? == "summary" | get 0?.summary?
+
     if ($from_summary | is-not-empty) {
         return $from_summary
     }
@@ -244,6 +252,7 @@ export def pick-first [field: cell-path]: table -> string {
 # that actually carries it.
 export def extract-session-metadata []: table -> record {
     let records = $in
+
     {
         session_id: ($records | pick-first $.sessionId)
         version: ($records | pick-first $.version)
@@ -287,7 +296,8 @@ export def extract-models []: table -> list<string> {
 export def extract-timestamps []: table -> record {
     let ts = get timestamp --optional
         | compact
-        | each { into datetime }
+        | into datetime
+
     {
         first: ($ts | first)
         last: ($ts | last)
@@ -297,6 +307,7 @@ export def extract-timestamps []: table -> record {
 # Extract file operations from tool calls
 export def extract-file-operations []: table -> record {
     let tool_calls = $in
+
     {
         edited_files: ($tool_calls | where name? in ["Edit" "Write"] | get input.file_path --optional | uniq)
         read_files: ($tool_calls | where name? == "Read" | get input.file_path --optional | uniq)
@@ -325,6 +336,7 @@ export def extract-tool-stats [
 ]: table -> record {
     let tool_calls = $in
     let bash_cmds = $tool_calls | where name? == "Bash" | get input.command --optional
+
     {
         bash_commands: $bash_cmds
         bash_count: ($bash_cmds | length)
@@ -351,10 +363,15 @@ export def extract-tool-stats [
 # is kept; a record with no `message.id` stands for itself.
 export def one-per-message []: table -> table {
     let records = $in
-    let keyed = $records | where {|r| $r.message?.id? != null }
+    let keyed = $records | where message?.id? != null
+    let latest = $keyed
+        | insert _mid {|r| $r.message.id }
+        | reverse | uniq-by _mid | reverse
+        | reject _mid
+
     $records
-    | where {|r| $r.message?.id? == null }
-    | append ($keyed | insert _mid {|r| $r.message.id } | reverse | uniq-by _mid | reverse | reject _mid)
+    | where message?.id? == null
+    | append $latest
 }
 
 # Extract derived metrics from session data
@@ -388,6 +405,7 @@ export def extract-token-usage []: table -> record {
     # Cell-path, not a string, so this closure reads like `last-of`/`pick-first`
     # above — one spelling for "a field of a record" across the file.
     let sum = {|field: cell-path| $usages | get $field --optional | compact | sum-or-zero }
+
     {
         input_tokens: (do $sum $.input_tokens)
         output_tokens: (do $sum $.output_tokens)

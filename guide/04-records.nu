@@ -9,7 +9,11 @@ use fixture-home.nu
 fixture-home
 
 # What the transcripts of this project hold.
-claude-nu records | get type | uniq --count | sort-by count --reverse | print $in
+claude-nu records
+| get type
+| uniq --count
+| sort-by count --reverse
+| print $in
 # => ╭────┬───────────────────────┬───────╮
 # => │  # │         value         │ count │
 # => ├────┼───────────────────────┼───────┤
@@ -27,7 +31,12 @@ claude-nu records | get type | uniq --count | sort-by count --reverse | print $i
 # => ╰────┴───────────────────────┴───────╯
 
 # The fields one record type carries, to learn a shape before querying it.
-claude-nu records | where type == permission-mode | first | get record | columns | print $in
+claude-nu records
+| where type == permission-mode
+| first
+| get record
+| columns
+| print $in
 # => ╭───┬────────────────╮
 # => │ 0 │ type           │
 # => │ 1 │ permissionMode │
@@ -35,7 +44,11 @@ claude-nu records | where type == permission-mode | first | get record | columns
 # => ╰───┴────────────────╯
 
 # The permission modes each session ran in.
-claude-nu records | where type == permission-mode | group-by session | items {|s rows| {session: ($s | str substring 0..8) modes: ($rows.record.permissionMode | uniq | str join ', ')} } | print $in
+claude-nu records
+| where type == permission-mode
+| group-by session
+| items {|s rows| {session: ($s | str substring 0..8) modes: ($rows.record.permissionMode | uniq | str join ', ')} }
+| print $in
 # => ╭───┬───────────┬─────────────────────────╮
 # => │ # │  session  │          modes          │
 # => ├───┼───────────┼─────────────────────────┤
@@ -80,7 +93,11 @@ claude-nu sessions --session '99bf0e5b' --all-columns | columns | length | print
 # => 38
 
 # A session as markdown, to read or to archive next to the code.
-claude-nu sessions --session '99bf0e5b' | claude-nu export-session | lines | first 8 | print $in
+claude-nu sessions --session '99bf0e5b'
+| claude-nu export-session
+| lines
+| first 8
+| print $in
 # => ╭───┬───────────────────────────────────────────────╮
 # => │ 0 │ ---                                           │
 # => │ 1 │ date: 2026-05-06                              │

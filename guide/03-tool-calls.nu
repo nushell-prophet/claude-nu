@@ -9,7 +9,12 @@ use fixture-home.nu
 fixture-home
 
 # Which tools the agents used in this project, most-called first.
-claude-nu tool-calls | get tool | uniq --count | sort-by count --reverse | first 5 | print $in
+claude-nu tool-calls
+| get tool
+| uniq --count
+| sort-by count --reverse
+| first 5
+| print $in
 # => ╭───┬────────────┬───────╮
 # => │ # │   value    │ count │
 # => ├───┼────────────┼───────┤
@@ -25,7 +30,10 @@ claude-nu tool-calls | get tool | uniq --count | sort-by count --reverse | first
 claude-nu tool-calls 'AskUserQuestion' | length | print $in
 # => 4
 
-claude-nu tool-calls 'docker build' | select tool input | update input { to nuon | str substring 0..50 } | print $in
+claude-nu tool-calls 'docker build'
+| select tool input
+| update input { to nuon | str substring 0..50 }
+| print $in
 # => ╭──────┬───────────────┬───────────────────────────────────────────────────────╮
 # => │    # │     tool      │                         input                         │
 # => ├──────┼───────────────┼───────────────────────────────────────────────────────┤
@@ -60,7 +68,11 @@ claude-nu tool-calls --tool Agent | length | print $in
 
 # The shell commands of a session, the "bash corpus" past agents rebuilt with jq.
 # The nushell MCP tool keeps its command in `input.input`, not `input.command`.
-claude-nu tool-calls --tool Bash | get input.command | first 3 | each { lines | first | str substring 0..60 } | print $in
+claude-nu tool-calls --tool Bash
+| get input.command
+| first 3
+| each { lines | first | str substring 0..60 }
+| print $in
 # => ╭─────────┬────────────────────────────────────────────────────────────────────╮
 # => │       0 │ git log --oneline -20                                              │
 # => │       1 │ ls /Users/user/git/ai-sandbox-dev-container/cozy/                  │
@@ -69,7 +81,12 @@ claude-nu tool-calls --tool Bash | get input.command | first 3 | each { lines | 
 
 # What failed, and what it said. `--results` adds `result` and `is_error`,
 # joined by the call's `id`; it parses the whole file, so it is off by default.
-claude-nu tool-calls --results | where is_error == true | select tool result | update result { lines | first | str substring 0..50 } | first 3 | print $in
+claude-nu tool-calls --results
+| where is_error == true
+| select tool result
+| update result { lines | first | str substring 0..50 }
+| first 3
+| print $in
 # => ╭────────┬───────────┬─────────────────────────────────────────────────────────╮
 # => │      # │   tool    │                         result                          │
 # => ├────────┼───────────┼─────────────────────────────────────────────────────────┤
@@ -95,7 +112,12 @@ claude-nu tool-calls --results | where result == null | length | print $in
 # => 0
 
 # The files an agent edited, and how often.
-claude-nu tool-calls --tool [Edit Write] | get input.file_path | path basename | uniq --count | sort-by count --reverse | first 3 | print $in
+claude-nu tool-calls --tool [Edit Write]
+| get input.file_path
+| path basename
+| uniq --count | sort-by count --reverse
+| first 3
+| print $in
 # => ╭───┬────────────────────────────────────┬───────╮
 # => │ # │               value                │ count │
 # => ├───┼────────────────────────────────────┼───────┤
@@ -119,7 +141,12 @@ claude-nu tool-calls --tool Agent | get input.description | print $in
 # thinking, tool_use and tool_result, each with `role` and `kind`. `text` holds
 # the words, a call's input as NUON, or a result's text; `tool` names the tool
 # on both the call and its result.
-claude-nu sessions --session '99bf0e5b' | claude-nu timeline | first 5 | select role kind tool text | update text { lines | first | str substring 0..30 } | print $in
+claude-nu sessions --session '99bf0e5b'
+| claude-nu timeline
+| first 5
+| select role kind tool text
+| update text { lines | first | str substring 0..30 }
+| print $in
 # => ╭─────┬─────────────┬───────────────┬───────┬──────────────────────────────────╮
 # => │   # │    role     │     kind      │ tool  │               text               │
 # => ├─────┼─────────────┼───────────────┼───────┼──────────────────────────────────┤
@@ -131,7 +158,13 @@ claude-nu sessions --session '99bf0e5b' | claude-nu timeline | first 5 | select 
 # => ╰─────┴─────────────┴───────────────┴───────┴──────────────────────────────────╯
 
 # "What did the agent say right before each tool call": a pair of rows.
-claude-nu sessions --session '99bf0e5b' | claude-nu timeline | window 2 | where {|w| $w.0.role == assistant and $w.0.kind == text and $w.1.kind == tool_use } | each {|w| {said: ($w.0.text | lines | first | str substring --grapheme-clusters 0..40) tool: $w.1.tool} } | first 3 | print $in
+claude-nu sessions --session '99bf0e5b'
+| claude-nu timeline
+| window 2
+| where $it.0.role == assistant and $it.0.kind == text and $it.1.kind == tool_use
+| each {|w| {said: ($w.0.text | lines | first | str substring --grapheme-clusters 0..40) tool: $w.1.tool} }
+| first 3
+| print $in
 # => ╭────────┬───────────────────────────────────────────────┬─────────────────────╮
 # => │      # │                     said                      │        tool         │
 # => ├────────┼───────────────────────────────────────────────┼─────────────────────┤
@@ -142,7 +175,11 @@ claude-nu sessions --session '99bf0e5b' | claude-nu timeline | window 2 | where 
 
 # What the user typed as slash commands, as `messages` is what they said.
 # Built-ins (/clear, /model ...) are dropped unless `--all`.
-claude-nu slash-commands --all | get command | uniq --count | sort-by count --reverse | print $in
+claude-nu slash-commands --all
+| get command
+| uniq --count
+| sort-by count --reverse
+| print $in
 # => ╭───┬─────────────────┬───────╮
 # => │ # │      value      │ count │
 # => ├───┼─────────────────┼───────┤

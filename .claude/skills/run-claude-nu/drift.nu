@@ -52,7 +52,7 @@ use ($REPO | path join claude-nu extract.nu) [extract-text-content is-user-text]
 # knows, not a new *kind* appearing under the projects root.
 export def latest-files [window: int]: nothing -> list<path> {
     ls (($env.HOME | path join .claude projects '**' '*.jsonl') | into glob)
-    | where {|f| ($f.name =~ $UUID_JSONL_PATTERN) or ($f.name =~ $AGENT_JSONL_PATTERN) }
+    | where name =~ $UUID_JSONL_PATTERN or name =~ $AGENT_JSONL_PATTERN
     | sort-by modified --reverse
     | get name
     | if ($in | length) > $window { first $window } else { }
@@ -70,6 +70,7 @@ export def read-window [files: list<path>]: nothing -> table {
 # as blank — that is exactly the shape a stale reader leaves behind.
 export def is-blank []: any -> bool {
     let v = $in
+
     match ($v | describe | split row '<' | first) {
         "nothing" => true
         "string" => ($v | str trim | is-empty)
@@ -98,8 +99,8 @@ export def observe [records: table]: nothing -> table {
     # inside a message a human really typed.
     let user_tags = $records
         | where type? == "user"
-        | each {|r| $r | extract-text-content }
-        | where {|t| $t | str starts-with '<' }
+        | each { extract-text-content }
+        | where $it starts-with '<'
         | parse --regex '^<(?<tag>[a-zA-Z][a-zA-Z0-9-]*)'
         | get tag
 
@@ -126,7 +127,7 @@ export def observe [records: table]: nothing -> table {
 # Compare the window against the triaged baseline, in all three directions.
 # `rare` entries are exempt from the dead check: they are real but infrequent,
 # and a small window is expected to miss them.
-export def compare [observed: table, known: record]: nothing -> table {
+export def compare [observed: table known: record]: nothing -> table {
     # Why the categories come from `observed`, not from `known`: known.nuon also
     # carries expected_blank_columns, which is a different kind of fact and has
     # no observations to compare against.
@@ -151,7 +152,7 @@ export def compare [observed: table, known: record]: nothing -> table {
 
         let todo = $seen
             | where value in $known_values
-            | where {|r| (do $status $r.value) == "todo" }
+            | where (do $status $it.value) == "todo"
             | each {|r| {category: $cat value: $r.value count: $r.count drift: todo note: (do $note $r.value)} }
 
         [$new $dead $todo] | flatten
@@ -163,7 +164,7 @@ export def compare [observed: table, known: record]: nothing -> table {
 # The baseline's `drops` field says whether SYSTEM_PREFIXES should swallow the
 # tag; is-user-text is the code's actual answer. They disagree when someone edits
 # one without the other — which is how a wrapper starts counting as a human turn.
-export def tag-check [observed: table, known: record]: nothing -> table {
+export def tag-check [observed: table known: record]: nothing -> table {
     let seen = $observed | where category == user_tags | get value
 
     $known
@@ -171,7 +172,7 @@ export def tag-check [observed: table, known: record]: nothing -> table {
     | transpose value meta
     | insert baseline_drops {|r| $r.meta.drops }
     | insert code_drops {|r| not ($"<($r.value)>" | is-user-text) }
-    | where {|r| $r.baseline_drops != $r.code_drops }
+    | where baseline_drops != $it.code_drops
     | insert in_window {|r| $r.value in $seen }
     | select value baseline_drops code_drops in_window
 }
@@ -182,10 +183,12 @@ export def tag-check [observed: table, known: record]: nothing -> table {
 export def column-health [files: list<path>]: nothing -> table {
     let rows = claude-nu sessions ...$files --all-columns
     let total = $rows | length
+
     $rows
     | columns
     | each {|col|
         let blank = $rows | get $col | where { is-blank } | length
+
         {
             column: $col
             rows: $total
@@ -216,6 +219,7 @@ export def smoke [files: list<path>]: nothing -> table {
         } catch {|e|
             {ok: false result: ($e.msg | str trim)}
         }
+
         {command: $c.name ok: $res.ok result: $res.result}
     }
 }
@@ -227,6 +231,7 @@ def main [
     --fail # Exit non-zero when anything needs attention
 ]: nothing -> any {
     let files = latest-files $window
+
     if ($files | is-empty) {
         error make --unspanned {msg: $"No session files under ($env.HOME | path join .claude projects)"}
     }

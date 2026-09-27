@@ -11,9 +11,11 @@ const FIXTURES_SESSIONS_DIR = path self fixtures/sessions
 def make-store [sessions: list]: nothing -> record {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $fake_home | path join ".claude" "projects" "-some-encoded-dir"
+
     mkdir $proj_dir
     for s in $sessions {
         let file = $proj_dir | path join $"($s.id).jsonl"
+
         $s.lines | str join "\n" | save --force $file
         touch --modified --timestamp $s.mtime $file
     }
@@ -36,6 +38,7 @@ def "sessions size and modified come from the file listing" [] {
     assert equal ($result | columns) [size modified path parent_session_id]
     for row in $result {
         let file = $listed | where name == $row.path | first
+
         assert equal $row.size $file.size
         assert equal $row.modified $file.modified
     }
@@ -94,6 +97,7 @@ def linked-transcript-store []: nothing -> record {
     let store = make-store []
     let real = $store.dir | path join "12345678-1234-1234-1234-123456789abc" "subagents" "agent-a1.jsonl"
     let link = $store.dir | path join "12345678-1234-1234-1234-123456789abd" "subagents" "agent-a1.jsonl"
+
     mkdir ($real | path dirname) ($link | path dirname)
     user-line "2024-01-15T10:30:00Z" | save --force $real
     ^ln --symbolic $real $link
@@ -136,6 +140,7 @@ def "projects size sums the top-level transcripts" [] {
     ]
     # Why a subagent transcript: `size` counts the same files as `count`.
     let sub_dir = $store.dir | path join "12345678-1234-1234-1234-123456789abc" "subagents"
+
     mkdir $sub_dir
     user-line "2024-01-15T10:30:00Z" | save --force ($sub_dir | path join "agent-a1.jsonl")
     let expected = ls $store.dir | where name ends-with ".jsonl" | get size | math sum
@@ -158,6 +163,7 @@ def window-store []: nothing -> record {
     let at = {|id first last|
         {id: $id lines: [(user-line $first) (user-line $last)] mtime: (date now)}
     }
+
     make-store [
         (do $at "aaaaaaaa-1234-1234-1234-123456789abc" "2026-08-04T01:00:00Z" "2026-08-04T05:00:00Z")
         (do $at "bbbbbbbb-1234-1234-1234-123456789abc" "2026-08-04T03:10:00Z" "2026-08-04T03:20:00Z")
@@ -184,8 +190,16 @@ def "active window alone on one side is open on the other" [] {
     let store = window-store
     let at = "2026-08-04T03:00:00Z" | into datetime
 
-    let since = null | sessions $store.dir --active-since $at --columns path | get path | each { session-id-from-path } | sort
-    let until = null | sessions $store.dir --active-until $at --columns path | get path | each { session-id-from-path } | sort
+    let since = null
+        | sessions $store.dir --active-since $at --columns path
+        | get path
+        | each { session-id-from-path }
+        | sort
+    let until = null
+        | sessions $store.dir --active-until $at --columns path
+        | get path
+        | each { session-id-from-path }
+        | sort
 
     rm --recursive --force $store.home
 

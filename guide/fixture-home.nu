@@ -16,13 +16,22 @@ export def --env main [
 ]: nothing -> nothing {
     let home = mktemp --directory --tmpdir claude-nu-guide-XXXXXX
     let store = $home | path join .claude projects ($env.PWD | str replace --all '/' '-')
+
     mkdir $store
-    ls (if $workflows { $WORKFLOW_FIXTURES } else { $FIXTURES }) | get name | each {|p| cp --recursive $p $store } | ignore
+    ls (if $workflows { $WORKFLOW_FIXTURES } else { $FIXTURES })
+    | get name
+    | each {|p| cp --recursive $p $store }
+    | ignore
     # Why: sessions list newest first by file mtime, and a copy (or a git
     # checkout) stamps every file with the same moment — so each file gets the
     # time of its own last record, and the order is the same on every run.
     glob ($store | path join **/*.jsonl) | each {|f|
-        let last = open --raw $f | from json --objects | get timestamp --optional | compact | last
+        let last = open --raw $f
+            | from json --objects
+            | get timestamp --optional
+            | compact
+            | last
+
         # Why the skip: a workflow's `journal.jsonl` carries no timestamp.
         if $last != null { touch --modified --timestamp ($last | into datetime) $f }
     } | ignore

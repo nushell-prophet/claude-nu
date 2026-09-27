@@ -23,10 +23,12 @@ export def unescape-html []: string -> string {
 # wrappers; without rendering, export-session/messages drop the user's command.
 export def render-bash-wrapper []: string -> string {
     let s = $in
+
     if ($s | str starts-with "<bash-input>") {
         let cmd = $s
             | str replace "<bash-input>" "" | str replace "</bash-input>" ""
             | unescape-html | str trim
+
         $"```sh\n($cmd)\n```"
     } else if ($s | str starts-with "<bash-stdout>") {
         let parts = $s | split row "<bash-stderr>"
@@ -36,6 +38,7 @@ export def render-bash-wrapper []: string -> string {
         let err = $parts.1? | default ""
             | str replace "</bash-stderr>" ""
             | unescape-html | str trim
+
         [
             (if ($out | is-not-empty) { $"```\n($out)\n```" })
             (if ($err | is-not-empty) { $"```\n[stderr]\n($err)\n```" })
@@ -53,6 +56,7 @@ export def content-blocks []: any -> table {
 # lists go through $render, anything else yields "".
 export def render-message-content [render: closure]: record -> string {
     let content = $in.message?.content?
+
     match ($content | describe) {
         "string" => { $content | render-bash-wrapper }
         $t if ($t =~ '^(list|table)') => { $content | do $render }
@@ -72,6 +76,7 @@ export def render-message-content [render: closure]: record -> string {
 export def render-tool-input []: record -> string {
     let block = $in
     let header = $"> [($block.name? | default 'tool')]"
+
     $"($header)\n\n```nuon\n($block.input? | to nuon --pretty)\n```"
 }
 
@@ -79,8 +84,13 @@ export def render-tool-input []: record -> string {
 # else its text blocks, one per line. Image and other non-text blocks drop out.
 export def tool-result-text []: record -> string {
     let raw = $in.content?
+
     if ($raw | describe) == "string" { $raw } else {
-        $raw | content-blocks | where type? == "text" | get text --optional | str join "\n"
+        $raw
+        | content-blocks
+        | where type? == "text"
+        | get text --optional
+        | str join "\n"
     }
 }
 
@@ -92,6 +102,7 @@ export def tool-result-text []: record -> string {
 # would bury the dialogue the export exists for.
 export def render-block [--tools --thinking]: record -> string {
     let block = $in
+
     match $block.type? {
         "text" => ($block.text? | default "")
         # Why the emptiness guard: recent Claude Code writes thinking redacted
@@ -102,6 +113,7 @@ export def render-block [--tools --thinking]: record -> string {
         "tool_result" if $tools => {
             let n = $block | tool-result-text | str length
             let err = if $block.is_error? == true { " error" } else { "" }
+
             $"> [result($err): ($n) chars]"
         }
         _ => ""
@@ -114,7 +126,7 @@ export def render-block [--tools --thinking]: record -> string {
 export def render-content [--tools --thinking]: record -> string {
     render-message-content {
         each { render-block --tools=$tools --thinking=$thinking }
-        | where { $in | is-not-empty }
+        | where { is-not-empty }
         | str join "\n\n"
     }
 }

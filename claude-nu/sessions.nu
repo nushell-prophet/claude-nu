@@ -65,6 +65,7 @@ const LISTING_COLUMNS = [size modified]
 @category claude-nu
 export def projects []: nothing -> table {
     let projects_root = projects-root
+
     if not ($projects_root | path exists) { return [] }
 
     ls $projects_root
@@ -74,6 +75,7 @@ export def projects []: nothing -> table {
         # Not discover-session-files because: only top-level names and mtimes
         # are needed here — its subagents glob per project dir buys nothing.
         let files = ls $dir.name | where name =~ $UUID_JSONL_PATTERN
+
         if ($files | is-empty) { return null }
         # Why: the dir name is lossy (`/` and `-` both encode to `-`), so
         # recover the real path from a session's `cwd` for true segments.
@@ -93,6 +95,7 @@ export def projects []: nothing -> table {
                     | if $in != null { from json | get cwd? } else { null }
                 } catch { null }
             }
+
         if $cwd == null { return null }
         {
             name: ($cwd | project-display-name)
@@ -140,6 +143,7 @@ export def "nu-complete claude sessions" []: nothing -> record {
                 | if ($in != null) { into datetime } else { $file.modified }
 
             let age = $timestamp | date humanize
+
             {value: $uuid description: $"($age), ($file.size): ($summary)" timestamp: $timestamp}
         }
         | sort-by timestamp --reverse
@@ -244,6 +248,7 @@ export def messages [
     # first, and its own "No such file" (exit 2) would mask this error and throw
     # away the matches it did find. One check, at the one point they enter.
     let missing = $scoped_files | where not ($it | path exists)
+
     if ($missing | is-not-empty) {
         error make $"Session file not found: ($missing | str join ', ')"
     }
@@ -279,13 +284,13 @@ export def messages [
         let dialogue = $records
             | if $include_responses { } else { where type? == "user" }
             | extract-dialogue $extract_text --keep-system=$include_system
-            | insert kind {|r| $r | message-kind }
+            | insert kind { message-kind }
 
         # Why: sorting the ISO-8601 timestamp strings sorts chronologically,
         # so one sort here serves both the --raw and rendered branches.
         let filtered = $dialogue
-            | if $since_at == null { } else { where {|m| ($m.timestamp | into datetime) >= $since_at } }
-            | if $until_at == null { } else { where {|m| ($m.timestamp | into datetime) <= $until_at } }
+            | if $since_at == null { } else { where ($it.timestamp | into datetime) >= $since_at }
+            | if $until_at == null { } else { where ($it.timestamp | into datetime) <= $until_at }
             | sort-by timestamp
             | if $regex == null { } else if $context == null { where text =~ $regex } else {
                 insert hit {|m| $m.text =~ $regex }
@@ -307,7 +312,7 @@ export def messages [
         # Not "project only when the scope spans several projects" because: the
         # output schema would then depend on the data, and a script with
         # `| get project` would work on a wide search and fail on a narrow one.
-        | each { insert session $session_uuid }
+        | insert session $session_uuid
         | insert project ($session_file | project-dir-name)
         | insert project_name ($records | pick-first $.cwd | project-display-name)
     }
@@ -372,6 +377,7 @@ export def tool-calls [
     let piped_files = piped-session-files $input
 
     let tools = if $tool == null { null } else { [$tool] | flatten }
+
     # Why an error and not an empty result: an empty list is almost always a
     # name query upstream that found nothing, and it would read every file only
     # to return no rows.
@@ -396,6 +402,7 @@ export def tool-calls [
     # Why here, before rg: same reason as in `messages` — rg's own "No such
     # file" would mask this and discard the matches it did find.
     let missing = $scoped_files | where not ($it | path exists)
+
     if ($missing | is-not-empty) {
         error make $"Session file not found: ($missing | str join ', ')"
     }
@@ -454,7 +461,7 @@ export def tool-calls [
         # would depend on the data.
         | if $results { join --left $outcomes id | default null result | default null is_error } else { }
         | if $regex == null { } else {
-            where {|call| $call.tool =~ $regex or ($call.input | to json --raw) =~ $regex or ($call.result? | default "") =~ $regex }
+            where tool =~ $regex or ($it.input | to json --raw) =~ $regex or ($it.result? | default "") =~ $regex
         }
         | insert session ($session_file | session-id-from-path)
         | insert project ($session_file | project-dir-name)
@@ -471,7 +478,10 @@ export def tool-calls [
 # Why escaped: a name is the caller's text, and a stray `.` or `(` would widen
 # the pre-filter or make rg fail — the pattern must mean the name literally.
 export def tool-name-pattern [tools: list<string>]: nothing -> string {
-    let names = $tools | each { str replace --all --regex '[\\.^$|?*+()\[\]{}]' '\$0' } | str join '|'
+    let names = $tools
+        | str replace --all --regex '[\\.^$|?*+()\[\]{}]' '\$0'
+        | str join '|'
+
     '"name":"(?:' + $names + ')"'
 }
 
@@ -508,6 +518,7 @@ export def records [
     }
 
     let missing = $scoped_files | where not ($it | path exists)
+
     if ($missing | is-not-empty) {
         error make $"Session file not found: ($missing | str join ', ')"
     }
@@ -516,9 +527,10 @@ export def records [
     | if $regex == null or $no_rg { } else { rg-filter-session-files $regex }
     | each {|session_file|
         let records = $session_file | read-session-records
+
         $records
         | each {|r| {type: ($r.type? | default "") uuid: $r.uuid? timestamp: ($r.timestamp? | if $in == null { } else { into datetime }) record: $r} }
-        | if $regex == null { } else { where {|row| ($row.record | to json --raw) =~ $regex } }
+        | if $regex == null { } else { where ($it.record | to json --raw) =~ $regex }
         | insert session ($session_file | session-id-from-path)
         | insert project ($session_file | project-dir-name)
         | insert project_name ($records | pick-first $.cwd | project-display-name)
@@ -572,6 +584,7 @@ export def slash-commands [
     }
 
     let missing = $scoped_files | where not ($it | path exists)
+
     if ($missing | is-not-empty) {
         error make $"Session file not found: ($missing | str join ', ')"
     }
@@ -588,11 +601,12 @@ export def slash-commands [
         $records
         | each {|record|
             let invocation = $record | extract-slash-command
+
             if $invocation == null { } else {
                 $invocation | insert timestamp ($record.timestamp | into datetime) | insert uuid $record.uuid?
             }
         }
-        | if $all { } else { where {|row| not ($row.command | is-builtin-slash-command) } }
+        | if $all { } else { where not ($it.command | is-builtin-slash-command) }
         | if $since_at == null { } else { where timestamp >= $since_at }
         | if $until_at == null { } else { where timestamp <= $until_at }
         | insert session ($session_file | session-id-from-path)
@@ -610,6 +624,7 @@ export def slash-commands [
 # quadratic in the session's length; the window costs 2n+1 per row.
 def keep-context [n: int]: table -> table {
     let rows = $in
+
     if ($rows | is-empty) { return $rows }
     let pad = 0..<$n | each { false }
     let near = $pad
@@ -617,6 +632,7 @@ def keep-context [n: int]: table -> table {
         | append $pad
         | window ($n * 2 + 1)
         | each { any {|h| $h } }
+
     $rows
     | merge ($near | wrap _near)
     | where _near
@@ -633,9 +649,10 @@ def keep-context [n: int]: table -> table {
 # copy is kept. A row with no key is kept as it is.
 export def drop-copied-records [key: string]: table -> table {
     let rows = $in
+
     if ($rows | is-empty) { return $rows }
     $rows
-    | insert _copy_key {|r| $r | get --optional $key | default (random uuid) }
+    | insert _copy_key { get --optional $key | default (random uuid) }
     | reverse
     | uniq-by _copy_key
     | reverse
@@ -673,12 +690,17 @@ def parse-session-columns [selected: list<string>]: path -> record {
     } else { [] }
 
     let user_msg_length = $user_messages
-        | each { str length }
+        | str length
         | sum-or-zero
 
     let mentioned_files = if ("mentioned_files" in $selected) {
         $user_records
-        | each { extract-text-content | parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})' | get capture0? | default [] }
+        | each {
+            extract-text-content
+            | parse --regex '(?<!\w)@((?:[/~]|\.{1,2}/)[\w./-]+|\w[\w./-]*\.\w{1,10})'
+            | get capture0?
+            | default []
+        }
         | flatten
         | uniq
     } else { [] }
@@ -725,7 +747,8 @@ def parse-session-columns [selected: list<string>]: path -> record {
         # permission-mode records, and older sessions carry the mode as a
         # `permissionMode` field on user records (Shift+Tab into plan mode).
         # Treat any of the three as plan-mode.
-        let from_records = $records | get permissionMode --optional | any { $in == "plan" }
+        let from_records = "plan" in ($records | get permissionMode --optional)
+
         $stats | upsert plan_mode_used ($stats.plan_mode_used or $from_records)
     } else { {} }
 
@@ -799,6 +822,7 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
     # Why: a record is a 1-row table (e.g. `sessions | first`); widen it here so
     # every piped command accepts a single row without the caller re-wrapping it.
     let input = if ($input | is-record) { [$input] } else { $input }
+
     # Why an empty table is an empty selection, not a broken contract: a search
     # that matched nothing must flow on (`messages 'nomatch' | export-session`
     # yields nothing) instead of erroring about columns the caller never chose.
@@ -808,9 +832,15 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
     # short spellings of a scope; each wanted `| wrap path` before. A string is
     # a path when one exists there, otherwise a selector as `--session` reads it.
     if ($input | describe) =~ '^list<(string|path)' {
-        return ($input | ansi strip | each {|s| if ($s | path exists) { $s } else { resolve-session-file $s } } | uniq)
+        return (
+            $input
+            | ansi strip
+            | each {|s| if ($s | path exists) { $s } else { resolve-session-file $s } }
+            | uniq
+        )
     }
     let cols = $input | columns
+
     # Why: `find` is handy for searching every column at once (it recurses into
     # nested cells like user_messages), but it marks matches by injecting ansi
     # codes into the string values themselves — which corrupts the path/session
@@ -819,7 +849,11 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
     # piped command shares — is more forgiving than asking callers to remember
     # the flag, so plain `find … | export-session` works too.
     if "path" in $cols {
-        $input | get path | compact | ansi strip | uniq
+        $input
+        | get path
+        | compact
+        | ansi strip
+        | uniq
     } else if "session" in $cols {
         # Why the row's `project`: an id names one transcript per project only,
         # so a row resolves in the store it was read from, not the first one found.
@@ -829,6 +863,7 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
         | uniq
         | each {|row|
             let dir = if $row.project == null { null } else { projects-root | path join $row.project }
+
             resolve-session-file $row.session --sessions-dir $dir
         }
         | uniq
@@ -844,6 +879,7 @@ export def resolve-piped-sessions [input: any]: nothing -> any {
 # expands a directory itself, subagent transcripts included for --subagents.
 export def piped-session-files [input: any]: nothing -> any {
     let piped = resolve-piped-sessions $input
+
     if $piped == null { return null }
     $piped
     | each {|p|
@@ -871,6 +907,7 @@ export def "nu-complete claude session-columns" [context: string]: nothing -> li
     let parts = $token | split row ','
     let chosen = $parts | drop 1
     let prefix = $chosen | str join ','
+
     $SESSION_COLUMNS
     | get name
     | difference $chosen
@@ -901,6 +938,7 @@ def expand-session-paths [--subagents]: list<path> -> table {
             # both are columns — so a row made here has to carry them too, or a
             # named file would drop out of every window.
             let stat = ls $p | follow-links | get 0
+
             [{path: $p parent_session_id: ($p | parent-session-of) modified: $stat.modified size: $stat.size}]
         }
     }
@@ -949,6 +987,7 @@ export def main [
     let until_at = if $until == null { null } else { $until | resolve-time-bound "--until" }
     let active_since_at = if $active_since == null { null } else { $active_since | resolve-time-bound "--active-since" }
     let active_until_at = if $active_until == null { null } else { $active_until | resolve-time-bound "--active-until" }
+
     # Why exclusive: the two pairs ask one question on two clocks — file mtime
     # and record time — and a call mixing them answers a window nobody named.
     if ($since_at != null or $until_at != null) and ($active_since_at != null or $active_until_at != null) {
@@ -974,8 +1013,9 @@ export def main [
         ["--all-projects" $all_projects]
         ["explicit paths" ($paths | is-not-empty)]
     ]
-    | where active
-    | get scope
+        | where active
+        | get scope
+
     if ($active_scopes | length) > 1 {
         error make $"($active_scopes | str join ' and ') are mutually exclusive — pick one session scope"
     }
@@ -992,10 +1032,14 @@ export def main [
         [(resolve-session-file $session)] | expand-session-paths
     } else if $all_projects {
         let projects_dir = projects-root
+
         if not ($projects_dir | path exists) {
             error make "No projects directory found"
         }
-        ls $projects_dir | where type == dir | get name | expand-session-paths --subagents=$subagents
+        ls $projects_dir
+        | where type == dir
+        | get name
+        | expand-session-paths --subagents=$subagents
     } else if $piped_files != null {
         # Why the early return: an empty piped selection is an empty answer, so
         # `sessions | where false | sessions` yields nothing — it must not fall
@@ -1064,6 +1108,7 @@ export def main [
         # carries them anyway, and the help names them, so asking for one is
         # not a typo — it was refused as an unknown column.
         let unknown = $requested | difference $all_names | difference $ROW_COLUMNS
+
         if ($unknown | is-not-empty) {
             error make {
                 msg: $"Unknown session column\(s): ($unknown | str join ', ')"
@@ -1094,8 +1139,10 @@ export def main [
             and ($active_since_at == null or $from_records.last_timestamp >= $active_since_at)
             and ($active_until_at == null or $from_records.first_timestamp <= $active_until_at)
         )
+
         if not $in_window { return null }
         let from_listing = if ($listed | is-empty) { {} } else { $row | select ...$listed }
+
         $from_records
         | merge $from_listing
         | select ...$selected
@@ -1171,7 +1218,8 @@ export def export-session [
             | update type {|r|
                 let blocks = $r.message?.content? | content-blocks
                 let typed = $blocks | where type? == "text" | any {|b| $b.text | is-user-text }
-                if ($blocks | any {|b| $b.type? == "tool_result" }) and not $typed { "assistant" } else { $r.type }
+
+                if "tool_result" in ($blocks | get type --optional) and not $typed { "assistant" } else { $r.type }
             }
             | select type text
             | rename role content
@@ -1186,15 +1234,16 @@ export def export-session [
             date: ($first_timestamp | format date '%Y-%m-%d')
             session: $session_id
         }
-        | if $summary != "" { insert summary $summary } else { }
-        | to yaml
-        | $"---\n($in)---\n"
+            | if $summary != "" { insert summary $summary } else { }
+            | to yaml
+            | $"---\n($in)---\n"
 
         let heading = $"# ($doc_title)"
 
         let body = $dialogue
             | each {|turn|
                 let role = match $turn.role { "user" => "User" _ => "Assistant" }
+
                 $"## ($role)\n\n($turn.content)"
             }
             | str join "\n\n"

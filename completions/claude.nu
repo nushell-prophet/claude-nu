@@ -126,6 +126,7 @@ def comma-list [context: string]: table -> table {
     let token = $context | split row ' ' | last
     let chosen = $token | split row ',' | drop 1
     let prefix = $chosen | str join ','
+
     $in
     | where value not-in $chosen
     | if ($prefix | is-empty) { } else { update value {|it| $"($prefix),($it.value)" } }
@@ -149,7 +150,7 @@ def "nu-complete claude freetext" []: nothing -> list<string> { [] }
 # positional. Offer the session picker only when --resume/-r is on the line;
 # otherwise suppress file completion like plain freetext.
 def "nu-complete claude prompt" [context: string]: nothing -> any {
-    if ($context | split row ' ' | any {|w| $w in ['--resume' '-r']}) {
+    if ($context | split row ' ' | any {|w| $w in ['--resume' '-r'] }) {
         nu-complete claude sessions
     } else { [] }
 }
@@ -175,10 +176,9 @@ def "nu-complete claude mcp servers" []: nothing -> list<string> {
         | get --optional 0.cfg.mcpServers
         | default {}
     let project = try { open .mcp.json | get --optional mcpServers | default {} } catch { {} }
+
     [($user_cfg | get --optional mcpServers | default {}) $project $local]
-    | each { columns }
-    | flatten
-    | uniq
+    | columns
 }
 
 # Installed plugins (name@marketplace), described by their install scopes
@@ -222,7 +222,7 @@ def "nu-complete claude marketplaces" []: nothing -> table {
 def "nu-complete claude agents" []: nothing -> list<string> {
     glob .claude/agents/*.md
     | append (glob ("~/.claude/agents/*.md" | path expand))
-    | each { path parse | get stem }
+    | path parse | get stem
     | uniq
 }
 

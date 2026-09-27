@@ -26,6 +26,7 @@ const RESUMED_SESSION = '5a5a5a5a-0000-4000-8000-000000000000'
 def resumed-store []: nothing -> record {
     let home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let project = $home | path join ".claude" "projects" "-fixture-project"
+
     mkdir ($project | path dirname)
     # Why the external cp: with this third in-process `cp --recursive` of the
     # fixture, parallel tests left another test's copy of a state file with its
@@ -34,6 +35,7 @@ def resumed-store []: nothing -> record {
     cp ($project | path join $"($FIXTURE_PLAIN_SESSION).jsonl") ($project | path join $"($RESUMED_SESSION).jsonl")
     let real = $project | path join $FIXTURE_WF_SESSION subagents
     let linked = $project | path join $RESUMED_SESSION subagents
+
     mkdir ($linked | path join workflows)
     ^ln --symbolic ($real | path join agent-b1111111111111111.jsonl) ($linked | path join agent-b1111111111111111.jsonl)
     ^ln --symbolic ($real | path join workflows wf_aaaa1111-001) ($linked | path join workflows wf_aaaa1111-001)
@@ -47,13 +49,15 @@ def resumed-store []: nothing -> record {
 @test
 def "workflows lists one row per run of a piped session" [] {
     let rows = {path: (fixture-session $FIXTURE_WF_SESSION)} | claude-nu workflows
+
     assert equal ($rows | get id) [wf_aaaa1111-001 wf_bbbb2222-002]
     assert equal ($rows | get session | uniq) [$FIXTURE_WF_SESSION]
 }
 
 @test
-def "workflows reads status, duration, agents and phases from the state file" [] {
+def "workflows reads status and duration and agents and phases from the state file" [] {
     let run = {path: (fixture-session $FIXTURE_WF_SESSION)} | claude-nu workflows | where id == wf_aaaa1111-001 | first
+
     assert equal $run.status completed
     assert equal $run.agent_count 2
     assert equal $run.duration 5min
@@ -72,6 +76,7 @@ def "workflows reads a state with an error and no status as failed" [] {
     # Why: Claude Code's own reader of the state file makes the same call, so a
     # run that failed before a status was written must not read as completed.
     let run = {path: (fixture-session $FIXTURE_WF_SESSION)} | claude-nu workflows | where id == wf_bbbb2222-002 | first
+
     assert equal $run.status failed
     assert equal $run.error "agent budget exceeded"
     assert equal $run.phases []
@@ -81,12 +86,14 @@ def "workflows reads a state with an error and no status as failed" [] {
 @test
 def "workflows yields nothing for a session that ran none" [] {
     let rows = {path: (fixture-session $FIXTURE_PLAIN_SESSION)} | claude-nu workflows
+
     assert equal $rows []
 }
 
 @test
 def "workflows reads every session of a piped project row" [] {
     let rows = {path: $FIXTURE_PROJECT} | claude-nu workflows
+
     assert equal ($rows | length) 2
 }
 
@@ -96,6 +103,7 @@ def "workflows maps a piped subagent transcript to its parent session once" [] {
     # together with its own subagents must not list each run twice.
     let agent = $FIXTURE_PROJECT | path join $FIXTURE_WF_SESSION subagents agent-b1111111111111111.jsonl
     let rows = [(fixture-session $FIXTURE_WF_SESSION) $agent] | claude-nu workflows
+
     assert equal ($rows | get id) [wf_aaaa1111-001 wf_bbbb2222-002]
 }
 
@@ -104,6 +112,7 @@ def "workflows maps a piped subagent transcript to its parent session once" [] {
 def resumed-run-store []: nothing -> record {
     let store = resumed-store
     let state_dir = $store.project | path join $RESUMED_SESSION workflows
+
     mkdir $state_dir
     mv ($store.project | path join $FIXTURE_WF_SESSION workflows wf_aaaa1111-001.json) $state_dir
     $store
@@ -168,8 +177,10 @@ def "workflows names the missing parent of a piped agent transcript" [] {
     # Why: the runs are read through the parent's transcript, so a parent that
     # is gone has to be named as such, not surface as an io error inside a reader.
     let project = $nu.temp-dir | path join $"wf-project-(random uuid)"
+
     cp --recursive $FIXTURE_PROJECT $project
     let parent = $project | path join $"($FIXTURE_WF_SESSION).jsonl"
+
     rm $parent
     let agent = $project | path join $FIXTURE_WF_SESSION subagents agent-b1111111111111111.jsonl
 
@@ -185,6 +196,7 @@ def "workflows rows carry no path column" [] {
     # Why: `path` makes a row a session selector, and a run piped on into
     # `messages` would then read its JSON state file as a transcript.
     let rows = {path: (fixture-session $FIXTURE_WF_SESSION)} | claude-nu workflows
+
     assert ("path" not-in ($rows | columns))
     assert ($rows | all {|r| $r.state_file | str ends-with $"($r.id).json" })
 }
@@ -193,9 +205,11 @@ def "workflows rows carry no path column" [] {
 def "workflows with no input reads the current project" [] {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
+
     mkdir $proj_dir
     let encoded = $proj_dir | path expand | str replace --all '/' '-'
     let projects_dir = $fake_home | path join ".claude" "projects"
+
     mkdir $projects_dir
     cp --recursive $FIXTURE_PROJECT ($projects_dir | path join $encoded)
 
@@ -220,6 +234,7 @@ def identity-rows []: nothing -> table {
 @test
 def "identity columns are not in the default set" [] {
     let cols = null | sessions $FIXTURE_PROJECT | columns
+
     for c in [agent_id agent_type workflow agent_label phase] {
         assert ($c not-in $cols)
     }
@@ -228,6 +243,7 @@ def "identity columns are not in the default set" [] {
 @test
 def "identity columns are null on top-level rows" [] {
     let top = identity-rows | where parent_session_id == null
+
     assert equal ($top | length) 2
     for c in [agent_id agent_type workflow agent_label phase] {
         assert ($top | get $c | all { $in == null })
@@ -235,10 +251,11 @@ def "identity columns are null on top-level rows" [] {
 }
 
 @test
-def "a plain subagent row names its id, type and label, and no workflow" [] {
+def "a plain subagent row names its id and type and label but no workflow" [] {
     # Why: its session_id equals the parent's, so without these columns the row
     # cannot say which agent it is.
     let row = identity-rows | where agent_id == agent-b1111111111111111 | first
+
     assert equal $row.agent_type Explore
     assert equal $row.agent_label "Find stale references"
     assert equal $row.workflow null
@@ -249,6 +266,7 @@ def "a plain subagent row names its id, type and label, and no workflow" [] {
 def "a workflow agent takes label and phase from its meta file" [] {
     # The state file says `verify:scope`; the meta file wins where it has one.
     let row = identity-rows | where agent_id == agent-a2222222222222222 | first
+
     assert equal $row.workflow wf_aaaa1111-001
     assert equal $row.agent_type workflow-subagent
     assert equal $row.agent_label "verify:scope-from-meta"
@@ -258,6 +276,7 @@ def "a workflow agent takes label and phase from its meta file" [] {
 @test
 def "a workflow agent with a bare meta file takes label and phase from the run state" [] {
     let row = identity-rows | where agent_id == agent-a1111111111111111 | first
+
     assert equal $row.workflow wf_aaaa1111-001
     assert equal $row.agent_label "review:scope"
     assert equal $row.phase Review
@@ -266,6 +285,7 @@ def "a workflow agent with a bare meta file takes label and phase from the run s
 @test
 def "a workflow agent the run state does not list keeps a null label" [] {
     let row = identity-rows | where agent_id == agent-a3333333333333333 | first
+
     assert equal $row.workflow wf_aaaa1111-001
     assert equal $row.agent_label null
     assert equal $row.phase null
@@ -276,8 +296,10 @@ def "a workflow agent finds its run state in another session of the project" [] 
     # Why: a run resumed from another session writes its state there, while its
     # agents' transcripts stay under the session that started them.
     let project = $nu.temp-dir | path join $"wf-project-(random uuid)"
+
     cp --recursive $FIXTURE_PROJECT $project
     let other = $project | path join $FIXTURE_PLAIN_SESSION workflows
+
     mkdir $other
     mv ($project | path join $FIXTURE_WF_SESSION workflows wf_aaaa1111-001.json) $other
 
@@ -295,6 +317,7 @@ def "a store under a directory named subagents still maps an agent to its sessio
     # Why: the path is split at the last `subagents`, the one Claude Code made;
     # an ancestor of the store may carry the same name.
     let root = $nu.temp-dir | path join $"wf-(random uuid)" subagents
+
     mkdir $root
     ^cp --recursive $FIXTURE_PROJECT $root
     let agent = $root | path join ($FIXTURE_PROJECT | path basename) $FIXTURE_WF_SESSION subagents workflows wf_aaaa1111-001 agent-a1111111111111111.jsonl
@@ -310,7 +333,7 @@ def "a store under a directory named subagents still maps an agent to its sessio
 }
 
 @test
-def "a transcript reached through a symlink is listed once, under the session holding the file" [] {
+def "a transcript reached through a symlink is listed once under the session holding the file" [] {
     # Why: a resumed session links its `subagents/` entries into the first
     # session's directory, so the glob meets every such transcript twice.
     let store = resumed-store
@@ -342,7 +365,7 @@ def "a subagent transcript named through a link keeps the parent it lives under"
 }
 
 @test
-def "a subagent id resolves to the real transcript, not a link to it" [] {
+def "a subagent id resolves to the real transcript and not to a link to it" [] {
     let store = resumed-store
 
     # Why the plain agent: `glob` does not walk a symlinked directory, but it
@@ -363,5 +386,6 @@ def "identity joins a subagent row to its run in workflows" [] {
     let agents = $runs | where id == wf_aaaa1111-001 | first | get agents
     let rows = identity-rows | where workflow == wf_aaaa1111-001
     let joined = $agents | join $rows agent_id
+
     assert equal ($joined | get agent_id | sort) [agent-a1111111111111111 agent-a2222222222222222]
 }

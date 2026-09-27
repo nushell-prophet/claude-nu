@@ -20,6 +20,7 @@ const SUBAGENT_LINE = '{"type":"user","cwd":"/work/demo","isSidechain":true,"mes
 def fake-home []: nothing -> path {
     let home = $nu.temp-dir | path join $"project-move-(random uuid)"
     let session_dir = $home | path join ".claude" "projects" "-work-demo"
+
     mkdir ($session_dir | path join "aaaa" "subagents")
 
     [$USER_LINE $ASSISTANT_LINE]
@@ -29,6 +30,7 @@ def fake-home []: nothing -> path {
     $"($SUBAGENT_LINE)\n" | save --raw ($session_dir | path join "aaaa" "subagents" "agent-1.jsonl")
 
     let other_dir = $home | path join ".claude" "projects" "-work-other"
+
     mkdir $other_dir
     '{"type":"user","cwd":"/work/other"}' | save --raw ($other_dir | path join "bbbb.jsonl")
 
@@ -74,9 +76,10 @@ def mode-of [file: path]: nothing -> string {
 
 # A store already standing at the new encoded path, holding one file. This is
 # what a project that has moved before comes back to.
-def seed-destination [home: path, rel: string, content: string]: nothing -> path {
+def seed-destination [home: path rel: string content: string]: nothing -> path {
     let dst = projects-dir $home | path join "-work-moved-demo"
     let file = $dst | path join $rel
+
     mkdir ($file | path dirname)
     $content | save --raw $file
     $dst
@@ -85,7 +88,10 @@ def seed-destination [home: path, rel: string, content: string]: nothing -> path
 # A source transcript as it looks once its cwd has been swapped — what the fold
 # compares against, since the swap runs first.
 def rewritten [...lines: string]: nothing -> string {
-    $lines | str join "\n" | $"($in)\n" | str replace --all $'"cwd":"($OLD)"' $'"cwd":"($NEW)"'
+    $lines
+    | str join "\n"
+    | $"($in)\n"
+    | str replace --all $'"cwd":"($OLD)"' $'"cwd":"($NEW)"'
 }
 
 # =============================================================================
@@ -95,9 +101,11 @@ def rewritten [...lines: string]: nothing -> string {
 @test
 def "renames the sessions directory to the new encoded path" [] {
     let home = fake-home
+
     with-env {HOME: $home} { project-move $OLD $NEW | ignore }
     let old_gone = not (projects-dir $home | path join "-work-demo" | path exists)
     let new_there = projects-dir $home | path join "-work-moved-demo" | path exists
+
     rm --recursive --force $home
 
     assert $old_gone
@@ -107,10 +115,12 @@ def "renames the sessions directory to the new encoded path" [] {
 @test
 def "rewrites cwd in top-level and subagent transcripts" [] {
     let home = fake-home
+
     with-env {HOME: $home} { project-move $OLD $NEW | ignore }
     let moved = projects-dir $home | path join "-work-moved-demo"
     let top = open --raw ($moved | path join "aaaa.jsonl")
     let sub = open --raw ($moved | path join "aaaa" "subagents" "agent-1.jsonl")
+
     rm --recursive --force $home
 
     assert equal ($top | str contains '"cwd":"/work/moved/demo"') true
@@ -121,8 +131,10 @@ def "rewrites cwd in top-level and subagent transcripts" [] {
 @test
 def "leaves the old path where it is a record of what happened" [] {
     let home = fake-home
+
     with-env {HOME: $home} { project-move $OLD $NEW | ignore }
     let top = open --raw (projects-dir $home | path join "-work-moved-demo" "aaaa.jsonl")
+
     rm --recursive --force $home
 
     # A file the session read and a path quoted in a message are history, not a
@@ -134,8 +146,10 @@ def "leaves the old path where it is a record of what happened" [] {
 @test
 def "changes nothing in a record but the cwd bytes" [] {
     let home = fake-home
+
     with-env {HOME: $home} { project-move $OLD $NEW | ignore }
     let lines = open --raw (projects-dir $home | path join "-work-moved-demo" "aaaa.jsonl") | lines
+
     rm --recursive --force $home
 
     # The whole reason the swap is a literal substring replace: key order, the
@@ -148,9 +162,11 @@ def "changes nothing in a record but the cwd bytes" [] {
 @test
 def "moves the prompt history and the config entries" [] {
     let home = fake-home
+
     with-env {HOME: $home} { project-move $OLD $NEW | ignore }
     let history = open --raw ($home | path join ".claude" "history.jsonl")
     let config = open --raw ($home | path join ".claude.json")
+
     rm --recursive --force $home
 
     assert equal ($history | str contains '"project":"/work/moved/demo"') true
@@ -163,10 +179,12 @@ def "moves the prompt history and the config entries" [] {
 @test
 def "leaves an unrelated project alone" [] {
     let home = fake-home
+
     with-env {HOME: $home} { project-move $OLD $NEW | ignore }
     let other_there = projects-dir $home | path join "-work-other" | path exists
     let history = open --raw ($home | path join ".claude" "history.jsonl")
     let config = open --raw ($home | path join ".claude.json")
+
     rm --recursive --force $home
 
     assert $other_there
@@ -177,10 +195,12 @@ def "leaves an unrelated project alone" [] {
 @test
 def "rewrites cwd without a rename when the encoded name is unchanged" [] {
     let home = fake-home
+
     # `/work/demo` and `/work-demo` both encode to `-work-demo`: the directory
     # name is lossy, so this move has nothing to rename and cwds to fix.
     with-env {HOME: $home} { project-move $OLD "/work-demo" | ignore }
     let content = open --raw (projects-dir $home | path join "-work-demo" "aaaa.jsonl")
+
     rm --recursive --force $home
 
     assert equal ($content | str contains '"cwd":"/work-demo"') true
@@ -194,10 +214,12 @@ def "rewrites cwd without a rename when the encoded name is unchanged" [] {
 def "moves a project whose path holds glob metacharacters" [] {
     let home = $nu.temp-dir | path join $"project-move-(random uuid)"
     let session_dir = $home | path join ".claude" "projects" "-work-demo[1]"
+
     mkdir $session_dir
     '{"type":"user","cwd":"/work/demo[1]"}' | save --raw ($session_dir | path join "aaaa.jsonl")
     with-env {HOME: $home} { project-move "/work/demo[1]" $NEW | ignore }
     let content = open --raw (projects-dir $home | path join "-work-moved-demo" "aaaa.jsonl")
+
     rm --recursive --force $home
 
     # The directory name is built from the project path, so `[1]` in it used to
@@ -210,9 +232,11 @@ def "moves a project whose path holds glob metacharacters" [] {
 @test
 def "keeps the 0600 mode of the files it rewrites" [] {
     let home = fake-home
+
     with-env {HOME: $home} { project-move $OLD $NEW | ignore }
     let config_mode = mode-of ($home | path join ".claude.json")
     let history_mode = mode-of ($home | path join ".claude" "history.jsonl")
+
     rm --recursive --force $home
 
     assert equal $config_mode "rw-------"
@@ -227,11 +251,13 @@ def "keeps the mtime of the transcripts it rewrites" [] {
     let home = fake-home
     let was = "2026-01-02T03:04:05Z" | into datetime
     let sessions = projects-dir $home | path join "-work-demo"
+
     touch --modified --timestamp $was ($sessions | path join "aaaa.jsonl") ($sessions | path join "aaaa" "subagents" "agent-1.jsonl")
     with-env {HOME: $home} { project-move $OLD $NEW | ignore }
     let moved = projects-dir $home | path join "-work-moved-demo"
     let top = ls ($moved | path join "aaaa.jsonl") | get 0.modified
     let sub = ls ($moved | path join "aaaa" "subagents" "agent-1.jsonl") | get 0.modified
+
     rm --recursive --force $home
 
     assert equal $top $was
@@ -242,11 +268,13 @@ def "keeps the mtime of the transcripts it rewrites" [] {
 def "rewrites through a symlinked config instead of replacing the link" [] {
     let home = fake-home
     let real = $home | path join "real-claude.json"
+
     mv ($home | path join ".claude.json") $real
     ^ln -s $real ($home | path join ".claude.json")
     with-env {HOME: $home} { project-move $OLD $NEW | ignore }
     let still_link = ls ($home | path join ".claude.json") | get 0.type
     let content = open --raw $real
+
     rm --recursive --force $home
 
     assert equal $still_link "symlink"
@@ -256,9 +284,11 @@ def "rewrites through a symlinked config instead of replacing the link" [] {
 @test
 def "moves a project Claude knows only from its config" [] {
     let home = fake-home
+
     rm --recursive --force (projects-dir $home | path join "-work-demo")
     let report = with-env {HOME: $home} { project-move $OLD $NEW }
     let config = open --raw ($home | path join ".claude.json")
+
     rm --recursive --force $home
 
     # No sessions directory to rename, so the rename must not be attempted —
@@ -271,9 +301,11 @@ def "moves a project Claude knows only from its config" [] {
 @test
 def "refuses a file it cannot read as text" [] {
     let home = fake-home
+
     0x[00 ff 22 63 77 64 22] | save --raw (projects-dir $home | path join "-work-demo" "cccc.jsonl")
     let failed = try { with-env {HOME: $home} { project-move $OLD $NEW }; false } catch { true }
     let untouched = open --raw (projects-dir $home | path join "-work-demo" "aaaa.jsonl")
+
     rm --recursive --force $home
 
     # A non-UTF8 transcript used to count as zero occurrences and vanish from
@@ -287,6 +319,7 @@ def "refuses a file it cannot read as text" [] {
 def "a run that dies partway is finished by running it again" [] {
     let home = fake-home
     let subdir = projects-dir $home | path join "-work-demo" "aaaa" "subagents"
+
     # A write that fails for real, in the middle of the plan: the top-level
     # transcript sorts first and gets rewritten, then this directory refuses the
     # temp file. Deterministic, unlike racing a concurrent writer.
@@ -302,6 +335,7 @@ def "a run that dies partway is finished by running it again" [] {
     let moved = projects-dir $home | path join "-work-moved-demo"
     let top = open --raw ($moved | path join "aaaa.jsonl")
     let sub = open --raw ($moved | path join "aaaa" "subagents" "agent-1.jsonl")
+
     rm --recursive --force $home
 
     assert $died
@@ -321,6 +355,7 @@ def "a run that dies partway is finished by running it again" [] {
 def "refuses to rename a sessions directory two projects share" [] {
     let home = fake-home
     let shared = projects-dir $home | path join "-work-demo"
+
     # `/work/demo` and `/work-demo` encode to the same directory name, so this
     # transcript belongs to a different project sitting in the same folder.
     '{"type":"user","cwd":"/work-demo"}' | save --raw ($shared | path join "cccc.jsonl")
@@ -328,6 +363,7 @@ def "refuses to rename a sessions directory two projects share" [] {
     let still_old_name = $shared | path exists
     let ours = open --raw ($shared | path join "aaaa.jsonl")
     let theirs = open --raw ($shared | path join "cccc.jsonl")
+
     rm --recursive --force $home
 
     # The cwd rewrite only touches matching records, but `mv` takes the whole
@@ -342,11 +378,13 @@ def "refuses to rename a sessions directory two projects share" [] {
 @test
 def "moves past a session file that records no cwd" [] {
     let home = fake-home
+
     # Claude creates the session file when a session starts and writes nothing
     # to one that dies before its first turn. A real store holds these.
     "" | save --raw (projects-dir $home | path join "-work-demo" "dead.jsonl")
     with-env {HOME: $home} { project-move $OLD $NEW | ignore }
     let moved = projects-dir $home | path join "-work-moved-demo" | path exists
+
     rm --recursive --force $home
 
     # It names no project, so it strands none — counting it as a stranger's
@@ -357,6 +395,7 @@ def "moves past a session file that records no cwd" [] {
 @test
 def "finishes a rerun whose config swap already landed" [] {
     let home = fake-home
+
     # The state a run leaves when it dies between the config swap and the
     # rename: config and history already carry the new path, sessions do not.
     open --raw ($home | path join ".claude.json")
@@ -367,6 +406,7 @@ def "finishes a rerun whose config swap already landed" [] {
     | save --raw --force ($home | path join ".claude" "history.jsonl")
     let report = with-env {HOME: $home} { project-move $OLD $NEW }
     let content = open --raw (projects-dir $home | path join "-work-moved-demo" "aaaa.jsonl")
+
     rm --recursive --force $home
 
     # The new path alone in the config is our own work, not a second project —
@@ -378,11 +418,13 @@ def "finishes a rerun whose config swap already landed" [] {
 @test
 def "refuses when the config already carries the destination" [] {
     let home = fake-home
+
     open --raw ($home | path join ".claude.json")
     | str replace '"/work/other": {}' '"/work/moved/demo": {"allowedTools": ["B"]}'
     | save --raw --force ($home | path join ".claude.json")
     let failed = try { with-env {HOME: $home} { project-move $OLD $NEW }; false } catch { true }
     let config = open --raw ($home | path join ".claude.json")
+
     rm --recursive --force $home
 
     # The swap is textual, so rewriting the old key here would leave `projects`
@@ -398,6 +440,7 @@ def "dry-run reports the same rows and writes nothing" [] {
     let plan = with-env {HOME: $home} { project-move $OLD $NEW --dry-run }
     let untouched = projects-dir $home | path join "-work-demo" | path exists
     let content = open --raw (projects-dir $home | path join "-work-demo" "aaaa.jsonl")
+
     rm --recursive --force $home
 
     assert $untouched
@@ -413,6 +456,7 @@ def "dry-run reports the same rows and writes nothing" [] {
 def "reports one row per artifact touched" [] {
     let home = fake-home
     let report = with-env {HOME: $home} { project-move $OLD $NEW }
+
     rm --recursive --force $home
 
     assert equal ($report | get kind) [sessions-dir session session history config]
@@ -434,6 +478,7 @@ def "folds into a sessions directory already standing at the destination" [] {
     let old_gone = not (projects-dir $home | path join "-work-demo" | path exists)
     let names = ls $dst | get name | path basename | sort
     let top = open --raw ($dst | path join "aaaa.jsonl")
+
     rm --recursive --force $home
 
     assert $old_gone
@@ -449,6 +494,7 @@ def "drops a source copy the destination already holds whole" [] {
     let dst = seed-destination $home "aaaa.jsonl" $both
     let report = with-env {HOME: $home} { project-move $OLD $NEW }
     let content = open --raw ($dst | path join "aaaa.jsonl")
+
     rm --recursive --force $home
 
     assert equal ($report | where kind == keep-destination | get path | path basename) [aaaa.jsonl]
@@ -467,6 +513,7 @@ def "keeps the source copy when it continues the destination one" [] {
     let dst = seed-destination $home "aaaa.jsonl" (rewritten $USER_LINE)
     let report = with-env {HOME: $home} { project-move $OLD $NEW }
     let content = open --raw ($dst | path join "aaaa.jsonl")
+
     rm --recursive --force $home
 
     assert equal ($report | where kind == keep-source | get path | path basename) [aaaa.jsonl]
@@ -478,10 +525,12 @@ def "keeps the destination copy when it is the one that continues" [] {
     let home = fake-home
     let both = rewritten $USER_LINE $ASSISTANT_LINE
     let dst = seed-destination $home "aaaa.jsonl" $both
+
     # Now the source is the shorter one, so the same rule points the other way.
     $"($USER_LINE)\n" | save --raw --force (projects-dir $home | path join "-work-demo" "aaaa.jsonl")
     let report = with-env {HOME: $home} { project-move $OLD $NEW }
     let content = open --raw ($dst | path join "aaaa.jsonl")
+
     rm --recursive --force $home
 
     assert equal ($report | where kind == keep-destination | get path | path basename) [aaaa.jsonl]
@@ -492,11 +541,14 @@ def "keeps the destination copy when it is the one that continues" [] {
 def "folds a file that is not a transcript by the same containment rule" [] {
     let home = fake-home
     let memory = projects-dir $home | path join "-work-demo" "memory"
+
     mkdir $memory
     "- [one](one.md)\n- [two](two.md)\n" | save --raw ($memory | path join "MEMORY.md")
     let dst = seed-destination $home ("memory" | path join "MEMORY.md") "- [one](one.md)\n"
+
     with-env {HOME: $home} { project-move $OLD $NEW | ignore }
     let index = open --raw ($dst | path join "memory" "MEMORY.md")
+
     rm --recursive --force $home
 
     # A store holds more than transcripts, and the memory index grows the same
@@ -508,6 +560,7 @@ def "folds a file that is not a transcript by the same containment rule" [] {
 @test
 def "does not resolve a file by a rewrite that will never happen to it" [] {
     let home = fake-home
+
     # Only transcripts get their cwd swapped. A file that is not one keeps its
     # bytes, so predicting the swap on it would compare the destination against
     # a source that never exists — and here that comparison would come back
@@ -516,6 +569,7 @@ def "does not resolve a file by a rewrite that will never happen to it" [] {
     seed-destination $home "notes.txt" '{"cwd":"/work/moved/demo"}' | ignore
     let failed = try { with-env {HOME: $home} { project-move $OLD $NEW }; false } catch { true }
     let survived = open --raw (projects-dir $home | path join "-work-demo" "notes.txt")
+
     rm --recursive --force $home
 
     assert $failed
@@ -525,9 +579,11 @@ def "does not resolve a file by a rewrite that will never happen to it" [] {
 @test
 def "refuses a pair where neither copy contains the other" [] {
     let home = fake-home
+
     seed-destination $home "aaaa.jsonl" '{"type":"user","cwd":"/work/moved/demo","message":"a different conversation"}' | ignore
     let failed = try { with-env {HOME: $home} { project-move $OLD $NEW }; false } catch { true }
     let untouched = open --raw (projects-dir $home | path join "-work-demo" "aaaa.jsonl")
+
     rm --recursive --force $home
 
     # Two copies that genuinely disagree are the one case no rule settles, and a
@@ -544,6 +600,7 @@ def "dry-run reports the fold without writing it" [] {
     let plan = with-env {HOME: $home} { project-move $OLD $NEW --dry-run }
     let still_old_name = projects-dir $home | path join "-work-demo" | path exists
     let untouched = open --raw ($dst | path join "aaaa.jsonl")
+
     rm --recursive --force $home
 
     assert $still_old_name
@@ -555,6 +612,7 @@ def "dry-run reports the fold without writing it" [] {
 def "refuses when no state exists for the old path" [] {
     let home = fake-home
     let failed = try { with-env {HOME: $home} { project-move "/work/nothing" $NEW }; false } catch { true }
+
     rm --recursive --force $home
 
     assert $failed
@@ -565,6 +623,7 @@ def "refuses a move that goes nowhere" [] {
     let home = fake-home
     # A trailing slash is the same directory; `cwd` never carries one.
     let failed = try { with-env {HOME: $home} { project-move $OLD "/work/demo/" }; false } catch { true }
+
     rm --recursive --force $home
 
     assert $failed

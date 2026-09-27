@@ -8,10 +8,12 @@ def has-uncommitted-changes [path: path]: nothing -> bool {
 
     let dir = if ($path | path type) == 'dir' { $path } else { $path | path dirname }
 
-    let git_check = do { cd $dir; ^git rev-parse --git-dir } | complete
+    let git_check = ^git -C $dir rev-parse --git-dir | complete
+
     if $git_check.exit_code != 0 { return false }
 
-    let status = do { cd $dir; ^git status --porcelain -- $path } | complete
+    let status = ^git -C $dir status --porcelain -- $path | complete
+
     ($status.stdout | str trim | is-not-empty)
 }
 
@@ -19,12 +21,14 @@ def has-uncommitted-changes [path: path]: nothing -> bool {
 def find-nutest []: nothing -> any {
     for dir in ($env.NU_LIB_DIRS? | default []) {
         let candidate = $dir | path join 'nutest'
+
         if ($candidate | path exists) {
             return ($candidate | path expand)
         }
     }
 
     let sibling = '../nutest/nutest' | path expand
+
     if ($sibling | path exists) { return $sibling }
 
     null
@@ -54,7 +58,7 @@ export def 'main test' [
         print-human $results --all=$all
     }
 
-    if $fail and ($results | where status == 'failed' | is-not-empty) {
+    if $fail and 'failed' in ($results | get status) {
         exit 1
     }
 }
@@ -72,6 +76,7 @@ export def 'main test-unit' [
     --all # human view: also list passing tests (default shows only failures)
 ]: nothing -> any {
     let flat = collect-unit-results
+
     if (machine-mode --json=$json --pretty=$pretty) {
         $flat | to json --raw
     } else {
@@ -94,6 +99,7 @@ def machine-mode [--json --pretty]: nothing -> bool {
 # state can't leak into ours; errors go to stderr so they never corrupt the JSON on stdout.
 def collect-unit-results []: nothing -> table {
     let nutest_path = find-nutest
+
     if $nutest_path == null {
         print --stderr $"(ansi red)✗(ansi reset) nutest not found in NU_LIB_DIRS or at ../nutest"
         print --stderr $"  Install: (ansi attr_dimmed)git clone https://github.com/vyadh/nutest ../nutest(ansi reset)"
@@ -101,9 +107,7 @@ def collect-unit-results []: nothing -> table {
     }
 
     let tests_path = 'tests' | path expand
-    let result = do {
-        ^nu -c $"use ($nutest_path); nutest run-tests --path ($tests_path) --returns table --display nothing | to json --raw"
-    } | complete
+    let result = ^nu -c $"use ($nutest_path); nutest run-tests --path ($tests_path) --returns table --display nothing | to json --raw" | complete
 
     if $result.exit_code != 0 {
         print --stderr $"(ansi red)✗(ansi reset) nutest failed"
@@ -115,7 +119,14 @@ def collect-unit-results []: nothing -> table {
     | from json
     | each {|row|
         let status = if $row.result == 'PASS' { 'passed' } else { 'failed' }
-        {type: 'unit' name: $row.test status: $status file: null message: (if $status == 'failed' { $row.output? | failure-message })}
+
+        {
+            type: 'unit'
+            name: $row.test
+            status: $status
+            file: null
+            message: (if $status == 'failed' { $row.output? | failure-message })
+        }
     }
 }
 
@@ -127,9 +138,10 @@ def collect-unit-results []: nothing -> table {
 # inside this toolkit instead of as the parse error it is.
 def failure-message []: any -> any {
     let msgs = $in
-    | default []
-    | each {|o| if ($o | describe) == "string" { $o | str trim } else { $o.msg? } }
-    | compact
+        | default []
+        | each {|o| if ($o | describe) == "string" { $o | str trim } else { $o.msg? } }
+        | compact
+
     if ($msgs | is-empty) { null } else { $msgs | str join '; ' }
 }
 
@@ -137,6 +149,7 @@ def failure-message []: any -> any {
 # Returns nothing so no wide table auto-renders and truncates the verdict column.
 def print-human [flat: table --all]: nothing -> nothing {
     let to_show = if $all { $flat } else { $flat | where status != 'passed' }
+
     $to_show | each {|r| print-test-result $r }
     print-summary $flat
 }
@@ -146,6 +159,7 @@ def print-summary [flat: table]: nothing -> nothing {
     let passed = $flat | where status == 'passed' | length
     let failed = $flat | where status == 'failed' | length
     let total = $flat | length
+
     print $"(ansi green_bold)($passed) passed(ansi reset), (ansi red_bold)($failed) failed(ansi reset) \(($total) total\)"
 }
 
@@ -157,6 +171,7 @@ def print-test-result [result: record]: nothing -> nothing {
         _ => "?"
     }
     let suffix = if $result.file != null { $" (ansi attr_dimmed)\(($result.file)\)(ansi reset)" } else { "" }
+
     print $"  ($icon) ($result.name)($suffix)"
     if $result.status == 'failed' and ($result.message? | is-not-empty) {
         print $"      (ansi red)($result.message)(ansi reset)"
@@ -169,12 +184,13 @@ def print-test-result [result: record]: nothing -> nothing {
 @example "Vendor and commit" { nu toolkit.nu vendor-sessions --commit }
 export def 'main vendor-sessions' [
     ...sessions: string # Session UUIDs to vendor (default: most recent)
-    --count (-n): int = 3 # Number of most recent sessions when no UUIDs given
+    --count: int = 3 # Number of most recent sessions when no UUIDs given
     --commit # Also create a git commit after copying
 ]: nothing -> nothing {
     use claude-nu/sessions.nu get-sessions-dir
 
     let sessions_dir = get-sessions-dir
+
     if not ($sessions_dir | path exists) {
         print $"(ansi red)✗(ansi reset) No sessions directory at ($sessions_dir)"
         return
@@ -186,6 +202,7 @@ export def 'main vendor-sessions' [
             | sort-by modified --reverse
 
         let to_take = [($available | length) $count] | math min
+
         $available | first $to_take | get name
     } else {
         $sessions | each {|s|
@@ -211,21 +228,30 @@ export def 'main vendor-sessions' [
         let obfuscated = $raw | str replace --all $old_uuid $new_uuid
 
         # Also replace sessionId if it differs from the filename UUID
-        let session_id = $raw | lines | first | from json | get sessionId? | default ""
+        let session_id = $raw
+            | lines
+            | first
+            | from json
+            | get sessionId?
+            | default ""
         let obfuscated = if ($session_id != "" and $session_id != $old_uuid) {
             let new_session_id = random uuid
+
             $obfuscated | str replace --all $session_id $new_session_id
         } else { $obfuscated }
 
         let dest = $fixtures_sessions_dir | path join $"($new_uuid).jsonl"
+
         $obfuscated | save --force $dest
 
         let size = ls $dest | get size.0
+
         print $"(ansi green)✓(ansi reset) ($old_uuid | str substring 0..8)… → ($new_uuid | str substring 0..8)… (($size))"
     }
 
     if $commit {
         let status = git status --porcelain $fixtures_sessions_dir | str trim
+
         if $status != "" {
             git add $fixtures_sessions_dir
             git commit -m "test: vendor session fixtures"
@@ -248,6 +274,7 @@ def check-file [file: path]: nothing -> table {
     | each {|d|
         let before = $content | str substring 0..<$d.span.start
         let line_num = $before | split row "\n" | length
+
         {
             file: $file
             line: $line_num
@@ -270,13 +297,14 @@ export def 'main check' [
     file?: path # File to check; omit to check every tracked .nu file
 ]: nothing -> table {
     let files = if $file == null { ^git ls-files '*.nu' | lines } else { [$file] }
+
     $files | each { check-file $in } | flatten
 }
 
 # Update dotnu capture files (requires dotnu module in scope)
 @example "Update all captures" { nu toolkit.nu update-captures }
 export def 'main update-captures' []: nothing -> nothing {
-    if not (scope modules | where name == dotnu | is-not-empty) {
+    if 'dotnu' not-in (scope modules | get name) {
         print $"(ansi red)✗(ansi reset) dotnu module not in scope"
         print "  Add `use dotnu/` or ensure dotnu is in NU_LIB_DIRS"
         return
@@ -286,6 +314,7 @@ export def 'main update-captures' []: nothing -> nothing {
     # with their outputs embedded — and go stale the same way when a command
     # changes. fixture-home.nu is their helper, not a chapter.
     let captures = glob $'($captures_dir)/*.nu' | append (glob 'guide/[0-9]*.nu')
+
     if ($captures | is-empty) {
         print $"(ansi attr_dimmed)No capture files in ($captures_dir)/ or guide/(ansi reset)"
         return

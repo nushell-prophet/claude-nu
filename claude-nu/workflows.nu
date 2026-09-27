@@ -44,6 +44,7 @@ export def main []: [nothing -> table record -> table table -> table list<string
     # Why the top-level files too: a piped agent transcript is read through its
     # parent's, which may be gone while the agent's is still there.
     let missing = $scoped_files | append $session_files | uniq | where not ($it | path exists)
+
     if ($missing | is-not-empty) {
         error make $"Session file not found: ($missing | str join ', ')"
     }
@@ -51,6 +52,7 @@ export def main []: [nothing -> table record -> table table -> table list<string
     $session_files
     | each {|session_file|
         let state_files = $session_file | workflow-state-files
+
         if ($state_files | is-empty) { return [] }
         # Why only here: `project_name` needs the transcript's `cwd`, and most
         # sessions run no workflow, so only the few that did pay for the read.
@@ -58,9 +60,11 @@ export def main []: [nothing -> table record -> table table -> table list<string
             | read-session-records --contains '"cwd"'
             | pick-first $.cwd
             | project-display-name
+
         $state_files
         | each {|state_file|
             let run = $state_file | read-workflow-state
+
             {
                 id: $run.id
                 session: ($session_file | launching-session $run.id)
@@ -98,8 +102,9 @@ def launching-session [run: string]: path -> string {
     let agents_dir = $session_file
         | str replace --regex '\.jsonl$' ''
         | path join subagents workflows $run
+
     if ($agents_dir | path exists) {
-        $agents_dir | path expand | path dirname | path dirname | path dirname | path basename
+        $agents_dir | path expand | path dirname --num-levels 3 | path basename
     } else {
         $session_file | session-id-from-path
     }

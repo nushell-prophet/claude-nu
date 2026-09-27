@@ -26,8 +26,10 @@ def temp-root []: nothing -> path {
 # a hang, not a failure.
 def stub-claude [root: path]: nothing -> path {
     let dir = $root | path join "stub-bin"
+
     mkdir $dir
     let bin = $dir | path join "claude"
+
     $"#!/bin/sh\nprintf '%s\\n%s\\n' \"$PWD\" \"$*\" > ($root | path join 'claude-args')\n" | save --force $bin
     ^chmod +x $bin
     with-env {PATH: ([$dir] | append $env.PATH)} {
@@ -40,8 +42,10 @@ def stub-claude [root: path]: nothing -> path {
 # taking the terminal, and the branch is only reachable with $env.ZELLIJ set.
 def stub-zellij [root: path]: nothing -> path {
     let dir = $root | path join "stub-bin"
+
     mkdir $dir
     let bin = $dir | path join "zellij"
+
     $"#!/bin/sh\nprintf '%s\\n' \"$*\" > ($root | path join 'zellij-args')\n" | save --force $bin
     ^chmod +x $bin
     $dir
@@ -49,8 +53,9 @@ def stub-zellij [root: path]: nothing -> path {
 
 # An unbound canvas, the way `gi open` leaves one before a session is stamped
 # in. Tests that need one write it directly rather than launching.
-def plain-canvas [root: path, rel: string]: nothing -> path {
+def plain-canvas [root: path rel: string]: nothing -> path {
     let doc = $root | path join $rel
+
     mkdir ($doc | path dirname)
     "# Working area\n" | save --force $doc
     $doc
@@ -73,7 +78,7 @@ def "status reports the session canvas from the environment" [] {
 }
 
 @test
-def "status names the plugin that carries the protocol, and its namespaced parts" [] {
+def "status names the plugin that carries the protocol and its namespaced parts" [] {
     let status = gi
 
     # gi writes nothing into a repo any more, so status reports the one
@@ -84,7 +89,7 @@ def "status names the plugin that carries the protocol, and its namespaced parts
     assert equal $status.style "gi:Canvas"
     assert ("gi:git-intent" in $status.skills)
     assert ("gi:git-intent-squash-archive" in $status.skills)
-    assert equal ($status.skills | where {|s| not ($s | str starts-with "gi:") }) []
+    assert equal ($status.skills | where $it !~ '^gi:') []
 }
 
 @test
@@ -125,6 +130,7 @@ def "launch settings carry the Canvas style and the Stop hook" [] {
 @test
 def "open writes nothing into the repo but the canvas" [] {
     let root = temp-root
+
     mkdir $root
     ^git -C $root init --quiet
     let launched = with-env {PATH: (stub-claude $root | append $env.PATH)} {
@@ -135,6 +141,7 @@ def "open writes nothing into the repo but the canvas" [] {
     }
     let dot_claude = $root | path join ".claude" | path exists
     let canvas = $root | path join "gi" "plan.md" | path exists
+
     rm --recursive --force $root
 
     # The style and the skills ride the launch as a plugin, read in place from
@@ -148,6 +155,7 @@ def "open writes nothing into the repo but the canvas" [] {
     # it. So read the path back out and prove it is a real plugin — the manifest
     # is what makes Claude Code load the directory at all.
     let plugin_dir = $launched | parse --regex '--plugin-dir (?<dir>\S+)' | get dir.0
+
     assert ($plugin_dir | str ends-with ([gi-md-src plugin] | path join))
     assert ($plugin_dir | path join ".claude-plugin" "plugin.json" | path exists)
     assert ($plugin_dir | path join "output-styles" "canvas.md" | path exists)
@@ -157,7 +165,7 @@ def "open writes nothing into the repo but the canvas" [] {
 }
 
 @test
-def "a relative canvas is read where the user stands, not at the repo root" [] {
+def "a relative canvas is read where the user stands and not at the repo root" [] {
     # The monorepo shape: one git repo, work happening in a subdirectory. Anchored
     # at the git top-level, `gi open todo/plan.md` from `sub/` would make and bind
     # `<root>/todo/plan.md` — a second
@@ -165,6 +173,7 @@ def "a relative canvas is read where the user stands, not at the repo root" [] {
     # they were not in.
     let root = temp-root
     let sub = $root | path join "sub"
+
     mkdir $sub
     ^git -C $root init --quiet
     let launched = with-env {PATH: (stub-claude $root | append $env.PATH)} {
@@ -173,6 +182,7 @@ def "a relative canvas is read where the user stands, not at the repo root" [] {
     }
     let at_sub = $sub | path join "todo" "plan.md" | path exists
     let at_root = $root | path join "todo" "plan.md" | path exists
+
     rm --recursive --force $root
 
     assert $at_sub "the canvas did not land under the directory the launch ran from"
@@ -186,12 +196,13 @@ def "a relative canvas is read where the user stands, not at the repo root" [] {
 }
 
 @test
-def "the root flag moves the whole run, canvas included" [] {
+def "the root flag moves the whole run with the canvas included" [] {
     # The other half of the same rule: --root says where gi runs, so a relative
     # canvas is read there and not beside the caller — otherwise running gi
     # against another repo would write the canvas outside the directory it
     # launches in.
     let root = temp-root
+
     mkdir $root
     ^git -C $root init --quiet
     with-env {PATH: (stub-claude $root | append $env.PATH)} {
@@ -199,6 +210,7 @@ def "the root flag moves the whole run, canvas included" [] {
     }
     let at_root = $root | path join "gi" "plan.md" | path exists
     let beside_caller = $env.PWD | path join "gi" "plan.md" | path exists
+
     rm --recursive --force $root
 
     assert $at_root
@@ -227,7 +239,12 @@ def "the launch states the canvas path in the system prompt" [] {
     # words, or the session opens by hunting the repo for a canvas. The path has
     # to be in the line; the wording around it is free to change.
     let args = gi-launch-args "11111111-2222-3333-4444-555555555555" "gi/plan.md"
-    let at = $args | enumerate | where item == "--append-system-prompt" | get index | first
+    let at = $args
+        | enumerate
+        | where item == "--append-system-prompt"
+        | get index
+        | first
+
     assert ($args | get ($at + 1) | str contains "gi/plan.md")
 }
 
@@ -240,6 +257,7 @@ def "a flag typed where the canvas goes is not taken as the canvas" [] {
     # --wrapped hands an undeclared flag before the doc to the positional, so
     # without this a typo would create a canvas named after the flag.
     let out = try { gi open --model opus --root $root; null } catch {|e| $e.msg }
+
     assert ($out | str contains "not a canvas path")
 
     # Declared flags parse in either position — which is why the one flag most
@@ -247,6 +265,7 @@ def "a flag typed where the canvas goes is not taken as the canvas" [] {
     # flags and no canvas, the one that lands in the doc slot is the *second*,
     # so the first was consumed as the flag it is.
     let named = try { gi open --dangerously-skip-permissions --model opus --root $root; null } catch {|e| $e.msg }
+
     assert ($named | str contains "--model is not a canvas path")
     assert (not ($root | path exists))
 }
@@ -259,6 +278,7 @@ def "the pass-through refuses the flags a canvas launch sets itself" [] {
     # last — and drops the line naming the canvas.
     for flag in ["--settings" "--settings={}" "--resume" "-c" "--name" "--append-system-prompt"] {
         let out = try { gi-reject-owned-flags ["--model" $flag]; "" } catch {|e| $e.msg }
+
         assert ($out | str contains "gi sets") $"($flag) should be refused"
     }
 
@@ -275,7 +295,7 @@ def "the session plan resumes what the canvas records and mints when it holds no
 
     # One canvas, one session, for life: a recorded id is returned to, and only
     # a canvas holding none gets a new one.
-    assert equal $bound {sid: $sid, resume: true, replaced: null}
+    assert equal $bound {sid: $sid resume: true replaced: null}
     assert equal $fresh.resume false
     assert equal $fresh.replaced null
     assert ($fresh.sid != $sid)
@@ -327,10 +347,12 @@ def "forking copies the canvas and leaves the source bound as it was" [] {
     let root = temp-root
     let src = plain-canvas $root "gi/plan.md"
     let sid = "11111111-2222-3333-4444-555555555555"
+
     gi-stamp-session $src $sid
     let dst = gi-fork-canvas $src
     let copied = open --raw $dst
     let source_still = gi-frontmatter-session $src
+
     rm --recursive --force $root
 
     assert equal ($dst | path basename) "plan_1.md"
@@ -346,9 +368,11 @@ def "forking copies the canvas and leaves the source bound as it was" [] {
 def "a fork that cannot be stamped fails before the copy exists" [] {
     let root = temp-root
     let src = plain-canvas $root "gi/broken.md"
+
     "---\nsession: 11111111-2222-3333-4444-555555555555\n\n# no closing fence\n" | save --force $src
     let out = try { gi-fork-canvas $src; "" } catch {|e| $e.msg }
     let left = ls ($root | path join "gi") | get name | path basename
+
     rm --recursive --force $root
 
     # The error belongs to the source, and it has to arrive before the copy: the
@@ -360,9 +384,10 @@ def "a fork that cannot be stamped fails before the copy exists" [] {
 }
 
 @test
-def "forking a canvas that is not there is an error, not a new canvas" [] {
+def "forking a canvas that is not there is an error and not a new canvas" [] {
     let root = temp-root
     let out = try { gi-fork-canvas ($root | path join "gi" "missing.md"); "" } catch {|e| $e.msg }
+
     rm --recursive --force $root
 
     # --fork names a source, so an absent file cannot mean "create it" the way
@@ -373,10 +398,12 @@ def "forking a canvas that is not there is an error, not a new canvas" [] {
 @test
 def "open --fork launches the copy and leaves the source binding alone" [] {
     let root = temp-root
+
     mkdir $root
     ^git -C $root init --quiet
     let src = plain-canvas $root "gi/plan.md"
     let sid = "11111111-2222-3333-4444-555555555555"
+
     gi-stamp-session $src $sid
     let launched = with-env {PATH: (stub-claude $root | append $env.PATH)} {
         gi open gi/plan.md --fork --root $root | ignore
@@ -384,6 +411,7 @@ def "open --fork launches the copy and leaves the source binding alone" [] {
     }
     let source_still = gi-frontmatter-session $src
     let fork_sid = gi-frontmatter-session ($root | path join "gi" "plan_1.md")
+
     rm --recursive --force $root
 
     # The whole of --fork through the real command: the copy is what opens, on
@@ -404,11 +432,13 @@ def "the fork flags refuse the two ways they cannot mean anything" [] {
     # --fork is the one case where the positional names a source, so with no
     # canvas named there is nothing to copy.
     let no_doc = try { gi open --fork --root $root; "" } catch {|e| $e.msg }
+
     assert ($no_doc | str contains "--fork needs the canvas")
 
     # Both mint an id, but on different files — the pair names two intentions
     # at once. Refused before anything is copied or launched.
     let both = try { gi open gi/plan.md --fork --new-session --root $root; "" } catch {|e| $e.msg }
+
     assert ($both | str contains "cannot be combined")
     assert (not ($root | path exists))
 }
@@ -418,9 +448,11 @@ def "stamping a session creates the frontmatter block when there is none" [] {
     let root = temp-root
     let doc = plain-canvas $root "gi/plain.md"
     let before = open --raw $doc
+
     gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
     let after = open --raw $doc
     let sid = gi-frontmatter-session $doc
+
     rm --recursive --force $root
 
     assert equal $sid "11111111-2222-3333-4444-555555555555"
@@ -432,10 +464,12 @@ def "stamping a session creates the frontmatter block when there is none" [] {
 def "stamping a session replaces an id already recorded" [] {
     let root = temp-root
     let doc = plain-canvas $root "gi/plain.md"
+
     gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
     gi-stamp-session $doc "99999999-8888-7777-6666-555555555555"
     let raw = open --raw $doc
     let sid = gi-frontmatter-session $doc
+
     rm --recursive --force $root
 
     # This is what `gi open --new-session` does: the canvas names one session,
@@ -447,11 +481,14 @@ def "stamping a session replaces an id already recorded" [] {
 @test
 def "stamping a session leaves a session-like line in the prose alone" [] {
     let root = temp-root
+
     mkdir ($root | path join "gi")
     let doc = $root | path join "gi" "prose.md"
+
     "---\nsession: 11111111-2222-3333-4444-555555555555\n---\n\nsession: not frontmatter\n" | save $doc
     gi-stamp-session $doc "99999999-8888-7777-6666-555555555555"
     let body = open --raw $doc | lines | last
+
     rm --recursive --force $root
 
     # The rewrite is scoped to the block above the closing fence.
@@ -461,10 +498,13 @@ def "stamping a session leaves a session-like line in the prose alone" [] {
 @test
 def "stamping a session names the file when the frontmatter is not closed" [] {
     let root = temp-root
+
     mkdir ($root | path join "gi")
     let doc = $root | path join "gi" "broken.md"
+
     "---\ntitle: my plan\n" | save $doc
     let out = try { gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"; null } catch {|e| $e.msg }
+
     rm --recursive --force $root
 
     # Indexing past the split would throw "Row number too large", which names
@@ -476,11 +516,19 @@ def "stamping a session names the file when the frontmatter is not closed" [] {
 @test
 def "stamping a session joins an existing frontmatter block" [] {
     let root = temp-root
+
     mkdir ($root | path join "gi")
     let doc = $root | path join "gi" "titled.md"
+
     "---\ntitle: my plan\n---\n\n# Working area\n" | save $doc
     gi-stamp-session $doc "11111111-2222-3333-4444-555555555555"
-    let meta = open --raw $doc | lines | skip 1 | take until {|l| $l == "---" } | str join "\n" | from yaml
+    let meta = open --raw $doc
+        | lines
+        | skip 1
+        | take until {|l| $l == "---" }
+        | str join "\n"
+        | from yaml
+
     rm --recursive --force $root
 
     # One block, not two: a hand-written key keeps its place.
@@ -499,7 +547,12 @@ def "a canvas is named by the day it was made and the slug" [] {
 @test
 def "a new canvas starts as a todo carrying the canvas header" [] {
     let text = gi-new-text "20260921"
-    let meta = $text | lines | skip 1 | take until {|l| $l == "---" } | str join "\n" | from yaml
+    let meta = $text
+        | lines
+        | skip 1
+        | take until {|l| $l == "---" }
+        | str join "\n"
+        | from yaml
 
     # The frontmatter the user's own notes carry — `lstd` reads `status` to
     # decide which notes are still open, so a canvas made here has to answer it.
@@ -517,12 +570,14 @@ def "a new canvas starts as a todo carrying the canvas header" [] {
 @test
 def "new hands back the path when it launches nothing" [] {
     let root = temp-root
+
     mkdir $root
     let today = date now | format date '%J'
     let returned = gi new gi-new --root $root --no-editor --no-claude-launch
     let doc = $root | path join "gi-canvas" $"($today)-gi-new.md"
     let launched = $root | path join "claude-args" | path exists
     let bound = if ($doc | path exists) { gi-frontmatter-session $doc } else { "no canvas" }
+
     rm --recursive --force $root
 
     assert equal $returned $doc
@@ -535,6 +590,7 @@ def "new hands back the path when it launches nothing" [] {
 @test
 def "new opens a session bound to the canvas it just wrote" [] {
     let root = temp-root
+
     mkdir $root
     ^git -C $root init --quiet
     let today = date now | format date '%J'
@@ -544,6 +600,7 @@ def "new opens a session bound to the canvas it just wrote" [] {
     }
     let doc = $root | path join "gi-canvas" $"($today)-gi-new.md"
     let bound = if ($doc | path exists) { gi-frontmatter-session $doc } else { "no canvas" }
+
     rm --recursive --force $root
 
     # The whole point of the verb: the file it named is the file the session is
@@ -556,12 +613,14 @@ def "new opens a session bound to the canvas it just wrote" [] {
 @test
 def "new opens the canvas in a pane of its own and starts the session beside it" [] {
     let root = temp-root
+
     mkdir $root
     ^git -C $root init --quiet
     let today = date now | format date '%J'
     let bin = stub-claude $root
+
     stub-zellij $root | ignore
-    with-env {PATH: ($bin | append $env.PATH), ZELLIJ: "0", EDITOR: "hx"} {
+    with-env {PATH: ($bin | append $env.PATH) ZELLIJ: "0" EDITOR: "hx"} {
         gi new gi-new --root $root
     }
     let doc = $root | path join "gi-canvas" $"($today)-gi-new.md"
@@ -571,6 +630,7 @@ def "new opens the canvas in a pane of its own and starts the session beside it"
     # types, not on the header. Counted from the template and not from the file,
     # which the launch has since stamped a `session:` line into.
     let line = (gi-new-text $today | lines | length) + 1
+
     rm --recursive --force $root
 
     # `run`, not `edit`: `zellij edit` would open zellij's scrollback_editor.
@@ -581,8 +641,9 @@ def "new opens the canvas in a pane of its own and starts the session beside it"
 }
 
 # A repo on `branch`, optionally with a file staged, for the trunk tests.
-def branch-repo [branch: string, --staged]: nothing -> path {
+def branch-repo [branch: string --staged]: nothing -> path {
     let root = temp-root
+
     ^git init --quiet --initial-branch $branch $root
     if $staged {
         "x\n" | save ($root | path join "staged.txt")
@@ -594,8 +655,10 @@ def branch-repo [branch: string, --staged]: nothing -> path {
 @test
 def "new leaves main for a branch named after the slug" [] {
     let root = branch-repo main
+
     gi new gi-new --root $root --no-editor --no-claude-launch | ignore
     let branch = ^git -C $root branch --show-current | str trim
+
     rm --recursive --force $root
 
     assert equal $branch "gi-new"
@@ -604,8 +667,10 @@ def "new leaves main for a branch named after the slug" [] {
 @test
 def "new stays on main when something is staged" [] {
     let root = branch-repo main --staged
+
     gi new gi-new --root $root --no-editor --no-claude-launch | ignore
     let branch = ^git -C $root branch --show-current | str trim
+
     rm --recursive --force $root
 
     # Staged files are work in progress on the trunk: the switch stays the user's.
@@ -615,8 +680,10 @@ def "new stays on main when something is staged" [] {
 @test
 def "new stays on a work branch" [] {
     let root = branch-repo canvas-work
+
     gi new gi-new --root $root --no-editor --no-claude-launch | ignore
     let branch = ^git -C $root branch --show-current | str trim
+
     rm --recursive --force $root
 
     assert equal $branch "canvas-work"
@@ -625,10 +692,12 @@ def "new stays on a work branch" [] {
 @test
 def "a branch that already exists fails before the canvas is written" [] {
     let root = branch-repo main
+
     ^git -C $root commit --quiet --allow-empty --message init
     ^git -C $root branch gi-new
     let caught = try { gi new gi-new --root $root --no-editor --no-claude-launch; "no error" } catch { "error" }
     let written = $root | path join "todo" | path exists
+
     rm --recursive --force $root
 
     assert equal $caught "error"
@@ -638,8 +707,10 @@ def "a branch that already exists fails before the canvas is written" [] {
 @test
 def "the canvas folder is gi-canvas when the run directory has one" [] {
     let root = temp-root
+
     mkdir ($root | path join "gi-canvas") ($root | path join "todo")
     let folder = gi-canvas-folder $root
+
     rm --recursive --force $root
 
     assert equal $folder "gi-canvas"
@@ -648,8 +719,10 @@ def "the canvas folder is gi-canvas when the run directory has one" [] {
 @test
 def "the canvas folder is todo when only todo exists" [] {
     let root = temp-root
+
     mkdir ($root | path join "todo")
     let folder = gi-canvas-folder $root
+
     rm --recursive --force $root
 
     assert equal $folder "todo"
@@ -658,8 +731,10 @@ def "the canvas folder is todo when only todo exists" [] {
 @test
 def "the canvas folder is gi-canvas when neither exists" [] {
     let root = temp-root
+
     mkdir $root
     let folder = gi-canvas-folder $root
+
     rm --recursive --force $root
 
     assert equal $folder "gi-canvas"
@@ -668,11 +743,14 @@ def "the canvas folder is gi-canvas when neither exists" [] {
 @test
 def "new puts the canvas in todo when the run directory keeps its notes there" [] {
     let root = temp-root
+
     mkdir ($root | path join "todo")
     let today = date now | format date '%J'
+
     gi new gi-new --root $root --no-editor --no-claude-launch | ignore
     let at_todo = $root | path join "todo" $"($today)-gi-new.md" | path exists
     let made_folder = $root | path join "gi-canvas" | path exists
+
     rm --recursive --force $root
 
     assert $at_todo
@@ -682,11 +760,14 @@ def "new puts the canvas in todo when the run directory keeps its notes there" [
 @test
 def "the folder flag moves the canvas out of todo" [] {
     let root = temp-root
+
     mkdir $root
     let today = date now | format date '%J'
+
     gi new gi-new --root $root --folder gi --no-editor --no-claude-launch | ignore
     let at_gi = $root | path join "gi" $"($today)-gi-new.md" | path exists
     let at_todo = $root | path join "todo" | path exists
+
     rm --recursive --force $root
 
     assert $at_gi
@@ -696,11 +777,13 @@ def "the folder flag moves the canvas out of todo" [] {
 @test
 def "a run with no editor set fails before the canvas is written" [] {
     let root = temp-root
+
     mkdir $root
     let caught = with-env {ZELLIJ: "" EDITOR: ""} {
         try { gi new gi-new --root $root --no-claude-launch; "no error" } catch {|e| $e.msg }
     }
     let wrote = $root | path join "todo" | path exists
+
     rm --recursive --force $root
 
     # No invented editor: which one to open is the user's to declare.
@@ -713,9 +796,11 @@ def "a run with no editor set fails before the canvas is written" [] {
 @test
 def "the same slug on the same day names the canvas already there" [] {
     let root = temp-root
+
     mkdir $root
     gi new gi-new --root $root --no-editor --no-claude-launch | ignore
     let second = try { gi new gi-new --root $root --no-editor --no-claude-launch; "no error" } catch {|e| $e.msg }
+
     rm --recursive --force $root
 
     # Not a `-1` sibling: a slug is typed on purpose, so a repeat means the
@@ -751,13 +836,14 @@ const BLOCKED_ANSWER = "A full answer for the canvas,\nwritten over more lines\n
 # GI_CANVAS is what makes the hook enforce anything, so every rule test binds
 # one. cwd defaults to a non-repo dir: the branch guard must see the payload's
 # state, not whatever branch the test runner's own repo happens to be on.
-def block-decision [payload: record, --canvas: string, --budget: string]: nothing -> any {
+def block-decision [payload: record --canvas: string --budget: string]: nothing -> any {
     let canvas = $canvas | default "/elsewhere/gi/canvas.md"
+
     # GI_HOOK_MAX_LEN is a user tunable gi never sets, so a value exported in
     # the caller's profile would decide these cases instead of the rule. The
     # default null removes it, pinning the budget to gi's own default rather
     # than to a number repeated here; --budget is for the tests that set one.
-    with-env { GI_CANVAS: $canvas, GI_HOOK_MAX_LEN: $budget } {
+    with-env {GI_CANVAS: $canvas GI_HOOK_MAX_LEN: $budget} {
         {cwd: $nu.temp-dir} | merge $payload | to json | gi check
     }
 }
@@ -765,7 +851,7 @@ def block-decision [payload: record, --canvas: string, --budget: string]: nothin
 @test
 def "check stands down when no canvas is bound to the session" [] {
     let out = with-env { GI_CANVAS: null } {
-        {cwd: $nu.temp-dir, last_assistant_message: $BLOCKED_ANSWER} | to json | gi check
+        {cwd: $nu.temp-dir last_assistant_message: $BLOCKED_ANSWER} | to json | gi check
     }
 
     # A plain `claude` session never sets GI_CANVAS, so the same hook body is
@@ -774,8 +860,9 @@ def "check stands down when no canvas is bound to the session" [] {
 }
 
 @test
-def "check allows when stop_hook_active is true - loop guard" [] {
-    let out = block-decision { stop_hook_active: true, last_assistant_message: "long prose that would otherwise block here for sure" }
+def "check allows when the stop hook is already active as a loop guard" [] {
+    let out = block-decision {stop_hook_active: true last_assistant_message: "long prose that would otherwise block here for sure"}
+
     assert equal $out null
 }
 
@@ -788,18 +875,21 @@ def "check allows done and noted" [] {
 @test
 def "check allows a short pointer carrying a path" [] {
     let out = block-decision { last_assistant_message: "done — see `commands.nu`" }
+
     assert equal $out null
 }
 
 @test
 def "check blocks prose over the line budget" [] {
     let out = block-decision { last_assistant_message: "First I changed the parser.\nThen I updated the tests.\nHere is why it matters.\nAnd here is what is next.\nOne more thought." }
+
     assert equal ($out | from json | get decision) "block"
 }
 
 @test
 def "check blocks a single line over the budget" [] {
     let out = block-decision { last_assistant_message: (1..100 | each { "prose" } | str join " ") }
+
     assert equal ($out | from json | get decision) "block"
 }
 
@@ -809,14 +899,16 @@ def "check treats an empty message as allowed" [] {
 }
 
 @test
-def "check treats a non-object payload as empty, inside the contract" [] {
+def "check treats a non-object payload as empty inside the contract" [] {
     # cd away from the test runner's repo: a payload with no cwd falls back to
     # PWD, and this repo's own branch would drive the branch guard.
     let orig = $env.PWD
+
     cd $nu.temp-dir
     let outs = ['"hi"' '123' 'null' '[1, 2]'] | each {|raw|
         with-env { GI_CANVAS: "/elsewhere/canvas.md" } { $raw | gi check }
     }
+
     cd $orig
 
     assert equal $outs []
@@ -827,8 +919,10 @@ def "check with no stdin treats the event as empty" [] {
     # Run by hand (`claude-nu gi check`) there is no piped event; the input is
     # nothing, not a string, and must not be refused at the signature.
     let orig = $env.PWD
+
     cd $nu.temp-dir
     let out = with-env { GI_CANVAS: "/elsewhere/canvas.md" } { gi check }
+
     cd $orig
 
     assert equal $out null
@@ -837,10 +931,12 @@ def "check with no stdin treats the event as empty" [] {
 @test
 def "check names the bound canvas in the block reason" [] {
     let root = temp-root
+
     git init -qb canvas-work $root
-    let reason = block-decision { last_assistant_message: $BLOCKED_ANSWER, cwd: $root } --canvas ($root | path join "gi" "plan.md")
-    | from json
-    | get reason
+    let reason = block-decision {last_assistant_message: $BLOCKED_ANSWER cwd: $root} --canvas ($root | path join "gi" "plan.md")
+        | from json
+        | get reason
+
     rm --recursive --force $root
 
     # Shortened against the repo root: the agent reads this path in a message.
@@ -851,12 +947,14 @@ def "check names the bound canvas in the block reason" [] {
 def "check names the canvas relative to the session directory" [] {
     let root = temp-root
     let sub = $root | path join "sub"
+
     git init -qb canvas-work $root
     mkdir $sub
-    let inside = block-decision { last_assistant_message: $BLOCKED_ANSWER, cwd: $sub } --canvas ($sub | path join "gi" "plan.md")
-    | from json | get reason
-    let above = block-decision { last_assistant_message: $BLOCKED_ANSWER, cwd: $sub } --canvas ($root | path join "gi" "plan.md")
-    | from json | get reason
+    let inside = block-decision {last_assistant_message: $BLOCKED_ANSWER cwd: $sub} --canvas ($sub | path join "gi" "plan.md")
+        | from json | get reason
+    let above = block-decision {last_assistant_message: $BLOCKED_ANSWER cwd: $sub} --canvas ($root | path join "gi" "plan.md")
+        | from json | get reason
+
     rm --recursive --force $root
 
     # The short form is relative to where the session stands, not to the repo
@@ -870,11 +968,14 @@ def "check names the canvas relative to the session directory" [] {
 @test
 def "check blocks a protected branch even when the message is allowed" [] {
     let root = temp-root
+
     git init -qb master $root
-    let out = block-decision { last_assistant_message: "done", cwd: $root }
+    let out = block-decision {last_assistant_message: "done" cwd: $root}
+
     rm --recursive --force $root
 
     let decision = $out | from json
+
     assert equal $decision.decision "block"
     assert ($decision.reason | str contains "`master`")
 }
@@ -882,8 +983,10 @@ def "check blocks a protected branch even when the message is allowed" [] {
 @test
 def "check passes an allowed message on a work branch" [] {
     let root = temp-root
+
     git init -qb canvas-work $root
-    let out = block-decision { last_assistant_message: "done", cwd: $root }
+    let out = block-decision {last_assistant_message: "done" cwd: $root}
+
     rm --recursive --force $root
 
     assert equal $out null
@@ -893,11 +996,12 @@ def "check passes an allowed message on a work branch" [] {
 # non-blocking error to Claude Code and enforcement silently vanishes) —
 # internal failures must surface as a block decision instead.
 @test
-def "check converts internal errors into a block, not a crash" [] {
+def "check converts internal errors into a block and not a crash" [] {
     # Any non-empty message reaches the budget parse, which is what breaks here.
     let out = block-decision --budget "abc" { last_assistant_message: "a chat line long enough to be judged" }
 
     let decision = $out | from json
+
     assert equal $decision.decision "block"
     assert ($decision.reason | str contains "failed internally")
 }
@@ -907,7 +1011,7 @@ def "check converts internal errors into a block, not a crash" [] {
 # =============================================================================
 
 @test
-def "allow-rule passes empty, short notes, and short pointers" [] {
+def "allow-rule passes empty notes and short notes and short pointers" [] {
     with-env { GI_HOOK_MAX_LEN: null } {
         assert (gi-allowed "")
         assert (gi-allowed "done")
@@ -926,6 +1030,7 @@ def "allow-rule passes empty, short notes, and short pointers" [] {
 @test
 def "allow-rule blocks messages over either budget" [] {
     let long = 1..100 | each { "prose" } | str join " " # 599 chars, one line
+
     with-env { GI_HOOK_MAX_LEN: null } {
         assert (not (gi-allowed $long))
         assert (not (gi-allowed "one\ntwo\nthree\nfour\nfive"))
@@ -933,7 +1038,7 @@ def "allow-rule blocks messages over either budget" [] {
 }
 
 @test
-def "allow-rule budget is tunable via GI_HOOK_MAX_LEN" [] {
+def "allow-rule budget is tunable via the hook max length variable" [] {
     with-env { GI_HOOK_MAX_LEN: "10" } {
         assert (not (gi-allowed "short `f.nu`")) # 12 chars > 10 → blocked
     }
@@ -951,6 +1056,7 @@ def "allow-rule budget is tunable via GI_HOOK_MAX_LEN" [] {
 # but not human turns).
 def transcript-of [records: list<any>]: nothing -> path {
     let file = $nu.temp-dir | path join $"gi-transcript-(random uuid).jsonl"
+
     $records
     | each {|r|
         if ($r | describe) == "string" { {type: "user" message: {role: "user" content: $r}} } else { $r }
@@ -965,6 +1071,7 @@ def transcript-of [records: list<any>]: nothing -> path {
 def "off-canvas is true when the last user message opens with the marker" [] {
     let file = transcript-of ["chat: what does --fork do?"]
     let out = gi-off-canvas $file
+
     rm $file
 
     assert $out
@@ -974,6 +1081,7 @@ def "off-canvas is true when the last user message opens with the marker" [] {
 def "off-canvas ignores case and leading whitespace" [] {
     let file = transcript-of ["  Chat: quick question"]
     let out = gi-off-canvas $file
+
     rm $file
 
     assert $out
@@ -983,16 +1091,18 @@ def "off-canvas ignores case and leading whitespace" [] {
 def "off-canvas is false without the marker" [] {
     let file = transcript-of ["rewrite the import section"]
     let out = gi-off-canvas $file
+
     rm $file
 
     assert (not $out)
 }
 
 @test
-def "off-canvas reads the last human turn, not an earlier marked one" [] {
+def "off-canvas reads the last human turn and not an earlier marked one" [] {
     # An aside is spent when it is answered: the next turn is canvas work again.
     let file = transcript-of ["chat: what does --fork do?" "now rewrite the import section"]
     let out = gi-off-canvas $file
+
     rm $file
 
     assert (not $out)
@@ -1004,6 +1114,7 @@ def "off-canvas looks past the tool-result records of the same turn" [] {
     let tool_result = {type: "user" message: {role: "user" content: [{type: "tool_result" content: "ok"}]}}
     let file = transcript-of ["chat: what does --fork do?" $tool_result $tool_result]
     let out = gi-off-canvas $file
+
     rm $file
 
     assert $out
@@ -1019,7 +1130,8 @@ def "off-canvas leaves the floor up when there is no transcript" [] {
 def "check lets a marked turn end with any answer" [] {
     let file = transcript-of ["chat: what does --fork do?"]
     # The fixture the rule always blocks, so the marker is what clears it here.
-    let out = block-decision { last_assistant_message: $BLOCKED_ANSWER, transcript_path: $file }
+    let out = block-decision {last_assistant_message: $BLOCKED_ANSWER transcript_path: $file}
+
     rm $file
 
     assert equal $out null
@@ -1029,9 +1141,11 @@ def "check lets a marked turn end with any answer" [] {
 def "check lets a marked turn end on a protected branch" [] {
     # The branch guard protects the trunk from gi commits; an aside makes none.
     let root = temp-root
+
     git init -qb master $root
     let file = transcript-of ["chat: which branch am I on?"]
-    let out = block-decision { last_assistant_message: "You are on `master`.", cwd: $root, transcript_path: $file }
+    let out = block-decision {last_assistant_message: "You are on `master`." cwd: $root transcript_path: $file}
+
     rm --recursive --force $root
     rm $file
 
@@ -1041,7 +1155,8 @@ def "check lets a marked turn end on a protected branch" [] {
 @test
 def "check still blocks prose when the turn is not marked" [] {
     let file = transcript-of ["rewrite the import section"]
-    let out = block-decision { last_assistant_message: $BLOCKED_ANSWER, transcript_path: $file }
+    let out = block-decision {last_assistant_message: $BLOCKED_ANSWER transcript_path: $file}
+
     rm $file
 
     assert equal ($out | from json | get decision) "block"
@@ -1059,6 +1174,7 @@ const FIXTURES_SESSIONS_DIR = path self fixtures/sessions
 # the way it is in a live session.
 def stage-session [home: path]: nothing -> nothing {
     let dir = $home | path join ".claude" "projects" "-tmp-proj"
+
     mkdir $dir
     # Not `cp`: nutest runs tests in parallel and the builtin mixes concurrent
     # copies up (see copy-file in gi.nu), which would stage a fixture holding
@@ -1068,7 +1184,7 @@ def stage-session [home: path]: nothing -> nothing {
 }
 
 @test
-def "import text carries the canvas header, the pointer note, and the dialogue" [] {
+def "import text carries the canvas header and the pointer note and the dialogue" [] {
     let body = gi-import-text ($FIXTURES_SESSIONS_DIR | path join $"($FIXTURE_SESSION).jsonl")
 
     assert ($body | str starts-with "---\n") # export-session's frontmatter
@@ -1108,11 +1224,13 @@ def "import text with the tools flag keeps tool calls in full" [] {
 def "import writes a session-keyed canvas" [] {
     let root = temp-root
     let home = temp-root
+
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
         gi import --root $root
     }
     let body = open --raw $status.doc
+
     rm --recursive --force $root $home
 
     assert equal ($status.doc | path basename) $"(date now | format date '%J')-session-($FIXTURE_SESSION | str substring 0..7).md"
@@ -1122,14 +1240,16 @@ def "import writes a session-keyed canvas" [] {
 # The reason the session became a parameter: from the REPL there is no live
 # session to fall back on, and the one being imported is rarely the newest.
 @test
-def "import takes a named session, with no live session in the environment" [] {
+def "import takes a named session with no live session in the environment" [] {
     let root = temp-root
     let home = temp-root
+
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
         gi import $FIXTURE_SESSION --root $root
     }
     let body = open --raw $status.doc
+
     rm --recursive --force $root $home
 
     assert equal ($status.doc | path basename) $"(date now | format date '%J')-session-($FIXTURE_SESSION | str substring 0..7).md"
@@ -1140,11 +1260,13 @@ def "import takes a named session, with no live session in the environment" [] {
 # commit subject come from the resolved file, so they name the session, not
 # the first 8 characters of the name.
 @test
-def "import takes a session by its /rename name and keys the doc on the session" [] {
+def "import takes a session by the name the rename command gave it and keys the doc on the session" [] {
     let root = temp-root
     let home = temp-root
+
     stage-session $home
     let file = $home | path join ".claude" "projects" "-tmp-proj" $"($FIXTURE_SESSION).jsonl"
+
     open --raw $file
     | lines
     | append '{"type":"custom-title","customTitle":"my-plan"}'
@@ -1158,6 +1280,7 @@ def "import takes a session by its /rename name and keys the doc on the session"
         gi import my-plan --root $root --commit
     }
     let subject = git -C $root log -1 --format=%s
+
     rm --recursive --force $root $home
 
     assert equal ($status.doc | path basename) $"(date now | format date '%J')-session-($FIXTURE_SESSION | str substring 0..7).md"
@@ -1167,27 +1290,31 @@ def "import takes a session by its /rename name and keys the doc on the session"
 # The other spelling the signature promises: a .jsonl path, which the default
 # doc name has to key on the same way it keys on a UUID.
 @test
-def "import takes a session as a .jsonl path" [] {
+def "import takes a session as a jsonl path" [] {
     let root = temp-root
     let home = temp-root
+
     stage-session $home
     let file = $home | path join ".claude" "projects" "-tmp-proj" $"($FIXTURE_SESSION).jsonl"
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
         gi import $file --root $root
     }
+
     rm --recursive --force $root $home
 
     assert equal ($status.doc | path basename) $"(date now | format date '%J')-session-($FIXTURE_SESSION | str substring 0..7).md"
 }
 
 @test
-def "the to flag names the canvas, with no session named" [] {
+def "the to flag names the canvas with no session named" [] {
     let root = temp-root
     let home = temp-root
+
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
         gi import --to notes/plan.md --root $root
     }
+
     rm --recursive --force $root $home
 
     assert equal ($status.doc | path basename) "plan.md"
@@ -1202,6 +1329,7 @@ def "a relative --to is read where the user stands" [] {
     let root = temp-root
     let home = temp-root
     let sub = $root | path join "sub"
+
     mkdir $sub
     ^git -C $root init --quiet
     stage-session $home
@@ -1210,6 +1338,7 @@ def "a relative --to is read where the user stands" [] {
     }
     let at_sub = $sub | path join "notes" "plan.md" | path exists
     let at_root = $root | path join "notes" "plan.md" | path exists
+
     rm --recursive --force $root $home
 
     assert $at_sub "the canvas did not land under the directory the import ran from"
@@ -1220,11 +1349,13 @@ def "a relative --to is read where the user stands" [] {
 def "import refuses to overwrite an existing doc" [] {
     let root = temp-root
     let home = temp-root
+
     stage-session $home
     let out = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
         gi import --root $root | ignore
         try { gi import --root $root | ignore; null } catch {|e| $e.msg }
     }
+
     rm --recursive --force $root $home
 
     assert ($out | str contains "already exists")
@@ -1236,20 +1367,23 @@ def "import with no session errors when no live session id is exported" [] {
     let out = with-env {CLAUDE_CODE_SESSION_ID: null} {
         try { gi import --root $root | ignore; null } catch {|e| $e.msg }
     }
+
     rm --recursive --force $root
 
     assert ($out | str contains "no live session")
 }
 
 @test
-def "the gitignore flag keeps the import out of git, beside the doc" [] {
+def "the gitignore flag keeps the import out of git beside the doc" [] {
     let root = temp-root
     let home = temp-root
+
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
         gi import --root $root --gitignore
     }
     let ignored = open --raw ($status.doc | path dirname | path join ".gitignore") | lines
+
     rm --recursive --force $root $home
 
     assert equal $ignored [($status.doc | path basename)]
@@ -1259,6 +1393,7 @@ def "the gitignore flag keeps the import out of git, beside the doc" [] {
 def "the commit flag puts the import into git history" [] {
     let root = temp-root
     let home = temp-root
+
     stage-session $home
     mkdir $root
     git -C $root init --quiet
@@ -1268,15 +1403,17 @@ def "the commit flag puts the import into git history" [] {
         gi import --root $root --commit | ignore
     }
     let committed = git -C $root show --name-only --format="%s" HEAD | lines
+
     rm --recursive --force $root $home
 
     assert equal $committed.0 $"gi: import session ($FIXTURE_SESSION | str substring 0..7) as the working doc"
-    assert ($committed | any {|l| $l | str ends-with ".md" })
+    assert ($committed | any { str ends-with ".md" })
 }
 
 @test
 def "commit and gitignore flags contradict each other" [] {
     let out = try { gi import --commit --gitignore; null } catch {|e| $e.msg }
+
     assert ($out | str contains "contradict")
 }
 
@@ -1288,11 +1425,13 @@ def "commit and gitignore flags contradict each other" [] {
 def "an imported canvas carries the full session id in its frontmatter" [] {
     let root = temp-root
     let home = temp-root
+
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
         gi import --root $root
     }
     let sid = gi-frontmatter-session $status.doc
+
     rm --recursive --force $root $home
 
     # The 8-char key names the file; the frontmatter carries the full UUID resume needs.
@@ -1302,8 +1441,10 @@ def "an imported canvas carries the full session id in its frontmatter" [] {
 @test
 def "frontmatter-session is null for a canvas without a session" [] {
     let root = temp-root
+
     plain-canvas $root "gi/plain.md" | ignore
     let sid = gi-frontmatter-session ($root | path join "gi" "plain.md")
+
     rm --recursive --force $root
 
     assert equal $sid null

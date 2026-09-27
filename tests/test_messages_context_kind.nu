@@ -7,6 +7,7 @@ use ../claude-nu/sessions.nu *
 # A session file built from the given JSONL lines, in the temp dir.
 def session-file [lines: list<string>]: nothing -> path {
     let f = $nu.temp-dir | path join $"test-context-kind-(random uuid).jsonl"
+
     $lines | str join "\n" | save --force $f
     $f
 }
@@ -32,6 +33,7 @@ const KIND_LINES = [
 def "messages names the kind of each user row" [] {
     let f = session-file $KIND_LINES
     let result = {path: $f} | messages | select uuid kind
+
     rm $f
 
     assert equal $result [
@@ -47,6 +49,7 @@ def "messages names the kind of each user row" [] {
 def "messages marks meta and wrapper rows as system" [] {
     let f = session-file $KIND_LINES
     let result = {path: $f} | messages --include-system | where kind == system | get uuid
+
     rm $f
 
     assert equal $result [u4 u5]
@@ -67,6 +70,7 @@ def "messages marks a Tool loaded record and a compact summary as system" [] {
     let f = session-file $AUTHORLESS_LINES
     let all = {path: $f} | messages --include-system | select uuid kind
     let typed = {path: $f} | messages | get uuid
+
     rm $f
 
     assert equal $all [[uuid kind]; [u1 system] [u2 system] [u3 typed]]
@@ -77,13 +81,14 @@ def "messages marks a Tool loaded record and a compact summary as system" [] {
 def "messages marks assistant rows as response" [] {
     let f = session-file $KIND_LINES
     let result = {path: $f} | messages --include-responses | where role == assistant | get kind
+
     rm $f
 
     assert equal $result [response]
 }
 
 @test
-def "messages kind is read from the record, not from the rendered text" [] {
+def "messages kind is read from the record and not from the rendered text" [] {
     # Why: the typed message below renders to the same fenced block that a
     # `<bash-input>` record renders to — only the record tells them apart.
     let f = session-file [
@@ -91,6 +96,7 @@ def "messages kind is read from the record, not from the rendered text" [] {
         '{"type":"user","uuid":"u2","message":{"content":"<bash-input>git log</bash-input>"},"timestamp":"2024-01-15T10:00:01Z"}'
     ]
     let result = {path: $f} | messages
+
     rm $f
 
     assert equal ($result.message | uniq | length) 1 "both render the same"
@@ -101,6 +107,7 @@ def "messages kind is read from the record, not from the rendered text" [] {
 def "messages --raw rows carry the kind too" [] {
     let f = session-file $KIND_LINES
     let result = {path: $f} | messages --raw | get kind
+
     rm $f
 
     assert equal $result [typed bash-input bash-output typed]
@@ -128,9 +135,10 @@ const CONTEXT_LINES = [
 ]
 
 @test
-def "messages --context returns the rows around each hit, each once" [] {
+def "messages --context returns the rows around each hit and each only once" [] {
     let f = session-file $CONTEXT_LINES
     let result = {path: $f} | messages needle --context 1 | select uuid hit
+
     rm $f
 
     # m3 neighbours both hits and comes back once.
@@ -148,6 +156,7 @@ def "messages --context returns the rows around each hit, each once" [] {
 def "messages --context 0 returns the hits alone" [] {
     let f = session-file $CONTEXT_LINES
     let result = {path: $f} | messages needle --context 0 | select uuid hit
+
     rm $f
 
     assert equal $result [[uuid hit]; [m2 true] [m4 true]]
@@ -162,6 +171,7 @@ def "messages --context stays inside the session of the hit" [] {
         '{"type":"user","uuid":"o1","message":{"content":"nearby in time"},"timestamp":"2024-01-15T10:00:02Z"}'
     ]
     let result = [$hit_file $other_file] | messages needle --context 3 | get uuid
+
     rm $hit_file $other_file
 
     assert equal $result [h1]
@@ -183,9 +193,11 @@ def "messages --context leaves no neighbour of a hit dropped as a copy" [] {
         '{"type":"user","uuid":"r1","message":{"content":"after the resume"},"timestamp":"2024-01-15T10:00:03Z"}'
     ]
     let result = [$resumed $parent] | messages needle --context 1 | select uuid hit session
+
     rm $parent $resumed
 
     let parent_id = $parent | session-id-from-path
+
     assert equal $result [[uuid hit session]; [p1 false $parent_id] [p2 true $parent_id]]
 }
 
@@ -200,6 +212,7 @@ def "messages --context takes its neighbours from the dialogue the flags select"
     ]
     let with_responses = {path: $f} | messages needle --context 1 --include-responses | get uuid
     let typed_only = {path: $f} | messages needle --context 1 | get uuid
+
     rm $f
 
     assert equal $with_responses [a1 u2]
@@ -210,6 +223,7 @@ def "messages --context takes its neighbours from the dialogue the flags select"
 def "messages --context rows are cut by the time window" [] {
     let f = session-file $CONTEXT_LINES
     let result = {path: $f} | messages needle --context 1 --since 2024-01-15T10:00:03Z | get uuid
+
     rm $f
 
     # m2 is outside the window, so neither it nor its context before m3 returns.
@@ -220,6 +234,7 @@ def "messages --context rows are cut by the time window" [] {
 def "messages without --context has no hit column" [] {
     let f = session-file $CONTEXT_LINES
     let result = {path: $f} | messages needle
+
     rm $f
 
     assert ("hit" not-in ($result | columns))
@@ -229,6 +244,7 @@ def "messages without --context has no hit column" [] {
 def "messages --raw --context marks the hit on raw rows" [] {
     let f = session-file $CONTEXT_LINES
     let result = {path: $f} | messages needle --context 1 --raw | where hit | get uuid
+
     rm $f
 
     assert equal $result [m2 m4]
@@ -238,6 +254,7 @@ def "messages --raw --context marks the hit on raw rows" [] {
 def "messages --context without a regex is an error" [] {
     let f = session-file $CONTEXT_LINES
     let result = try { {path: $f} | messages --context 2; "no error" } catch {|e| $e.msg }
+
     rm $f
 
     assert equal $result "--context needs a regex"
@@ -247,6 +264,7 @@ def "messages --context without a regex is an error" [] {
 def "messages --context refuses a negative count" [] {
     let f = session-file $CONTEXT_LINES
     let result = try { {path: $f} | messages needle --context -1; "no error" } catch {|e| $e.msg }
+
     rm $f
 
     assert equal $result "--context cannot be negative"
