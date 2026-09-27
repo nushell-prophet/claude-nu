@@ -34,10 +34,10 @@ claude-nu/
 │   ├── gi-md-src/       # canvas-header.md (the new-canvas template) and plugin/ — the gi plugin `gi open` hands to `claude --plugin-dir`: .claude-plugin/plugin.json, output-styles/canvas.md, skills/
 │   └── gi-hook.nu       # Stop-hook entry point — `nu --stdin` runs this file; it imports `gi check` from gi.nu, which mod.nu deliberately does not re-export
 ├── completions/         # Completions for the two CLIs this repo is about; unrelated tools: ../dotfiles/nushell/completions/
-│   ├── claude.nu        # claude CLI (50+ flags, session picker, MCP/plugin subcommands)
+│   ├── claude.nu        # claude CLI (flags, session picker, MCP/plugin subcommands)
 │   └── nu.nu            # nu CLI (dynamic: parses scripts for subcommands at tab-time)
 ├── guide/               # Worked pipelines as dotnu embeds, run on the test fixtures via fixture-home.nu; refreshed by `dotnu embeds-update` or `toolkit main update-captures`
-├── tests/               # 300+ tests (nutest framework)
+├── tests/               # tests (nutest framework)
 └── toolkit.nu           # Dev tools: test, test-unit, vendor-sessions, check, update-captures
 ```
 
@@ -45,8 +45,8 @@ Reference-doc fetchers (Claude Code + Nushell docs): `cozy docs claude` / `cozy 
 
 **Key concepts:**
 - Session files: JSONL in `~/.claude/projects/<encoded-path>/` where path is `-` separated segments
-- `sessions` uses lazy evaluation — 25+ optional columns, only requested extractions run
-- `tool-calls` is the tool-call half of `messages`: `bash_commands` reads the Bash tool alone, so an invocation an agent made through the nushell MCP server was invisible (82 of 588 when mining this machine for `claude-nu` calls), and the `--columns` path has no rg pre-filter
+- `sessions` uses lazy evaluation — optional columns, only requested extractions run
+- `tool-calls` is the tool-call half of `messages`: `bash_commands` reads the Bash tool alone, so an invocation an agent made through the nushell MCP server was invisible (82 of 588 when mining this machine for `claude-nu` calls, 2026-08-20), and the `--columns` path has no rg pre-filter
 - `nu.nu` completions dynamically parse script AST to discover subcommands at tab-time
 - `claude.nu` session picker shows age, size, and summary alongside UUIDs
 - The protocol ships as a plugin: `claude-nu/gi-md-src/plugin/` holds `.claude-plugin/plugin.json` (name `gi`), `output-styles/canvas.md` and `skills/`, and `gi open` hands the directory to `claude --plugin-dir` for that launch alone.
@@ -97,14 +97,14 @@ claude-nu sessions                     # Top-level (human) sessions with summari
 claude-nu sessions --subagents         # Also include subagent transcripts (parent_session_id set)
 claude-nu sessions --subagents --columns agent_id,agent_type,workflow,agent_label,phase # Which agent a subagent row is — its `session_id` is the parent's. From the sibling `agent-<id>.meta.json`; label and phase fall back to the run's state file for older meta files. Null on top-level rows
 claude-nu sessions --all-projects --columns size,modified # From the `ls` the discovery already runs, so a selection of only these opens no file. `modified` is the mtime `--since` compares, not `last_timestamp`
-claude-nu sessions --all-columns       # 25+ fields: tools, errors, agents, reasoning effort...
+claude-nu sessions --all-columns       # every field: tools, errors, agents, reasoning effort...
 claude-nu sessions --last --columns token_usage,turn_count # Comma-separated columns, most recent session
 claude-nu sessions --since 1wk         # Sessions active in the last week. `--since`/`--until` are on `sessions`, `messages` and `tool-calls`; each takes a duration meaning ago (`1wk`), a date (`2026-08-01`), or a datetime value. What the window is compared to is the row you asked for: a message or a call by its own timestamp, a session by its file mtime — its last activity. Why that, and what `--since` saves by skipping files unparsed: the README section "The time window"
 claude-nu sessions --active-since 2026-08-04 --active-until 2026-08-05 # Record time instead of mtime: keeps a session whose [first_timestamp, last_timestamp] overlaps the window. --active-since keeps the mtime cut as a first pass (mtime is never before the last record). Mixing with --since/--until is an error: one question on two clocks
 claude-nu tool-calls                    # Every tool call of the current project: {tool, input, timestamp, id, uuid, session, project, project_name} — what the agent did, as `messages` is what was said
 claude-nu tool-calls 'claude-nu sessions' # ...narrowed by a regex over the whole input as compact JSON (`'"command":"git'`, the form the rg pre-filter reads; which field holds the string depends on the tool), with the same rg pre-filter and `--no-rg` escape as `messages`. The regex also matches the tool name; the exact filter is `--tool`
 claude-nu projects | claude-nu tool-calls 'npm test' # ...scoped like `messages`, by session rows to the left of the pipe
-claude-nu tool-calls --tool [Read Edit Write] 'sessions\.nu' # ...only the calls to these tools, by exact name: one name or a list. Not `where tool == X`: the flag gets its own rg pre-filter on the raw `"name":"<tool>"` (56 s against 11 s machine-wide), and the regex cannot stand in for it — `mcp__nushell` also matches every `mcp__nushell__*`. An empty list is an error: it is almost always an upstream query that found nothing
+claude-nu tool-calls --tool [Read Edit Write] 'sessions\.nu' # ...only the calls to these tools, by exact name: one name or a list. Not `where tool == X`: the flag gets its own rg pre-filter on the raw `"name":"<tool>"` (56 s against 11 s machine-wide, measured 2026-09-26), and the regex cannot stand in for it — `mcp__nushell` also matches every `mcp__nushell__*`. An empty list is an error: it is almost always an upstream query that found nothing
 claude-nu tool-calls --results | where is_error # ...with each call's `result` text and `is_error`, joined by the call's id; the regex then searches results too. Off by default: it parses every record, not just the assistant ones
 claude-nu sessions --last | claude-nu timeline # One row per content block in file order: {role, kind (text, thinking, tool_use, tool_result), text, tool, id, is_error, timestamp, uuid, session, project, project_name}. `messages` and `tool-calls` are one table per kind and lose the order between kinds. Scoped, searched and windowed like `messages`; no sort by timestamp, because the blocks of one record share one
 claude-nu workflows | where status != completed # One row per Workflow tool run, from `<session>/workflows/wf_*.json`: {id, session, status, agent_count, duration, error, name, phases, started, summary, agents, state_file, project, project_name}. Scoped like `messages`. `state_file`, not `path`, so a run piped on is not read as a transcript
@@ -132,7 +132,7 @@ Output mode is auto-detected via `is-terminal --stdout` (not `$nu.is-interactive
 Force with `--json` / `--pretty`; `--all` also lists passing tests.
 
 ```nushell
-nu toolkit.nu test                     # Run all tests (240+ cases)
+nu toolkit.nu test                     # Run all tests
 nu toolkit.nu test --fail              # Exit non-zero on failures (for CI)
 nu toolkit.nu test --json              # Force JSON on a terminal; --pretty forces human view when piped
 nu toolkit.nu check                    # Static syntax check of every tracked .nu file
@@ -145,7 +145,7 @@ nu toolkit.nu vendor-sessions         # Obfuscate real sessions for safe sharing
 ## Commit messages
 
 **English, subject and body — including when the canvas session ran in Russian.**
-It already holds: of the 187 commits since June, 7 carry Russian, always as a quoted line inside an English body, and none has a Russian subject — which is what keeps `git log --grep` in one language from silently missing part of the history.
+It held when counted on 2026-08-20: of the 187 commits since June, 7 carry Russian, always as a quoted line inside an English body, and none has a Russian subject — which is what keeps `git log --grep` in one language from silently missing part of the history.
 The README and this file are English anyway.
 Translating the reasoning at commit time is the cost; keeping one searchable history is what it buys.
 
