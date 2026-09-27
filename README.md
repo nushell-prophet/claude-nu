@@ -437,7 +437,7 @@ claude-nu gi import --to notes/x.md # ...at a chosen path
 claude-nu gi import --tools    # ...keeping tool calls, each input rendered whole
 claude-nu gi import --commit   # ...and commit it
 claude-nu gi import --gitignore # ...or keep it out of git
-claude-nu gi open              # new canvas (gi-canvas/<date>-canvas-<time>.md) + a session bound to it
+claude-nu gi open              # today's canvas (gi-canvas/<date>-canvas.md) + a session bound to it; a second run that day resumes it
 claude-nu gi open gi-canvas/plan.md   # ...a named one: created from the template if new, resumed if it already holds a session
 claude-nu gi open gi-canvas/plan.md --no-hook # style only, without the Stop-hook floor
 claude-nu gi open gi-canvas/plan.md --new-session # start over on it: mint a fresh id, overwrite the recorded one

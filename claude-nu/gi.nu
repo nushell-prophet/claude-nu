@@ -249,12 +249,12 @@ export def gi-canvas-folder [dir: path]: nothing -> string {
 }
 
 # The canvas path minted when the user names none: the canvas folder, then the
-# day-prefixed name every new canvas gets. A def and not a const: the timestamp
-# has to be read when the command runs, not when the module parses.
+# day-prefixed name every new canvas gets. A def and not a const: the date has
+# to be read when the command runs, not when the module parses.
 def gi-default-doc [dir: path]: nothing -> string {
-    let now = date now
-    gi-canvas-folder $dir
-    | path join (gi-new-name $"canvas-($now | format date '%Q')" ($now | format date '%J'))
+    let day = date now | format date '%J'
+
+    gi-canvas-folder $dir | path join (gi-new-name canvas $day)
 }
 
 # The next name in a fork series: `plan.md` -> `plan_1.md`, and a fork of
@@ -520,7 +520,7 @@ export def --wrapped "gi new" [
 # when it has one.
 @category claude-nu
 export def --wrapped "gi open" [
-    doc?: path # The canvas, relative to where you are (default: <canvas folder>/<date>-canvas-<time>.md, the folder as for gi new); with --fork, the canvas to fork FROM
+    doc?: path # The canvas, relative to where you are (default: <canvas folder>/<date>-canvas.md, the folder as for gi new); with --fork, the canvas to fork FROM
     --root: path # Run gi in this directory instead of here: the canvas is read there and the session starts there (default: your cwd)
     --no-hook # Launch with the Canvas style but without the Stop-hook floor
     --new-session # Start a fresh session on this canvas, overwriting the id it records
