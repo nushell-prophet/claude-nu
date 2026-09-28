@@ -233,6 +233,17 @@ def "launch args bind the canvas session and name the session after it" [] {
 }
 
 @test
+def "execute ends the launch on a prompt that names the canvas" [] {
+    let sid = "11111111-2222-3333-4444-555555555555"
+    let args = gi-launch-args $sid "gi/plan.md" --execute "--add-dir" "a" "b"
+
+    # `--` keeps a trailing variadic flag from taking the prompt as its value.
+    assert equal ($args | last 2 | first) "--"
+    assert equal ($args | last) "@gi/plan.md go"
+    assert ("--" not-in (gi-launch-args $sid "gi/plan.md"))
+}
+
+@test
 def "the launch states the canvas path in the system prompt" [] {
     # An env var is not in the model's context, so $env.GI_CANVAS cannot be how
     # the agent learns which file it is bound to — the launch has to say it in

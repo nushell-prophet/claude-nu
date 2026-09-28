@@ -442,6 +442,7 @@ claude-nu gi open gi-canvas/plan.md   # ...a named one: created from the templat
 claude-nu gi open gi-canvas/plan.md --no-hook # style only, without the Stop-hook floor
 claude-nu gi open gi-canvas/plan.md --new-session # start over on it: mint a fresh id, overwrite the recorded one
 claude-nu gi open gi-canvas/plan.md --fork # ...or keep it as it is and open a copy (gi-canvas/plan_1.md) on a session of its own
+claude-nu gi open gi-canvas/plan.md --execute # start on a first prompt, `@<canvas> go`: the session works the canvas without waiting
 claude-nu gi open gi-canvas/plan.md --dangerously-skip-permissions --model opus # ...any other flag goes straight to `claude`
 claude-nu gi                   # { canvas, plugin, style, skills }
 ```

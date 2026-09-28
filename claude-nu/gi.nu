@@ -478,6 +478,7 @@ export def --wrapped "gi new" [
     --no-editor # Write the canvas without opening it for editing
     --no-claude-launch # Write the canvas and hand back its path; launch nothing
     --no-hook # Launch with the Canvas style but without the Stop-hook floor
+    --execute # Start the session on a first prompt, `@<canvas> go`, so it works on the canvas without waiting
     --dangerously-skip-permissions # Pass claude's flag of the same name through
     ...rest: string # Any other flags go straight to `claude`
 ]: nothing -> any {
@@ -523,7 +524,7 @@ export def --wrapped "gi new" [
         # thing with. A launch returns nothing — `claude` has the terminal.
         return ($paths_doc.abs | cwd-relative)
     }
-    gi-launch --root $root --doc $doc --hook=(not $no_hook) --extra $extra
+    gi-launch --root $root --doc $doc --hook=(not $no_hook) --execute=$execute --extra $extra
 }
 
 # Open a canvas: launch a session bound to it, creating the canvas from the
@@ -536,6 +537,7 @@ export def --wrapped "gi open" [
     --no-hook # Launch with the Canvas style but without the Stop-hook floor
     --new-session # Start a fresh session on this canvas, overwriting the id it records
     --fork # Copy the named canvas to its next `_n` sibling and open that, on a session of its own
+    --execute # Start the session on a first prompt, `@<canvas> go`, so it works on the canvas without waiting
     --dangerously-skip-permissions # Pass claude's flag of the same name through
     ...rest: string # Any other flags go straight to `claude`
 ]: nothing -> nothing {
@@ -580,7 +582,7 @@ export def --wrapped "gi open" [
             label: {text: "flags for `claude` go after the canvas: gi open <doc> <flags>" span: (metadata $doc).span}
         }
     }
-    gi-launch --root $root --doc $doc --hook=(not $no_hook) --new-session=$new_session --fork=$fork --extra $extra
+    gi-launch --root $root --doc $doc --hook=(not $no_hook) --new-session=$new_session --fork=$fork --execute=$execute --extra $extra
 }
 
 # Why a verb of its own and not a flag on `gi enable` (which is what this
@@ -813,11 +815,19 @@ export def gi-reject-owned-flags [extra: list<string>]: nothing -> nothing {
 # reads it.
 # `extra` is the caller's own `claude` flags, appended last and untouched — gi
 # has no opinion on them beyond the one rule gi-reject-owned-flags states.
-export def gi-launch-args [sid: string doc: string --resume ...extra: string]: nothing -> list<string> {
+# --execute adds the first user message as claude's positional prompt, so the
+# session starts working instead of waiting to be told to read the canvas.
+# Why only `@<canvas> go`: the style already says how to work a canvas and
+# where the answer goes, and the system-prompt line says to read it; the one
+# thing neither gives is the order to act, and `go` is the protocol's word for it.
+# Why `--` in front of it: `extra` may end in a variadic flag (`--add-dir a b`),
+# which would take the prompt as one more of its values.
+export def gi-launch-args [sid: string doc: string --resume --execute ...extra: string]: nothing -> list<string> {
     if $resume { ["--resume" $sid] } else { ["--session-id" $sid] }
     | append ["--name" $doc]
     | append ["--append-system-prompt" $"This session's canvas is `($doc)` — the one file the Canvas output style is about. Read it before your first answer; do not search for it."]
     | append $extra
+    | if $execute { append ["--" $"@($doc) go"] } else { }
 }
 
 # Launch Claude Code bound to one canvas — the only thing that turns gi on.
@@ -835,6 +845,7 @@ def gi-launch [
     --hook # Carry the Stop-hook floor into the session
     --new-session # Mint a fresh session id, overwriting the one the canvas records
     --fork # Open a copy of the named canvas instead, on a session of its own
+    --execute # Start the session on a first prompt that runs the canvas's task
     --extra: list<string> = [] # Flags forwarded to `claude` untouched
 ]: nothing -> nothing {
     gi-reject-owned-flags $extra
@@ -887,7 +898,7 @@ def gi-launch [
     if $hook and ($branch in $GI_PROTECTED_BRANCHES) {
         print $"note: this repo is on ($branch) — gi commits belong on a work branch; the Stop hook will block turns until you switch."
     }
-    let args = gi-launch-args $plan.sid $doc_rel --resume=$plan.resume ...$extra
+    let args = gi-launch-args $plan.sid $doc_rel --resume=$plan.resume --execute=$execute ...$extra
 
     print $"canvas ($doc_rel), session (gi-session-key $plan.sid)(if $hook { '' } else { ', no Stop hook' })"
     # cd only matters when --root sent the launch elsewhere; without it this is
