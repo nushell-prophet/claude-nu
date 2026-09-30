@@ -253,6 +253,21 @@ export def gi-canvas-folder [dir: path]: nothing -> string {
     }
 }
 
+# The canvases already in the run directory, relative to it: every `.md` in
+# `gi-canvas/` and in `gi/` (its older name), and those in `todo/` that carry a
+# `session:` in their frontmatter.
+# Why the filter only in `todo/`: that folder holds plain task notes too, and
+# one of them listed here would read as a canvas to reopen.
+export def gi-canvases [dir: path]: nothing -> list<string> {
+    [gi-canvas gi todo]
+    | each {|folder| $dir | path join $folder }
+    | where { path exists }
+    | each { ls $in | where type == file and name ends-with ".md" | get name }
+    | flatten
+    | where {|f| ($f | path dirname | path basename) != "todo" or (gi-frontmatter-session $f) != null }
+    | each { path relative-to $dir }
+}
+
 # The canvas path minted when the user names none: the canvas folder, then the
 # day-prefixed name every new canvas gets. A def and not a const: the date has
 # to be read when the command runs, not when the module parses.
@@ -383,11 +398,21 @@ def gi-session-key [session: string]: nothing -> string {
 # nushell shows the contiguous comment block, so keep the rationale above the
 # blank line.
 
-# Where the gi protocol comes from, and the canvas this session is bound to.
+# Where the gi protocol comes from, the canvas this session is bound to, and
+# the canvases already where you stand.
 # The verbs: `gi new`, `gi import`, `gi open`.
 @category claude-nu
 export def main []: nothing -> record {
+    let dir = gi-run-dir
+
+    # Not a `ls gi-canvas/*.md todo/*.md gi/*.md` in the 40-gi-canvas skill
+    # because: a repo rarely has all three, and `ls` exits non-zero on any
+    # missing one, so the call reads as a failure.
+    # Why here and not in gi-status: `gi import` returns gi-status too, and
+    # these would be read from the cwd, not from where the import writes.
     gi-status
+    | insert folder (gi-canvas-folder $dir)
+    | insert canvases (gi-canvases $dir)
 }
 
 # The file name a slug gets: the day, then the slug. The date is a parameter

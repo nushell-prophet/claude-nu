@@ -444,7 +444,7 @@ claude-nu gi open gi-canvas/plan.md --new-session # start over on it: mint a fre
 claude-nu gi open gi-canvas/plan.md --fork # ...or keep it as it is and open a copy (gi-canvas/plan_1.md) on a session of its own
 claude-nu gi open gi-canvas/plan.md --execute # start on a first prompt, `@<canvas> go`: the session works the canvas without waiting
 claude-nu gi open gi-canvas/plan.md --dangerously-skip-permissions --model opus # ...any other flag goes straight to `claude`
-claude-nu gi                   # { canvas, plugin, style, skills }
+claude-nu gi                   # { canvas, plugin, style, skills, folder, canvases }
 ```
 
 **The Stop hook** is the hard floor that comes with every bound session: the agent's final chat message must stay small — `done`, a status note, a pointer to where the answer landed — at most 3 line breaks and 480 characters; anything bigger blocks the turn with an instruction to move the answer into the canvas and commit it — the block message names the exact file.

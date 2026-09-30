@@ -93,13 +93,42 @@ def "status names the plugin that carries the protocol and its namespaced parts"
 }
 
 @test
-def "status carries no repo-scoped fields" [] {
+def "status carries no seed fields" [] {
     let columns = gi | columns
 
     # The seeds are gone, and with them the reasons these existed: there is no
     # per-repo copy to locate and nothing that can differ from the module.
     assert ("stale" not-in $columns)
     assert ("root" not-in $columns)
+}
+
+@test
+def "status lists the canvases of every folder and only session-bound todo notes" [] {
+    let root = temp-root
+
+    plain-canvas $root "gi-canvas/a.md"
+    plain-canvas $root "gi/b.md"
+    plain-canvas $root "todo/note.md"
+    "---\nsession: abc\n---\n\n# Working area\n" | save --force ($root | path join "todo" "c.md")
+    let status = do { cd $root; gi }
+
+    rm --recursive --force $root
+
+    assert equal ($status.canvases | sort) ["gi-canvas/a.md" "gi/b.md" "todo/c.md"]
+    assert equal $status.folder "gi-canvas"
+}
+
+@test
+def "status reports no canvases where no canvas folder exists" [] {
+    let root = temp-root
+
+    mkdir $root
+    let status = do { cd $root; gi }
+
+    rm --recursive --force $root
+
+    assert equal $status.canvases []
+    assert equal $status.folder "gi-canvas"
 }
 
 
