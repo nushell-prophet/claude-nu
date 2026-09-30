@@ -11,7 +11,8 @@
 #                      The naming is all it adds; everything after it is the
 #                      launch below.
 #   gi import          writes one canvas, from a session's dialogue — the one it
-#                      runs inside, or any session named on the line. The only
+#                      runs inside, or any session named on the line — and names
+#                      it from a slug, as `gi new` does. The only
 #                      verb that can capture the session running it, since it
 #                      launches nothing: `open` cannot be reached from the
 #                      session being imported.
@@ -623,9 +624,10 @@ export def --wrapped "gi open" [
 # session, so `gi open <doc>` resumes it instead of minting a new one.
 @category claude-nu
 export def "gi import" [
+    slug: string # What the canvas is about; the file is <date>-<slug>.md, as gi new names one
     session?: string@"nu-complete claude sessions" # Session UUID, /rename name, or .jsonl path (default: the session this runs inside)
-    --to: path # Where the canvas lands, relative to where you are (default: <canvas folder>/<date>-session-<key>.md, the folder as for gi new)
-    --root: path # Run gi in this directory instead of here: --to is read there (default: your cwd)
+    --folder: path # Where the canvas lands, relative to where you are (default: as for gi new)
+    --root: path # Run gi in this directory instead of here: --folder is read there (default: your cwd)
     --tools # Keep tool calls instead of dropping them: each input in full, each result as a char count
     --commit # Commit the imported doc
     --gitignore # Keep the imported doc out of git
@@ -646,20 +648,25 @@ export def "gi import" [
     # Read the run directory off the flag before the next line shadows it.
     let dir = gi-run-dir $root
     let root = $root | default (gi-repo-root) | path expand
-    # Default is session-keyed, so re-running it for one session on one day
-    # names one file and leaves the repo's other canvases alone.
-    # Why --to and not a second positional: the common in-session call names a
-    # path but no session, and a positional cannot be skipped.
-    let default_doc = gi-canvas-folder $dir
-        | path join (gi-new-name $"session-(gi-session-key $file)" (date now | format date '%J'))
-    let paths_doc = gi-doc-path $dir ($to | default $default_doc)
+    # Why the slug is required: a canvas named after its session id says
+    # nothing about what it holds, and the agent running the import has just
+    # read the whole chat, so it can name it in a few words.
+    # Not a whole-path option beside it because: every other way to name the
+    # canvas is one more variant for an agent to pick wrong; only the folder
+    # moves, as in gi new.
+    # Why the slug comes before the session: the in-session call names a slug
+    # but no session, and a positional cannot be skipped.
+    let doc = $folder
+        | default (gi-canvas-folder $dir)
+        | path join (gi-new-name $slug (date now | format date '%J'))
+    let paths_doc = gi-doc-path $dir $doc
 
     # Check before reading the session: a doc that already holds work must not
     # be reported as a near-miss after a long export.
     if ($paths_doc.abs | path exists) {
         error make --unspanned {
             msg: $"canvas already exists: ($paths_doc.abs)"
-            help: "the import is the doc's starting content and won't overwrite work already in it — delete the file to re-import, or name another doc: gi import --to <doc>"
+            help: "the import is the doc's starting content and won't overwrite work already in it — delete the file to re-import, or pick another slug: gi import <slug>"
         }
     }
     # Build the import before anything is written: a session that can't be read

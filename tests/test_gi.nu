@@ -1261,19 +1261,19 @@ def "import text with the tools flag keeps tool calls in full" [] {
 }
 
 @test
-def "import writes a session-keyed canvas" [] {
+def "import names the canvas from the slug" [] {
     let root = temp-root
     let home = temp-root
 
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi import --root $root
+        gi import plan --root $root
     }
     let body = open --raw $status.doc
 
     rm --recursive --force $root $home
 
-    assert equal ($status.doc | path basename) $"(date now | format date '%J')-session-($FIXTURE_SESSION | str substring 0..7).md"
+    assert equal ($status.doc | path basename) (gi-new-name plan (date now | format date '%J'))
     assert str contains $body "## User"
 }
 
@@ -1286,13 +1286,13 @@ def "import takes a named session with no live session in the environment" [] {
 
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
-        gi import $FIXTURE_SESSION --root $root
+        gi import plan $FIXTURE_SESSION --root $root
     }
     let body = open --raw $status.doc
 
     rm --recursive --force $root $home
 
-    assert equal ($status.doc | path basename) $"(date now | format date '%J')-session-($FIXTURE_SESSION | str substring 0..7).md"
+    assert equal ($status.doc | path basename) (gi-new-name plan (date now | format date '%J'))
     assert str contains $body "## User"
 }
 
@@ -1300,7 +1300,7 @@ def "import takes a named session with no live session in the environment" [] {
 # commit subject come from the resolved file, so they name the session, not
 # the first 8 characters of the name.
 @test
-def "import takes a session by the name the rename command gave it and keys the doc on the session" [] {
+def "import takes a session by the name the rename command gave it and keys the commit on the session" [] {
     let root = temp-root
     let home = temp-root
 
@@ -1317,18 +1317,17 @@ def "import takes a session by the name the rename command gave it and keys the 
     git -C $root config user.email "test@example.com"
     git -C $root config user.name "test"
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
-        gi import my-plan --root $root --commit
+        gi import plan my-plan --root $root --commit
     }
     let subject = git -C $root log -1 --format=%s
 
     rm --recursive --force $root $home
 
-    assert equal ($status.doc | path basename) $"(date now | format date '%J')-session-($FIXTURE_SESSION | str substring 0..7).md"
+    assert equal ($status.doc | path basename) (gi-new-name plan (date now | format date '%J'))
     assert str contains $subject ($FIXTURE_SESSION | str substring 0..7)
 }
 
-# The other spelling the signature promises: a .jsonl path, which the default
-# doc name has to key on the same way it keys on a UUID.
+# The other spelling the signature promises: a .jsonl path.
 @test
 def "import takes a session as a jsonl path" [] {
     let root = temp-root
@@ -1337,31 +1336,31 @@ def "import takes a session as a jsonl path" [] {
     stage-session $home
     let file = $home | path join ".claude" "projects" "-tmp-proj" $"($FIXTURE_SESSION).jsonl"
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
-        gi import $file --root $root
+        gi import plan $file --root $root
     }
 
     rm --recursive --force $root $home
 
-    assert equal ($status.doc | path basename) $"(date now | format date '%J')-session-($FIXTURE_SESSION | str substring 0..7).md"
+    assert equal ($status.doc | path basename) (gi-new-name plan (date now | format date '%J'))
 }
 
 @test
-def "the to flag names the canvas with no session named" [] {
+def "the folder flag moves the canvas and keeps its name" [] {
     let root = temp-root
     let home = temp-root
 
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi import --to notes/plan.md --root $root
+        gi import plan --folder notes --root $root
     }
 
     rm --recursive --force $root $home
 
-    assert equal ($status.doc | path basename) "plan.md"
+    assert equal $status.doc ($root | path join "notes" (gi-new-name plan (date now | format date '%J')))
 }
 
 @test
-def "a relative --to is read where the user stands" [] {
+def "a relative folder is read where the user stands" [] {
     # The same rule as `gi open`, on the other verb. It also settles the
     # `claude-nu gi open ...` line import prints: that path is relative to the
     # same directory, so pasting it where it appeared reopens this canvas
@@ -1374,10 +1373,11 @@ def "a relative --to is read where the user stands" [] {
     ^git -C $root init --quiet
     stage-session $home
     with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        do { cd $sub; gi import --to notes/plan.md | ignore }
+        do { cd $sub; gi import plan --folder notes | ignore }
     }
-    let at_sub = $sub | path join "notes" "plan.md" | path exists
-    let at_root = $root | path join "notes" "plan.md" | path exists
+    let name = gi-new-name plan (date now | format date '%J')
+    let at_sub = $sub | path join "notes" $name | path exists
+    let at_root = $root | path join "notes" $name | path exists
 
     rm --recursive --force $root $home
 
@@ -1392,8 +1392,8 @@ def "import refuses to overwrite an existing doc" [] {
 
     stage-session $home
     let out = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi import --root $root | ignore
-        try { gi import --root $root | ignore; null } catch {|e| $e.msg }
+        gi import plan --root $root | ignore
+        try { gi import plan --root $root | ignore; null } catch {|e| $e.msg }
     }
 
     rm --recursive --force $root $home
@@ -1405,7 +1405,7 @@ def "import refuses to overwrite an existing doc" [] {
 def "import with no session errors when no live session id is exported" [] {
     let root = temp-root
     let out = with-env {CLAUDE_CODE_SESSION_ID: null} {
-        try { gi import --root $root | ignore; null } catch {|e| $e.msg }
+        try { gi import plan --root $root | ignore; null } catch {|e| $e.msg }
     }
 
     rm --recursive --force $root
@@ -1420,7 +1420,7 @@ def "the gitignore flag keeps the import out of git beside the doc" [] {
 
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi import --root $root --gitignore
+        gi import plan --root $root --gitignore
     }
     let ignored = open --raw ($status.doc | path dirname | path join ".gitignore") | lines
 
@@ -1440,7 +1440,7 @@ def "the commit flag puts the import into git history" [] {
     git -C $root config user.email "test@example.com"
     git -C $root config user.name "test"
     with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi import --root $root --commit | ignore
+        gi import plan --root $root --commit | ignore
     }
     let committed = git -C $root show --name-only --format="%s" HEAD | lines
 
@@ -1452,7 +1452,7 @@ def "the commit flag puts the import into git history" [] {
 
 @test
 def "commit and gitignore flags contradict each other" [] {
-    let out = try { gi import --commit --gitignore; null } catch {|e| $e.msg }
+    let out = try { gi import plan --commit --gitignore; null } catch {|e| $e.msg }
 
     assert ($out | str contains "contradict")
 }
@@ -1468,7 +1468,7 @@ def "an imported canvas carries the full session id in its frontmatter" [] {
 
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi import --root $root
+        gi import plan --root $root
     }
     let sid = gi-frontmatter-session $status.doc
 

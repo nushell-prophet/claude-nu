@@ -431,12 +431,12 @@ claude-nu gi new plan          # gi-canvas/<date>-plan.md (todo/ when only that 
 claude-nu gi new plan --folder notes # ...in another folder
 claude-nu gi new plan --no-editor # ...written straight, no editor
 claude-nu gi new plan --no-claude-launch # ...and nothing launched: the path comes back instead
-claude-nu gi import            # a canvas from the dialogue of the session this runs inside (gi-canvas/<date>-session-<id>.md)
-claude-nu gi import <TAB>      # ...or of any session: the picker shows age, size, summary
-claude-nu gi import --to notes/x.md # ...at a chosen path
-claude-nu gi import --tools    # ...keeping tool calls, each input rendered whole
-claude-nu gi import --commit   # ...and commit it
-claude-nu gi import --gitignore # ...or keep it out of git
+claude-nu gi import plan       # a canvas from the dialogue of the session this runs inside (gi-canvas/<date>-plan.md)
+claude-nu gi import plan <TAB> # ...or of any session: the picker shows age, size, summary
+claude-nu gi import plan --folder notes # ...in another folder
+claude-nu gi import plan --tools # ...keeping tool calls, each input rendered whole
+claude-nu gi import plan --commit # ...and commit it
+claude-nu gi import plan --gitignore # ...or keep it out of git
 claude-nu gi open              # today's canvas (gi-canvas/<date>-canvas.md) + a session bound to it; a second run that day resumes it
 claude-nu gi open gi-canvas/plan.md   # ...a named one: created from the template if new, resumed if it already holds a session
 claude-nu gi open gi-canvas/plan.md --no-hook # style only, without the Stop-hook floor
@@ -507,7 +507,7 @@ The same slug on the same day is an error naming the canvas already there, not a
 With no session named it takes the one it runs inside (`$env.CLAUDE_CODE_SESSION_ID` — not "the newest session file", which during a live session is as likely a subagent transcript); name one — with a completer showing age, size and summary — to import an older chat from the REPL, where there is no live session to fall back on.
 It keeps user messages and Claude's visible replies, and drops tool calls and thinking behind a note pointing at the raw `.jsonl` (`--tools` keeps tool calls, each input rendered whole — useful when the session's value is in what was tried, not only what was said).
 Importing the live session, the turn that runs the import is never in it: Claude Code writes the session log as the turn runs, so the last exchange is still missing.
-The doc is named for the day and the session (`gi-canvas/<date>-session-<id>.md`, or `--to <path>`) and is never overwritten — delete it to re-import the same day.
+The doc is named like a `gi new` canvas, from the day and a slug you give (`gi-canvas/<date>-<slug>.md`, `--folder` moves it), and is never overwritten — delete it or pick another slug to re-import.
 It lands in the working tree untracked; `--commit` puts it in git, `--gitignore` keeps it out (they are mutually exclusive).
 Neither is the default: a transcript carries raw paths and whatever the dialogue quoted, so tracking it is your call — but leaving it ignored means every later gi turn stays out of git too, which is the failure gi exists to prevent.
 
