@@ -433,6 +433,7 @@ export def gi-new-text [date: string]: nothing -> string {
     [
         "---"
         "status: draft #draft | in_progress | completed | rejected"
+        "agents-mode: co-editing #read-only | grammar-fixes | co-editing"
         $"updated: '($date)' #yyyyMMdd"
         "---"
         ""

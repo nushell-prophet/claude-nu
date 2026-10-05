@@ -602,6 +602,7 @@ def "a new canvas starts as a todo carrying the canvas header" [] {
     # The creation date lives in the file name, so the yaml does not repeat it.
     assert ("created" not-in ($meta | columns))
     assert equal $meta.updated "20260921"
+    assert equal $meta.agents-mode "co-editing"
     # And the header every other new canvas gets, so a canvas made by this verb
     # and one made by `gi open` read the same below the frontmatter.
     assert ($text | str ends-with (open --raw $GI_HEADER_SRC))
