@@ -604,8 +604,9 @@ def "a new canvas starts as a todo carrying the canvas header" [] {
     assert equal $meta.updated "20260921"
     assert equal $meta.agents-mode "co-editing"
     # And the header every other new canvas gets, so a canvas made by this verb
-    # and one made by `gi open` read the same below the frontmatter.
-    assert ($text | str ends-with (open --raw $GI_HEADER_SRC))
+    # and one made by `gi open` read the same below the frontmatter. Then the
+    # empty line gi-edit opens on.
+    assert ($text | str ends-with $"(open --raw $GI_HEADER_SRC)\n")
 }
 
 @test
@@ -667,10 +668,10 @@ def "new opens the canvas in a pane of its own and starts the session beside it"
     let doc = $root | path join "gi-canvas" $"($today)-gi-new.md"
     let edited = try { open --raw ($root | path join "zellij-args") | str trim } catch { "" }
     let launched = $root | path join "claude-args" | path exists
-    # One past the last line the template wrote: the cursor lands where the user
-    # types, not on the header. Counted from the template and not from the file,
-    # which the launch has since stamped a `session:` line into.
-    let line = (gi-new-text $today | lines | length) + 1
+    # The last line the template wrote, its empty one: the cursor lands where the
+    # user types, not on the header. Counted from the template and not from the
+    # file, which the launch has since stamped a `session:` line into.
+    let line = gi-new-text $today | lines | length
 
     rm --recursive --force $root
 

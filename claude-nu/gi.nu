@@ -438,6 +438,7 @@ export def gi-new-text [date: string]: nothing -> string {
         "---"
         ""
         (open --raw $GI_HEADER_SRC)
+        "" # a real empty line for gi-edit to open on, see there
     ]
     | str join "\n"
 }
@@ -468,7 +469,9 @@ def gi-editor []: nothing -> string {
 # write-then-launch sequence, but the pane holding the canvas closes exactly
 # when the session starts — the one moment the canvas has to be visible.
 # The cursor lands past the header, on the first line the user writes on — as
-# `cmd+e` already does with its `hx +N`. `+N` is the line-number syntax of hx,
+# `cmd+e` already does with its `hx +N`. That is the last line, the empty one
+# gi-new-text ends with, and not one past it: past the final newline is a phantom
+# line where helix computes no indent, so list continuation lines start at column 0. `+N` is the line-number syntax of hx,
 # vim and nano; an $env.EDITOR that spells it another way opens the file at the
 # top, which is a wrong cursor and not a failure.
 # Not `zellij edit` because: it opens the file with zellij's `scrollback_editor`
@@ -476,7 +479,7 @@ def gi-editor []: nothing -> string {
 # with soft-wrap off and the cursor forced to the end. `zellij run` starts the
 # user's own editor, as `cmd+e` does.
 def gi-edit [doc: path editor: string]: nothing -> nothing {
-    let line = (open --raw $doc | lines | length) + 1
+    let line = open --raw $doc | lines | length
 
     if ($env.ZELLIJ? | is-not-empty) {
         ^zellij run --close-on-exit -- $editor $"+($line)" $doc
