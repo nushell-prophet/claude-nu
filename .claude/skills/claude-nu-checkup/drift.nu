@@ -22,10 +22,11 @@
 # Drift is reported in three directions, all actionable:
 #   new   — the sessions hold something the baseline never saw. Triage it into
 #           known.nuon.
-#   dead  — the baseline says the code handles something no recent session
-#           produces. Delete that reader. Backward compatibility is explicitly
-#           not a goal: claude-nu reads the transcripts of the Claude Code you
-#           are running, not of the ones you used to run.
+#   dead  — the baseline says the code handles something no session in the
+#           window produces. Over the default window that only means "not
+#           lately"; delete the reader only when `--all` still reports it dead.
+#           Why: claude-nu is used to mine the whole history, so a reader that
+#           old files still need must stay.
 #   todo  — triaged, understood, not yet fixed. Reported until it is.
 
 const REPO = path self ../../..
@@ -50,12 +51,12 @@ use ($REPO | path join claude-nu extract.nu) [extract-text-content is-user-text]
 # second answer.
 # Cost accepted: the driver notices only new shapes inside the kinds of file it
 # knows, not a new *kind* appearing under the projects root.
-export def latest-files [window: int]: nothing -> list<path> {
+export def latest-files [window?: int]: nothing -> list<path> {
     ls (($env.HOME | path join .claude projects '**' '*.jsonl') | into glob)
     | where name =~ $UUID_JSONL_PATTERN or name =~ $AGENT_JSONL_PATTERN
     | sort-by modified --reverse
     | get name
-    | if ($in | length) > $window { first $window } else { }
+    | if $window != null and ($in | length) > $window { first $window } else { }
 }
 
 # Decode every record in the window. A file that fails to parse yields nothing
@@ -199,6 +200,22 @@ export def column-health [files: list<path>]: nothing -> table {
     | sort-by blank_pct --reverse
 }
 
+# Every file through the two extractors that history questions use. A file
+# that throws here is history claude-nu has stopped reading.
+export def history-check [files: list<path>]: nothing -> table {
+    $files
+    | par-each {|f|
+        try {
+            [$f] | claude-nu messages --include-responses | ignore
+            [$f] | claude-nu tool-calls --results | ignore
+            null
+        } catch {|e|
+            {file: $f error: ($e.msg | str trim)}
+        }
+    }
+    | compact
+}
+
 # Run every read-only public command for real. Not a substitute for the unit
 # tests: those run on frozen fixtures, this runs on today's transcripts.
 export def smoke [files: list<path>]: nothing -> table {
@@ -229,8 +246,12 @@ def main [
     --window: int = 40 # How many of the newest session files to read
     --json # Machine-readable output, for agents and CI
     --fail # Exit non-zero when anything needs attention
+    --all # Read every session file on disk: `dead` then means no file has it, and the history pass runs
 ]: nothing -> any {
-    let files = latest-files $window
+    let files = if $all { latest-files } else { latest-files $window }
+    # Why: blank columns and the smoke run answer "does it read today's
+    # format", so they stay on the newest files even under --all.
+    let recent = $files | first ([$window ($files | length)] | math min)
 
     if ($files | is-empty) {
         error make --unspanned {msg: $"No session files under ($env.HOME | path join .claude projects)"}
@@ -241,8 +262,9 @@ def main [
     let observed = observe $records
     let drift = compare $observed $known
     let tags = tag-check $observed $known
-    let columns = column-health $files
-    let checks = smoke $files
+    let columns = column-health $recent
+    let checks = smoke $recent
+    let history = if $all { history-check $files } else { [] }
 
     # Why the exemption list: a column can be legitimately blank across a whole
     # window (no subagents ran, nobody used plan mode). Those are named in
@@ -261,6 +283,7 @@ def main [
         tag_mismatches: $tags
         blank_columns: $blank
         smoke_failures: $broken
+        history_failures: $history
         columns: $columns
         smoke: $checks
         observed: $observed
@@ -290,7 +313,12 @@ def main [
         print $broken
     }
 
-    if $fail and (($drift | is-not-empty) or ($tags | is-not-empty) or ($blank | is-not-empty) or ($broken | is-not-empty)) {
+    if $all {
+        print "\n── history: files the extractors cannot read ──"
+        if ($history | is-empty) { print "none" } else { print $history }
+    }
+
+    if $fail and (($drift | is-not-empty) or ($tags | is-not-empty) or ($blank | is-not-empty) or ($broken | is-not-empty) or ($history | is-not-empty)) {
         exit 1
     }
 }

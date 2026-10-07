@@ -1,6 +1,6 @@
 ---
-name: run-claude-nu
-description: Run, drive and re-verify claude-nu against the newest Claude Code sessions on disk. Use when asked to run, start, smoke-test, screenshot or check claude-nu, after upgrading Claude Code, or when a sessions column, a message count, or an export looks empty or wrong.
+name: claude-nu-checkup
+description: Run, drive and re-verify claude-nu against the Claude Code sessions on disk, and find the agent calls to claude-nu that fail. Use when asked to run, start, smoke-test, screenshot or check claude-nu, after upgrading Claude Code, when a sessions column, a message count, or an export looks empty or wrong, or when agents keep failing to use claude-nu.
 ---
 
 # Run and re-verify claude-nu
@@ -14,13 +14,19 @@ The unit tests cannot catch this, because they run on fixtures frozen at the ver
 Measured on 2026-08-17: on a clean run `nu toolkit.nu test` reported **243 passed, 0 failed**, while the drift check below found four real problems in the same tree.
 Two of them were readers that had stopped reading anything at all.
 
-The driver is `.claude/skills/run-claude-nu/drift.nu`.
+The driver is `.claude/skills/claude-nu-checkup/drift.nu`.
 It checks the module against the newest sessions on your disk instead of against fixtures.
 All paths below are relative to the repo root.
 
-**Backward compatibility is not a goal.**
-claude-nu reads the transcripts of the Claude Code you are running, not of the ones you used to run.
-When the driver reports a reader as `dead`, delete the reader — do not keep both paths.
+**Old transcripts must stay readable.**
+claude-nu is used to mine the whole history, not only the sessions of the Claude Code you are running.
+A `dead` row over the default window means "not lately", not "nowhere":
+delete the reader only when `drift.nu --all` still reports it `dead`.
+
+The second driver is `.claude/skills/claude-nu-checkup/usage.nu`.
+It asks the other half: do agents manage to use claude-nu?
+See *Agent errors* below.
+Both drivers are run by hand, after a Claude Code upgrade or when agent calls to claude-nu fail.
 
 ## Prerequisites
 
@@ -31,17 +37,24 @@ The `claude` CLI is used only to print the version in the header, and a missing 
 ## Run (agent path)
 
 ```bash
-nu .claude/skills/run-claude-nu/drift.nu
+nu .claude/skills/claude-nu-checkup/drift.nu
 ```
 
 7.5 seconds over the newest 40 session files.
 Flags:
 
 ```bash
-nu .claude/skills/run-claude-nu/drift.nu --window 80    # read more sessions
-nu .claude/skills/run-claude-nu/drift.nu --json         # real JSON on stdout
-nu .claude/skills/run-claude-nu/drift.nu --fail         # exit 1 when anything needs attention
+nu .claude/skills/claude-nu-checkup/drift.nu --window 80    # read more sessions
+nu .claude/skills/claude-nu-checkup/drift.nu --json         # real JSON on stdout
+nu .claude/skills/claude-nu-checkup/drift.nu --fail         # exit 1 when anything needs attention
+nu .claude/skills/claude-nu-checkup/drift.nu --all          # every session file on disk; about 2 minutes
 ```
+
+`--all` reads every file for the drift pass, so `dead` there means no file on disk has the shape.
+It also adds a **history** pass: each file through `messages --include-responses` and `tool-calls --results`, listing the files that throw.
+Blank columns and smoke stay on the newest `--window` files, since they ask about today's format.
+`new` rows under `--all` are mostly shapes from old versions that the baseline never recorded;
+triage each as `rare` with the note "old versions only", so that the default window does not report it `dead`.
 
 The report has four parts.
 
@@ -88,12 +101,32 @@ This is the routine the skill exists for.
 
 1. Use the new version for a day, so the window holds sessions it wrote.
    The header prints the versions it found, so you can tell.
-2. `nu .claude/skills/run-claude-nu/drift.nu`
+2. `nu .claude/skills/claude-nu-checkup/drift.nu`
 3. Fix or triage every row.
-   A `dead` row means delete code, not guard it.
+   A `dead` row means delete code, not guard it — after `--all` confirms it is dead on the whole disk.
 4. Update `known.nuon` in the same commit as the fix.
    The baseline is the record of what claude-nu believes about the format, so it must move when the belief moves.
 5. `nu toolkit.nu test` — the fixtures still have to pass.
+
+## Agent errors
+
+```bash
+nu .claude/skills/claude-nu-checkup/usage.nu                # the last 2 weeks
+nu .claude/skills/claude-nu-checkup/usage.nu --since 2026-09-01 --json
+```
+
+It reads every transcript, subagents included, and returns each Bash or nushell MCP call that ran a claude-nu subcommand and got a `nu::` error back.
+The session that runs it is left out (`CLAUDE_CODE_SESSION_ID`): its own probes are not data.
+Each row has a `cause`, and the cause says where the fix goes:
+
+- `not-loaded` — `claude-nu` or its module was not found → the load recipes: the cozy autoload, the global CLAUDE.md (`cozy/docker-files/global-claude.md`), the claude-nu skill (`nushell-skills`).
+- `column-guess` — a column that does not exist (`content`, `role`, `text` on `messages`) → the claude-nu skill first; change claude-nu only when the same guess keeps coming back after the skill names it.
+  `column_not_found` also matches an error from another command in the same Bash line, so this count is a ceiling.
+- `selector` — a session id, prefix or path that names no transcript or several → usually the agent's own mistake; a fix in claude-nu only when the error does not say which form works.
+- `scope-conflict` — a correct error, such as `--session` with piped input → the error text in claude-nu, when it does not say what to write instead.
+- `other` — a long tail, 62 of 149 failed calls since 2026-09-01 (counted on 2026-10-07); read each row: a real claude-nu bug gets a fix and a test here; an error from another command in the same Bash line needs nothing.
+
+Commit each fix with the before count in the body, so the next run can show whether it worked.
 
 ## The baseline
 
@@ -128,7 +161,7 @@ A random failure in that file again means the builtin came back somewhere.
 The driver itself is checked the same way as the rest of the repo:
 
 ```bash
-nu --config ~/.config/nushell/autoload/modules-core.nu --commands 'dotnu diagnose .claude/skills/run-claude-nu/drift.nu'
+nu --config ~/.config/nushell/autoload/modules-core.nu --commands 'dotnu diagnose .claude/skills/claude-nu-checkup/drift.nu'
 ```
 
 ## Gotchas

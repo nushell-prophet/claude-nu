@@ -67,6 +67,7 @@
         Workflow: {status: ignored note: "spawns a background multi-agent workflow; no metric asks for it, and tool_call_count counts it generically"}
         SendFeedback: {status: ignored note: "drafts Claude Code feedback, queued locally for the user to approve; no metric asks for it, and tool_call_count counts it generically. 1 call in the newest 300 session files on 2026-09-01"}
         StructuredOutput: {status: ignored note: "the tool a Workflow subagent given a `schema` calls to return its answer; no metric asks for it, and tool_call_count counts it generically. Lives only in Workflow subagent transcripts (agent-*.jsonl), exactly one call each because the agent prompt demands one: on 2026-09-22 at --window 120, 34 calls, all in agent-*.jsonl, none in a top-level session"}
+        ScheduleWakeup: {status: rare note: "self-paced /loop: schedules the next wakeup of the session; no metric asks for it, and tool_call_count counts it generically. Only in /loop sessions: 1 call in the newest 40 files on 2026-10-07 (claude 2.1.292)"}
     }
 
     usage_fields: {
@@ -81,6 +82,7 @@
         service_tier: {status: ignored note: "routing metadata"}
         inference_geo: {status: ignored note: "routing metadata"}
         speed: {status: ignored note: "routing metadata"}
+        fallback_credit: {status: ignored note: "billing metadata, not a token bucket. Null in every record on disk on 2026-10-07 (rg over ~/.claude/projects, claude 2.1.292)"}
     }
 
     # Leading wrapper tags on user-record text. `drops` is the classification the
@@ -112,6 +114,8 @@
     expected_blank_columns: {
         parent_session_id: {note: "null for top-level sessions; only subagent rows carry a parent"}
         plan_mode_used: {note: "false unless the session used plan mode"}
+        workflow: {note: "null unless the row is a Workflow subagent; a 40-file window can hold none. Live on 2026-10-07: 48 subagent rows of the last 2 weeks carry it"}
+        phase: {note: "same as workflow: only Workflow subagent rows carry a phase. Live on 2026-10-07: 48 rows of the last 2 weeks"}
         ask_user_count: {note: "0 unless the session asked the user a question; AskUserQuestion is rare enough to be absent from a 40-file window (2 calls in 150 files, 10 in 300, on 2026-09-01)"}
     }
 }
