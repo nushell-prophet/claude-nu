@@ -201,8 +201,16 @@ claude-nu sessions --subagents --columns agent_id,agent_type,agent_label | where
 
 **Default (overview) columns:**
 - `summary` — AI-generated session summary
-- `first_timestamp` — Session start time
 - `last_timestamp` — Last activity
+- `user_messages` — List of user message texts
+- `path` — Session file path
+- `parent_session_id` — Parent UUID for subagent transcripts
+
+**Additional columns:** request via `--columns name1,name2` (or `--all-columns` for everything).
+Any `--columns` selection narrows output to `path`/`parent_session_id` plus the requested columns.
+
+- `session_id` — UUID
+- `first_timestamp` — Session start time
 - `user_msg_count` — Number of user messages
 - `user_msg_length` — Total chars typed by user
 - `response_length` — Total chars of assistant text
@@ -211,14 +219,6 @@ claude-nu sessions --subagents --columns agent_id,agent_type,agent_label | where
 - `mentioned_files` — @-mentions in user messages
 - `read_files` — Files read
 - `edited_files` — Files modified by Edit/Write
-- `path` — Session file path
-- `parent_session_id` — Parent UUID for subagent transcripts
-
-**Additional columns:** request via `--columns name1,name2` (or `--all-columns` for everything).
-Any `--columns` selection narrows output to `path`/`parent_session_id` plus the requested columns.
-
-- `user_messages` — List of user message texts
-- `session_id` — UUID
 - `version` — Claude Code version
 - `cwd` — Working directory
 - `git_branch` — Branch at session start
@@ -289,7 +289,7 @@ The one thing it uniquely holds is the built-in commands that never reach the mo
 
 ### The time window
 
-`--since` and `--until` are on `sessions`, `messages`, `tool-calls` and `slash-commands`.
+`--since` and `--until` are on `sessions`, `messages`, `tool-calls`, `slash-commands` and `timeline`.
 Each takes a duration meaning *ago* (`--since 1wk`, `--until 3day`), a date (`2026-08-01`), or a `datetime` value — so "what did I do last week" is a flag, not a filter you write afterwards.
 
 What the window is measured against is the row you are asking for.
@@ -496,10 +496,10 @@ Numbering is max+1 over the series, never the first free gap: the canvas folder 
 `--fork` needs a canvas to fork from (the positional names the source, not the file being created), and cannot be combined with `--new-session` — both mint an id, but on different files.
 
 **Starting a canvas from a slug.**
-`gi new <slug>` is the naming half of `gi open`: the canvas is `<folder>/<date>-<slug>.md` (`--folder`; by default `gi-canvas/` when the directory has one, else `todo/` when it has that, else a new `gi-canvas/` — the same folder `gi open` and `gi import` pick when given no path), it starts with the todo frontmatter — `status` and `updated`, the creation date being in the file name already — and the same header a canvas gets from `gi open`, and the command ends in that launch.
+`gi new <slug>` is the naming half of `gi open`: the canvas is `<folder>/<date>-<slug>.md` (`--folder`; by default `gi-canvas/` when the directory has one, else `todo/` when it has that, else a new `gi-canvas/` — the same folder `gi open` and `gi import` pick when given no path), it starts with the todo frontmatter — `status`, `updated` and `agents-mode`, the creation date being in the file name already — and the same header a canvas gets from `gi open`, and the command ends in that launch.
 On `main` or `master` with nothing staged, it first switches to a new branch named after the slug, so the canvas and its commits start off the trunk.
 It then puts the file in front of you, in `$env.EDITOR`, to write the task in: inside zellij in a pane of its own, so the document stays in view while the session runs beside it; outside zellij in the terminal you are in, and the launch follows when the editor exits — with no `$env.EDITOR` set that is an error naming `--no-editor`, never a guess at which editor you have.
-`--no-editor` skips that, `--no-claude-launch` skips the launch and hands back the path instead, and the flags `gi open` defines — `--root`, `--no-hook`, `--dangerously-skip-permissions`, anything else straight to `claude` — work here too.
+`--no-editor` skips that, `--no-claude-launch` skips the launch and hands back the path instead, and the flags `gi open` defines — `--root`, `--no-hook`, `--execute`, `--dangerously-skip-permissions`, anything else straight to `claude` — work here too.
 `--fork` and `--new-session` are the two it does not take: both act on a canvas that exists and already records a session.
 The same slug on the same day is an error naming the canvas already there, not a second file — a slug is typed on purpose, unlike zellij's `cmd+e` note, which is named after the day alone and numbers a repeat.
 
