@@ -439,7 +439,7 @@ claude-nu gi import plan --commit # ...and commit it
 claude-nu gi import plan --gitignore # ...or keep it out of git
 claude-nu gi open              # today's canvas (gi-canvas/<date>-canvas.md) + a session bound to it; a second run that day resumes it
 claude-nu gi open gi-canvas/plan.md   # ...a named one: created from the template if new, resumed if it already holds a session
-claude-nu gi open gi-canvas/plan.md --no-hook # style only, without the Stop-hook floor
+claude-nu gi open gi-canvas/plan.md --no-hook # style only, without the Stop-hook floor; the commit guard stays
 claude-nu gi open gi-canvas/plan.md --new-session # start over on it: mint a fresh id, overwrite the recorded one
 claude-nu gi open gi-canvas/plan.md --fork # ...or keep it as it is and open a copy (gi-canvas/plan_1.md) on a session of its own
 claude-nu gi open gi-canvas/plan.md --execute # start on a first prompt, `@<canvas> go`: the session works the canvas without waiting
@@ -447,23 +447,22 @@ claude-nu gi open gi-canvas/plan.md --dangerously-skip-permissions --model opus 
 claude-nu gi                   # { canvas, plugin, style, skills, folder, canvases }
 ```
 
-**The Stop hook** is the hard floor that comes with every bound session: the agent's final chat message must stay small — `done`, a status note, a pointer to where the answer landed — at most 3 line breaks and 480 characters; anything bigger blocks the turn with an instruction to move the answer into the canvas and commit it — the block message names the exact file.
+**The Stop hook** in the plugin's hooks module is the hard floor that comes with every bound session: the agent's final chat message must stay small — `done`, a status note, a pointer to where the answer landed — at most 3 line breaks and 480 bytes of UTF-8 (about 240 Cyrillic letters); anything bigger blocks the turn with an instruction to move the answer into the canvas and commit it — the block message names the exact file.
 Size is the whole rule: no path is required, because demanding one made a short honest status note ("waiting on the background agent") a violation, which taught the agent to invent a path rather than to write less.
 It also blocks any turn ending on `main`/`master`: gi commits are internal working history; they reach a public branch only squash-merged, after finalization.
 The plugin's hooks module refuses a `git commit` there earlier, at the Bash call:
 the Stop hook sees the branch only when the turn ends, after the commits are made.
-The character budget is tunable via `GI_HOOK_MAX_LEN`.
+The byte budget is tunable via `GI_HOOK_MAX_LEN`.
 
 **`chat:` is the way out.**
 Open your message with `chat:` and that one exchange is off the canvas: the hook lets the turn end with any answer, on any branch, and the style tells the agent to answer in chat and write nothing — no document, no commit.
 It is for the questions you ask *about* the work rather than as part of it.
-The marker is read from the transcript, from your last authored message, so only you can spend one: a marker the agent could write would be the agent lifting its own floor, which is what the hook exists to prevent.
+The marker is read from the prompt that opened the turn, and only from one you typed, so only you can spend one: a marker the agent could write would be the agent lifting its own floor, which is what the hook exists to prevent.
 It covers one turn — the next unmarked message is canvas work again.
 
 **Why activation lives at launch.**
-`gi open` hands the gi plugin — the Canvas style and the skills — to `claude --plugin-dir`, passes the style's name and the hook to `claude --settings` (which takes inline JSON, merges with the project's settings rather than replacing them), and sets `$env.GI_CANVAS` in the launch environment.
-The plugin's own hooks module reads it and adds a section to the system prompt that names the canvas to the agent;
-the Stop hook inherits it as a child process.
+`gi open` hands the gi plugin — the Canvas style and the skills — to `claude --plugin-dir`, passes the style's name to `claude --settings` (which takes inline JSON, merges with the project's settings rather than replacing them), and sets `$env.GI_CANVAS` in the launch environment.
+The plugin's own hooks module reads it and adds a section to the system prompt that names the canvas to the agent.
 The path goes to the agent as prompt text and to the hooks as an environment variable because an environment variable is not in the model's context: pointing the agent at `$env.GI_CANVAS` cost a shell call per session, and when the agent misremembered the variable's name it read an empty string and started listing directories to find a canvas.
 So gi writes nothing at all — no settings file, and nothing inside the repo but the canvas — and there is nothing to switch off afterwards: a plain `claude` in any repo is a plain session, always.
 The earlier design put `outputStyle`, the hook, and the canvas path into `.claude/settings.local.json` — repo-wide keys that loaded into *every* session opened there, so a canvas from last week kept shaping unrelated work until you remembered to disable it.
@@ -481,7 +480,7 @@ One consequence to know: a canvas opened from a subdirectory gets its own sessio
 **Your own `claude` flags.**
 `gi open` is `--wrapped`: anything it does not define is forwarded to `claude` untouched, so `--dangerously-skip-permissions`, `--model`, `--append-system-prompt` and the rest work as usual.
 Two rules keep the binding honest.
-Flags gi sets itself — `--settings`, `--session-id`, `--resume`/`-r`, `--continue`/`-c`, `--fork-session`, `--name`, short forms included — are refused, because a second `--settings` wins over gi's and would carry off the style and the Stop hook, leaving gi silently half on.
+Flags gi sets itself — `--settings`, `--session-id`, `--resume`/`-r`, `--continue`/`-c`, `--fork-session`, `--name`, short forms included — are refused, because a second `--settings` wins over gi's and would carry off the style, leaving gi silently half on.
 And a flag typed where the canvas goes (`gi open --model opus`) is refused too: nushell hands an undeclared leading flag to the positional, so it would otherwise create a canvas named `--model`.
 `--dangerously-skip-permissions` is in the signature for that reason — it is the flag most often typed with no canvas named, and being declared it parses in either position.
 

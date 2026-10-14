@@ -25,8 +25,6 @@
 export use sessions.nu [
     projects messages tool-calls slash-commands records main export-session
 ]
-# `gi check` is deliberately absent: it is the Stop hook's body, not a verb a
-# user types, and the hook imports it straight from gi.nu (see GI_COMMAND).
 export use gi.nu [ main "gi new" "gi import" "gi open" ]
 # `main` imports under the module's own name — this is `claude-nu project-move`.
 export use project-move.nu [ main ]
