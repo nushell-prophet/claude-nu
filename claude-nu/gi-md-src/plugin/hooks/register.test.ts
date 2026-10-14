@@ -69,22 +69,13 @@ test('outside a repo there is no branch to guard', async ($, on) => {
 })
 
 // The engine for the Stop rule: the environment `gi open` leaves (GI_CANVAS and
-// the rest; a missing name is unset), and a repo at every directory on
-// `branch` (null: not a repo). `dirs` collects the directories git was asked
-// about, so a test can see which one the rule read. Beneath the plugin, a
-// session with no settings Stop hook and a prompt that is simply taken.
-function stop(on: Parameters<Parameters<typeof test>[1]>[1], env: Record<string, string>, branch: string | null = 'canvas-work', dirs: string[] = []) {
+// the rest; a missing name is unset), and the session on `branch`. Beneath the
+// plugin, a session with no settings Stop hook and a prompt that is simply taken.
+function stop(on: Parameters<Parameters<typeof test>[1]>[1], env: Record<string, string>, branch = 'canvas-work') {
   on('classic.Stop', () => ({}))
   on('prompt.submit', (_, e) => ({ text: e.text }))
   on('env.get', (_, e) => ({ value: env[e.name] }))
-  on('process.run', (_, e) => {
-    dirs.push(e.argv[2] ?? '')
-    return {
-      value: branch === null
-        ? { exitCode: 128, stdout: '', stderr: 'not a git repository' }
-        : { exitCode: 0, stdout: `${branch}\n`, stderr: '' },
-    }
-  })
+  on('process.run', () => ({ value: { exitCode: 0, stdout: `${branch}\n`, stderr: '' } }))
 }
 
 const CANVAS = { GI_CANVAS: '/repo/gi-canvas/plan.md' }
@@ -99,13 +90,18 @@ const ends = ($: Parameters<Parameters<typeof test>[1]>[0], message: string, fie
 const says = ($: Parameters<Parameters<typeof test>[1]>[0], text: string, kind = 'composer') =>
   $.prompt.submit({ text, origin: { kind } } as never)
 
+test('a turn may end on a protected branch: the commit guard holds the trunk', async ($, on) => {
+  stop(on, CANVAS, 'master')
+  expect((await ends($, 'done')).block).toBeUndefined()
+})
+
 test('a session gi did not launch ends any turn', async ($, on) => {
   stop(on, {})
   expect((await ends($, ANSWER)).block).toBeUndefined()
 })
 
 test('a turn the rule already blocked once ends, as a loop guard', async ($, on) => {
-  stop(on, CANVAS, 'master')
+  stop(on, CANVAS)
   expect((await ends($, ANSWER, { stop_hook_active: true })).block).toBeUndefined()
 })
 
@@ -151,21 +147,13 @@ test('the canvas is named relative to the session directory, and in full above i
   expect((await ends($, ANSWER, { cwd: '/repo/sub/deeper' })).block).toContain('`/repo/sub/gi/plan.md`')
 })
 
-test('a protected branch blocks even an allowed line, read in the session directory', async ($, on) => {
-  const dirs: string[] = []
-  stop(on, CANVAS, 'master', dirs)
-  const { block } = await ends($, 'done', { cwd: '/repo/sub' })
-  expect(block).toContain('`master`')
-  expect(dirs).toEqual(['/repo/sub'])
-})
-
 test('gi open --no-hook drops the floor', async ($, on) => {
-  stop(on, { ...CANVAS, GI_NO_HOOK: '1' }, 'master')
+  stop(on, { ...CANVAS, GI_NO_HOOK: '1' })
   expect((await ends($, ANSWER)).block).toBeUndefined()
 })
 
-test('a chat: aside ends with any answer, on any branch', async ($, on) => {
-  stop(on, CANVAS, 'master')
+test('a chat: aside ends with any answer', async ($, on) => {
+  stop(on, CANVAS)
   // Case and leading whitespace do not matter.
   for (const text of ['chat: which branch am I on?', '  Chat: quick question']) {
     await says($, text)

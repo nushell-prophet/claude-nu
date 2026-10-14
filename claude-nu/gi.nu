@@ -62,10 +62,11 @@
 # The style is proactive shaping only — it rests on prose, and the agent drifts
 # back to long chat answers. The Stop hook in the plugin's hooks module is the
 # structural floor under it: it blocks the turn when the final chat message is
-# more than one short line, and blocks turns ending on main/master (gi commits
-# are internal working history — they reach a public branch only squash-merged,
-# after finalization). It comes with every `gi open`; `--no-hook` sets
-# $env.GI_NO_HOOK, and the hook stands down.
+# more than one short line. It comes with every `gi open`; `--no-hook` sets
+# $env.GI_NO_HOOK, and the hook stands down. The same module refuses a
+# `git commit` on main/master at the Bash call, with or without the floor (gi
+# commits are internal working history — they reach a public branch only
+# squash-merged, after finalization).
 #
 # There is no `gi disable` and no migration path: gi writes to no settings file,
 # so there is nothing to switch off. A repo set up by the older, repo-wide gi
@@ -906,12 +907,12 @@ def gi-launch [
         }
         gi-stamp-session $doc_abs $plan.sid
     }
-    # Same guard the hook enforces, surfaced before the session starts — a
-    # branch switch now beats being blocked mid-session with commits already made.
+    # Same guard the plugin enforces at the commit, surfaced before the session
+    # starts — a branch switch now beats a refused commit mid-task.
     let branch = gi-branch $root
 
-    if $hook and ($branch in $GI_PROTECTED_BRANCHES) {
-        print $"note: this repo is on ($branch) — gi commits belong on a work branch; the Stop hook will block turns until you switch."
+    if $branch in $GI_PROTECTED_BRANCHES {
+        print $"note: this repo is on ($branch) — gi commits belong on a work branch; a `git commit` is refused until you switch."
     }
     let args = gi-launch-args $plan.sid $doc_rel --resume=$plan.resume --execute=$execute ...$extra
 

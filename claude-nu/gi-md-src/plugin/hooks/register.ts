@@ -67,10 +67,10 @@ export const register: Register = on => {
     return { ...composed, sections: [...composed.sections, { id: 'gi:canvas', text, scope: 'session' }] }
   })
 
-  // Why at the call and not only at the Stop hook: the Stop hook sees the
-  // branch when the turn ends, after the commits are made and have to be moved.
+  // Why at the call: a guard that reads the branch when the turn ends finds the
+  // commits already made, and they have to be moved.
   // Why the session's directory and not the repo the command names: it is the
-  // repo the Stop hook guards, so the two never disagree about one commit.
+  // repo gi opened the canvas in.
   // Why Bash alone: agents here barely use the nushell MCP tool — 4 calls
   // machine-wide in the four weeks before 2026-10-14 (`claude-nu tool-calls`).
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
@@ -94,9 +94,11 @@ export const register: Register = on => {
 
   // The floor under the Canvas style: the style rests on prose and the agent
   // drifts back to long chat answers, so a turn may end only on a short chat
-  // line. And a gi turn may not end on main/master: the guard above refuses the
-  // commit at the call, this catches what it cannot see — a commit made outside
-  // Bash, a merge, a cherry-pick.
+  // line.
+  // Not a branch rule at the turn end because: the guard above refuses the
+  // commit at the call, and the merge it cannot see is mostly the sanctioned
+  // landing onto the trunk — such a rule would fire after every landing and
+  // only flag a stray merge once it is made.
   // Why GI_NO_HOOK: `gi open --no-hook` opens a canvas with the style alone, and
   // the mod loads with every launch, so the launch has to say so.
   on('classic.Stop', async ($, e, next) => {
@@ -110,21 +112,14 @@ export const register: Register = on => {
     const below = await next(e)
     return reason ? { ...below, block: below.block ? `${below.block}\n\n${reason}` : reason } : below
   }).catch(($, e, next) =>
-    // Why block on a broken rule (a typo in GI_HOOK_MAX_LEN, git missing): a
+    // Why block on a broken rule (a typo in GI_HOOK_MAX_LEN): a
     // failed hook is skipped, and a floor that vanishes is the one failure
     // nobody sees. The loop guard still lets the turn end on the retry.
     e.stop_hook_active || next.called ? next(e) : { block: `gi: the Stop rule failed internally — fix this before continuing: ${next.error?.message ?? next.error?.kind}` },
   )
 }
 
-// Why the branch guard before the message rule: even a perfect `done` may not
-// end a turn on a protected branch, and the sooner the agent hears it, the
-// fewer commits there are to move.
 async function stopReason($: Api, e: StopEvent, canvas: string) {
-  const branch = await protectedBranch($, e.cwd)
-  if (branch) {
-    return `You are on \`${branch}\` — gi commits are internal working history and must not land here. Switch to a work branch (\`git switch --create <topic>\`, moving any commits already made); it gets squash-merged into \`${branch}\` after finalization.`
-  }
   if (allowed(e.last_assistant_message ?? '', await $.env.get('GI_HOOK_MAX_LEN'))) {
     return undefined
   }
@@ -144,10 +139,10 @@ function allowed(message: string, maxLen: string | undefined) {
   return text.split(/\r?\n/).length <= MAX_BREAKS + 1 && new TextEncoder().encode(text).length <= max
 }
 
-// The branch of the repo at `dir` (the session's own when omitted) when it is a
-// protected one; undefined outside a repo, on a detached HEAD, or on any other.
-async function protectedBranch($: Api, dir?: string) {
-  const { exitCode, stdout } = await $.process.run(dir ? ['git', '-C', dir, 'branch', '--show-current'] : ['git', 'branch', '--show-current'])
+// The session's branch when it is a protected one; undefined outside a repo, on
+// a detached HEAD, or on any other.
+async function protectedBranch($: Api) {
+  const { exitCode, stdout } = await $.process.run(['git', 'branch', '--show-current'])
   const branch = stdout.trim()
   return exitCode === 0 && PROTECTED_BRANCHES.includes(branch) ? branch : undefined
 }

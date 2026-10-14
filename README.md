@@ -449,13 +449,12 @@ claude-nu gi                   # { canvas, plugin, style, skills, folder, canvas
 
 **The Stop hook** in the plugin's hooks module is the hard floor that comes with every bound session: the agent's final chat message must stay small — `done`, a status note, a pointer to where the answer landed — at most 3 line breaks and 480 bytes of UTF-8 (about 240 Cyrillic letters); anything bigger blocks the turn with an instruction to move the answer into the canvas and commit it — the block message names the exact file.
 Size is the whole rule: no path is required, because demanding one made a short honest status note ("waiting on the background agent") a violation, which taught the agent to invent a path rather than to write less.
-It also blocks any turn ending on `main`/`master`: gi commits are internal working history; they reach a public branch only squash-merged, after finalization.
-The plugin's hooks module refuses a `git commit` there earlier, at the Bash call:
-the Stop hook sees the branch only when the turn ends, after the commits are made.
+The same hooks module refuses a `git commit` on `main`/`master` at the Bash call, with or without the floor: gi commits are internal working history; they reach a public branch only squash-merged, after finalization.
+A turn may still end there, so landing a branch onto the trunk is not blocked.
 The byte budget is tunable via `GI_HOOK_MAX_LEN`.
 
 **`chat:` is the way out.**
-Open your message with `chat:` and that one exchange is off the canvas: the hook lets the turn end with any answer, on any branch, and the style tells the agent to answer in chat and write nothing — no document, no commit.
+Open your message with `chat:` and that one exchange is off the canvas: the hook lets the turn end with any answer, and the style tells the agent to answer in chat and write nothing — no document, no commit.
 It is for the questions you ask *about* the work rather than as part of it.
 The marker is read from the prompt that opened the turn, and only from one you typed, so only you can spend one: a marker the agent could write would be the agent lifting its own floor, which is what the hook exists to prevent.
 It covers one turn — the next unmarked message is canvas work again.
