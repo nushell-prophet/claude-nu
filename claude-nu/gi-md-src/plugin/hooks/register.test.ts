@@ -40,10 +40,24 @@ const bash = ($: Parameters<Parameters<typeof test>[1]>[0], command: string) =>
 
 test('a commit on a protected branch is refused at the call', async ($, on) => {
   repo(on, '/repo/gi-canvas/plan.md', 'master')
-  for (const command of ['git commit -m x', 'cd sub && git -C . commit --amend', 'git switch --create t && git commit -m x', `nu --commands '^git commit -m x'`, 'bash -c "git commit -m x"']) {
+  for (const command of ['git commit -m x', 'cd sub && git -C . commit --amend', `nu --commands '^git commit -m x'`, 'bash -c "git commit -m x"']) {
     const ran = await bash($, command)
     expect(ran.deny).toContain('`master`')
-    expect(ran.deny).toContain('as a command of its own')
+    expect(ran.deny).toContain('git switch --create <topic>')
+  }
+})
+
+test('a commit after a leading switch off the protected branch goes through', async ($, on) => {
+  repo(on, '/repo/gi-canvas/plan.md', 'master')
+  for (const command of ['git switch --create t && git commit -m x', 'git switch --quiet --create t main && git add a && git commit -m x', 'cd /repo && git switch t && git commit -m x', 'git checkout -b t && git commit -m x']) {
+    expect((await bash($, command)).deny).toBeUndefined()
+  }
+})
+
+test('a switch that may stay on the protected branch does not lift the guard', async ($, on) => {
+  repo(on, '/repo/gi-canvas/plan.md', 'master')
+  for (const command of ['git switch t; git commit -m x', 'git switch main && git commit -m x', 'git switch - && git commit -m x', 'git checkout -- f && git commit -m x', 'git checkout t && git commit -m x', 'git switch -C master && git commit -m x', 'git add a && git switch --create t && git commit -m x']) {
+    expect((await bash($, command)).deny).toContain('`master`')
   }
 })
 

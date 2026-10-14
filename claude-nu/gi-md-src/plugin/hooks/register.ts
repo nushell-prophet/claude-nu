@@ -31,6 +31,14 @@ const USER_ORIGINS = ['composer', 'bridge', 'sdk']
 // agents here run nu one-shots from Bash (`nu --commands '^git commit'`).
 const GIT_COMMIT = /(^|[\s;&|('"`^])git(\s+(-[Cc]\s+\S+|--?[\w-]+(=\S+)?))*\s+commit\b/
 
+// A command that opens with a branch switch joined by `&&`, after any leading
+// `cd <dir> &&`: the switch and its words before the `&&`.
+// Why `&&` alone: a failed switch then stops the commit, where `;` would run it
+// on the trunk.
+const LEADING_SWITCH = /^\s*(?:cd\s+\S+\s*&&\s*)*git\s+(switch|checkout)((?:\s+[^\s;&|]+)*?)\s*&&/
+const SWITCH_FLAGS = ['-q', '--quiet']
+const CREATE_FLAGS = { switch: ['-c', '--create', '-C', '--force-create'], checkout: ['-b', '-B'] }
+
 export const register: Register = on => {
   // Whether the prompt that opened the current turn is a `chat:` aside. Every
   // prompt resets it, so an aside is spent once answered, and a notification or
@@ -78,13 +86,11 @@ export const register: Register = on => {
       return next(e)
     }
     const branch = await protectedBranch($)
-    if (!branch) {
+    if (!branch || leavesProtected(e.command)) {
       return next(e)
     }
-    // Why the switch as a command of its own: the branch is read before the
-    // command runs, so `git switch --create t && git commit` is refused whole.
     return {
-      deny: `You are on \`${branch}\` — gi commits are internal working history and must not land here. First run \`git switch --create <topic>\` as a command of its own, then commit; the branch gets squash-merged into \`${branch}\` after finalization.`,
+      deny: `You are on \`${branch}\` — gi commits are internal working history and must not land here. First switch to a branch of its own — \`git switch --create <topic>\`, alone or opening the command with \`&&\` — then commit; the branch gets squash-merged into \`${branch}\` after finalization.`,
     }
   }).catch(($, e, next) =>
     // Why deny on a broken guard: a guard that fails open is the one failure
@@ -137,6 +143,31 @@ function allowed(message: string, maxLen: string | undefined) {
     throw new Error(`GI_HOOK_MAX_LEN is not an integer: ${maxLen}`)
   }
   return text.split(/\r?\n/).length <= MAX_BREAKS + 1 && new TextEncoder().encode(text).length <= max
+}
+
+// Whether the command leaves the protected branch before anything else runs:
+// it opens with `git switch <branch>`, `git switch --create <branch>` or
+// `git checkout -b <branch>`, and the branch is not a protected one.
+// Why it is allowed: agents open with the switch and commit in the same call
+// (24 Bash calls in 23 sessions this rule lets through, 2026-04-03 to
+// 2026-10-13; counted on 2026-10-14 by running this rule over
+// `claude-nu projects | claude-nu tool-calls --tool Bash 'git commit'`),
+// and the branch is read before the call runs, so the guard saw the trunk.
+// Not a plain `git checkout <name>` because: `git checkout -- file` and
+// `git checkout file` have the same shape and stay on the trunk.
+function leavesProtected(command: string) {
+  const match = LEADING_SWITCH.exec(command)
+  if (!match) {
+    return false
+  }
+  const verb = match[1] as 'switch' | 'checkout'
+  const words = match[2].trim().split(/\s+/).filter(w => !SWITCH_FLAGS.includes(w))
+  const create = words.length > 0 && CREATE_FLAGS[verb].includes(words[0])
+  const names = create ? words.slice(1) : words
+  // A start point may follow a new branch name; a plain switch takes one name.
+  const fits = create ? names.length === 1 || names.length === 2 : verb === 'switch' && names.length === 1
+  const name = names[0]
+  return fits && !name.startsWith('-') && !PROTECTED_BRANCHES.includes(name)
 }
 
 // The session's branch when it is a protected one; undefined outside a repo, on
