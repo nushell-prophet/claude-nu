@@ -273,22 +273,6 @@ def "execute ends the launch on a prompt that names the canvas" [] {
 }
 
 @test
-def "the launch states the canvas path in the system prompt" [] {
-    # An env var is not in the model's context, so $env.GI_CANVAS cannot be how
-    # the agent learns which file it is bound to — the launch has to say it in
-    # words, or the session opens by hunting the repo for a canvas. The path has
-    # to be in the line; the wording around it is free to change.
-    let args = gi-launch-args "11111111-2222-3333-4444-555555555555" "gi/plan.md"
-    let at = $args
-        | enumerate
-        | where item == "--append-system-prompt"
-        | get index
-        | first
-
-    assert ($args | get ($at + 1) | str contains "gi/plan.md")
-}
-
-@test
 def "a flag typed where the canvas goes is not taken as the canvas" [] {
     # --root points at a directory that does not exist, so a guard-order
     # regression cannot reach the launcher and write into the developer's own
@@ -313,10 +297,8 @@ def "a flag typed where the canvas goes is not taken as the canvas" [] {
 @test
 def "the pass-through refuses the flags a canvas launch sets itself" [] {
     # A second --settings would win over gi's and take the style and the hook
-    # with it; a forwarded session flag would unbind the launch from the canvas;
-    # a second --append-system-prompt wins outright — `claude` keeps only the
-    # last — and drops the line naming the canvas.
-    for flag in ["--settings" "--settings={}" "--resume" "-c" "--name" "--append-system-prompt"] {
+    # with it; a forwarded session flag would unbind the launch from the canvas.
+    for flag in ["--settings" "--settings={}" "--resume" "-c" "--name"] {
         let out = try { gi-reject-owned-flags ["--model" $flag]; "" } catch {|e| $e.msg }
 
         assert ($out | str contains "gi sets") $"($flag) should be refused"
@@ -324,6 +306,9 @@ def "the pass-through refuses the flags a canvas launch sets itself" [] {
 
     # Everything else is the caller's business.
     assert equal (gi-reject-owned-flags ["--dangerously-skip-permissions" "--model" "opus"]) null
+    # The canvas line is a system-prompt section of the plugin's own, so the
+    # caller's --append-system-prompt does not displace it.
+    assert equal (gi-reject-owned-flags ["--append-system-prompt" "be terse"]) null
 }
 
 @test

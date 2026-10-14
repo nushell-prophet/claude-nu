@@ -1,2 +1,4 @@
 .claude/settings.local.json
 nushell-docs/
+# Written by Claude Code each time it loads the gi mod; .claude-plugin/types/ ignores itself.
+claude-nu/gi-md-src/plugin/tsconfig.json
