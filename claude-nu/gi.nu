@@ -19,10 +19,11 @@
 #   gi open            launches Claude Code bound to one canvas. `--plugin-dir`
 #                      hands `claude` the gi plugin — the Canvas output style
 #                      and the skills that work a canvas, and the hooks module
-#                      that names the canvas to the agent — for that launch only;
-#                      `--settings` carries the style's name and the Stop hook;
-#                      and $env.GI_CANVAS names the canvas to both hooks, which
-#                      run inside that session. A canvas holds one session for
+#                      that names the canvas to the agent and refuses a commit
+#                      on main/master — for that launch only; `--settings`
+#                      carries the style's name and the Stop hook; and
+#                      $env.GI_CANVAS names the canvas to every one of those
+#                      hooks, which run inside that session. A canvas holds one session for
 #                      life — a canvas with no session gets one minted and
 #                      written in, one that has it is resumed. Which case it is,
 #                      the file says; there is no second verb.
@@ -131,6 +132,7 @@ export def gi-launch-settings [--hook]: nothing -> string {
 # working material — on a branch external users read, it would put them off.
 # It reaches these branches only squash-merged, after finalization (see the
 # git-intent-squash-archive skill).
+# Copied as PROTECTED_BRANCHES in gi-md-src/plugin/hooks/register.ts: change both.
 const GI_PROTECTED_BRANCHES = ["main" "master"]
 
 # Repo root (git top-level) of dir — default PWD — falling back to dir itself

@@ -450,6 +450,8 @@ claude-nu gi                   # { canvas, plugin, style, skills, folder, canvas
 **The Stop hook** is the hard floor that comes with every bound session: the agent's final chat message must stay small — `done`, a status note, a pointer to where the answer landed — at most 3 line breaks and 480 characters; anything bigger blocks the turn with an instruction to move the answer into the canvas and commit it — the block message names the exact file.
 Size is the whole rule: no path is required, because demanding one made a short honest status note ("waiting on the background agent") a violation, which taught the agent to invent a path rather than to write less.
 It also blocks any turn ending on `main`/`master`: gi commits are internal working history; they reach a public branch only squash-merged, after finalization.
+The plugin's hooks module refuses a `git commit` there earlier, at the Bash call:
+the Stop hook sees the branch only when the turn ends, after the commits are made.
 The character budget is tunable via `GI_HOOK_MAX_LEN`.
 
 **`chat:` is the way out.**

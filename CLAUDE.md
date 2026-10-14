@@ -31,7 +31,7 @@ claude-nu/
 │   ├── project-move.nu  # Retarget stored state from a project's old path to its new one
 │   ├── ask.nu           # One-shot `claude --print` prompt; not re-exported by mod.nu — `use claude-nu/ask.nu *`
 │   ├── example.nu       # `claude-nu example`: the module's own `@example` blocks as a completion menu that pastes the picked pipeline into the command line
-│   ├── gi-md-src/       # canvas-header.md (the new-canvas template) and plugin/ — the gi plugin `gi open` hands to `claude --plugin-dir`: .claude-plugin/plugin.json, output-styles/canvas.md, skills/, hooks/ (the `prompt.compose` mod that names the canvas)
+│   ├── gi-md-src/       # canvas-header.md (the new-canvas template) and plugin/ — the gi plugin `gi open` hands to `claude --plugin-dir`: .claude-plugin/plugin.json, output-styles/canvas.md, skills/, hooks/ (the mod that names the canvas and refuses a `git commit` on main/master)
 │   └── gi-hook.nu       # Stop-hook entry point — `nu --stdin` runs this file; it imports `gi check` from gi.nu, which mod.nu deliberately does not re-export
 ├── completions/         # Completions for the two CLIs this repo is about; unrelated tools: ../dotfiles/nushell/completions/
 │   ├── claude.nu        # claude CLI (flags, session picker, MCP/plugin subcommands)
@@ -52,7 +52,8 @@ Reference-doc fetchers (Claude Code + Nushell docs): `cozy docs claude` / `cozy 
 - The protocol ships as a plugin: `claude-nu/gi-md-src/plugin/` holds `.claude-plugin/plugin.json` (name `gi`), `output-styles/canvas.md`, `skills/` and `hooks/`, and `gi open` hands the directory to `claude --plugin-dir` for that launch alone.
   Nothing is installed and nothing is copied — the plugin is read in place, so it cannot drift from the module and a repo gets no `.claude/` from gi at all.
   It also loads only for launches gi makes, so a plain `claude` anywhere is untouched — the property a machine-wide `~/.claude/skills/` install would have lost.
-  `hooks/register.ts` is a mod (a function-hooks module): `claude plugin test claude-nu/gi-md-src/plugin` runs its tests, `claude plugin validate` checks it.
+  `hooks/register.ts` is a mod (a function-hooks module), and its `PROTECTED_BRANCHES` copies `GI_PROTECTED_BRANCHES`: change both together.
+  The mod: `claude plugin test claude-nu/gi-md-src/plugin` runs its tests, `claude plugin validate` checks it.
   Its API is marked early access and may change between Claude Code releases.
   Where an organization manages Claude Code, `prompt.compose` runs only for plugins the managed settings list, so there the agent gets no canvas line.
   **Plugin components are namespaced by the plugin name.** The style is `gi:Canvas` (`GI_STYLE`) and the skills are `gi:git-intent`, `gi:git-intent-readback`, `gi:git-intent-distill`, `gi:git-intent-squash-archive`.
