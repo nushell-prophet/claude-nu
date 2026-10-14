@@ -347,6 +347,7 @@ claude-nu export-session "Auth refactor"    # Custom title, used as given
 claude-nu sessions --session <uuid|name> | claude-nu export-session # Specific session
 claude-nu export-session | save session.md  # Saving is the shell's job
 claude-nu export-session --tools            # ...keeping tool calls, each input rendered whole
+claude-nu export-session --last-exchange    # ...only the last prompt that got a reply, and that reply; inside the live session the running turn is skipped
 ```
 
 The output is the markdown itself — one string per session, with the session id and date in the YAML frontmatter.
@@ -435,6 +436,7 @@ claude-nu gi import plan       # a canvas from the dialogue of the session this 
 claude-nu gi import plan <TAB> # ...or of any session: the picker shows age, size, summary
 claude-nu gi import plan --folder notes # ...in another folder
 claude-nu gi import plan --tools # ...keeping tool calls, each input rendered whole
+claude-nu gi import plan --last-exchange # ...only the last question and its answer
 claude-nu gi import plan --commit # ...and commit it
 claude-nu gi import plan --gitignore # ...or keep it out of git
 claude-nu gi open              # today's canvas (gi-canvas/<date>-canvas.md) + a session bound to it; a second run that day resumes it

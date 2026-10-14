@@ -1151,6 +1151,45 @@ export def main [
     }
 }
 
+# The records of the last finished exchange: the user's last prompt that got
+# a reply, and every record up to the next prompt. A prompt is a message the
+# user typed or a slash command they ran — a `!` command or a tool result does
+# not open an exchange.
+# Why a slash command counts: `/40-gi-canvas --last-exchange` is itself the
+# prompt of the turn that asks for the export, and its wrapper is all the log
+# has of it.
+# Why "that got a reply": a built-in such as `/exit` is a prompt the model
+# never answers, and the exchange the user means is the one before it.
+# Why --running: in the session this runs inside, the last prompt opens the
+# turn still running, so the exchange before it is the last finished one.
+def last-exchange [--running]: table -> table {
+    let records = $in
+    let starts = $records
+        | enumerate
+        | where {|r|
+            $r.item.type? == "user" and (
+                ($r.item | extract-slash-command) != null
+                or (($r.item | message-kind) == "typed" and ($r.item | extract-text-content | str trim | is-not-empty))
+            )
+        }
+        | get index
+    let ends = $starts | skip 1 | append ($records | length)
+    let finished = $starts
+        | zip $ends
+        | if $running { drop } else { }
+        | where {|span| $records | slice $span.0..<$span.1 | any { $in.type? == "assistant" } }
+
+    if ($finished | is-empty) {
+        error make --unspanned {
+            msg: "no finished exchange in this session"
+            help: "the session holds no prompt with a reply yet — export it whole"
+        }
+    }
+    let span = $finished | last
+
+    $records | slice $span.0..<$span.1
+}
+
 # Export session dialogue to markdown.
 # Scope by piping session rows in — `sessions --session <uuid> | export-session`
 # for one, `sessions | export-session` for the whole project. With no input it
@@ -1164,6 +1203,7 @@ export def main [
 export def export-session [
     title?: string # Title for the exported doc, used as given (default: session summary)
     --tools # Keep tool calls: each tool_use input in full as a fenced NUON block, each result as a char count (default: drop)
+    --last-exchange # Keep only the last finished exchange: the user's last prompt and the reply to it
 ]: [nothing -> string record -> any table -> list<string> list<string> -> list<string>] {
     let input = $in
     let piped_files = piped-session-files $input
@@ -1191,6 +1231,7 @@ export def export-session [
         }
 
         let summary = $records | extract-summary
+        let session_id = $session_file | session-id-from-path
 
         # Title: the argument as given; the summary fallback gets title-cased.
         # Why no slug pass anymore: lowercasing and hyphens served the filename,
@@ -1209,6 +1250,7 @@ export def export-session [
 
         # Extract dialogue: user messages and assistant responses
         let dialogue = $records
+            | if $last_exchange { last-exchange --running=($session_id == $env.CLAUDE_CODE_SESSION_ID?) } else { }
             | extract-dialogue {|r| if $tools { $r | render-content --tools } else { $r | extract-text-content }}
             # Why: a tool result rides on a user record, but nobody typed it —
             # it continues the assistant's turn. Left as `user`, --tools gave
@@ -1228,8 +1270,6 @@ export def export-session [
             | each {|chunk| {role: $chunk.0.role content: ($chunk.content | str join "\n\n")} }
 
         # Format as markdown
-        let session_id = $session_file | session-id-from-path
-
         let frontmatter = {
             date: ($first_timestamp | format date '%Y-%m-%d')
             session: $session_id

@@ -3634,3 +3634,47 @@ def "tool-calls --results keeps its columns when no call has a result yet" [] {
 
     assert equal ($result | select id result is_error) [{id: "toolu_1" result: null is_error: null}]
 }
+
+# =============================================================================
+# Tests for export-session --last-exchange
+# =============================================================================
+
+const LAST_EXCHANGE_SESSION = [
+    '{"type":"user","message":{"content":"first question"},"timestamp":"2024-01-15T10:00:00Z"}'
+    '{"type":"assistant","message":{"content":[{"type":"text","text":"first answer"}]}}'
+    '{"type":"user","message":{"content":"second question"},"timestamp":"2024-01-15T10:01:00Z"}'
+    '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}'
+    '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"file.txt"}]}}'
+    '{"type":"assistant","message":{"content":[{"type":"text","text":"second answer"}]}}'
+    '{"type":"user","message":{"content":"<command-message>40-gi-canvas</command-message>\n<command-name>/40-gi-canvas</command-name>\n<command-args>--last-exchange</command-args>"},"timestamp":"2024-01-15T10:02:00Z"}'
+    '{"type":"assistant","message":{"content":[{"type":"text","text":"importing now"}]}}'
+]
+
+def last-exchange-md [--live]: nothing -> string {
+    let id = random uuid
+    let f = $nu.temp-dir | path join $"($id).jsonl"
+
+    $LAST_EXCHANGE_SESSION | str join "\n" | save --force $f
+    let md = with-env {CLAUDE_CODE_SESSION_ID: (if $live { $id })} {
+        {path: $f} | export-session --last-exchange
+    }
+
+    rm $f
+    $md
+}
+
+@test
+def "export-session last exchange keeps the question and its answer across tool calls" [] {
+    let md = last-exchange-md --live
+
+    assert str contains $md "second question"
+    assert str contains $md "second answer"
+    assert not ($md | str contains "first")
+}
+
+@test
+def "export-session last exchange skips the running turn only in the live session" [] {
+    assert not (last-exchange-md --live | str contains "importing now")
+    assert str contains (last-exchange-md) "importing now"
+    assert not (last-exchange-md | str contains "second question")
+}

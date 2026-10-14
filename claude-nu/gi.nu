@@ -351,6 +351,7 @@ export def gi-import-text [
     session_id: string # UUID, /rename name, or a .jsonl path (what the tests pass)
     --tools # Keep tool calls instead of dropping them: each input in full, each result as a char count
     --live # This is the session running the import: its log cannot hold the current turn
+    --last-exchange # Keep only the last finished exchange: the user's last prompt and the reply to it
 ]: nothing -> string {
     let file = resolve-session-file $session_id
     let left_out = if $tools { "Thinking is dropped here; tool results are a char count" } else { "Tool calls, results, and thinking are dropped here" }
@@ -360,12 +361,13 @@ export def gi-import-text [
         $"Imported from session (gi-session-key $file)"
     }
     let gap = if $live { " The turn that ran the import is missing — Claude Code writes the session log as the turn runs." }
-    let note = $"> ($source) on (date now | format date '%Y-%m-%d %H:%M').($gap | default '') ($left_out); the full record is `($file)`."
+    let only = if $last_exchange { " Only the last exchange is kept." }
+    let note = $"> ($source) on (date now | format date '%Y-%m-%d %H:%M').($gap | default '')($only | default '') ($left_out); the full record is `($file)`."
 
     # Replace the H1 rather than prepend the header: export-session titles the
     # doc from the session summary, and two H1s in a committed doc is noise.
     # First match only (no --all) — later `# ` lines belong to the dialogue.
-    {path: $file} | export-session --tools=$tools
+    {path: $file} | export-session --tools=$tools --last-exchange=$last_exchange
     | str replace --multiline --no-expand '^# .+' ([(open --raw $GI_HEADER_SRC) $note] | str join "\n")
 }
 
@@ -623,6 +625,7 @@ export def "gi import" [
     --folder: path # Where the canvas lands, relative to where you are (default: as for gi new)
     --root: path # Run gi in this directory instead of here: --folder is read there (default: your cwd)
     --tools # Keep tool calls instead of dropping them: each input in full, each result as a char count
+    --last-exchange # Keep only the last finished exchange: the user's last prompt and the reply to it
     --commit # Commit the imported doc
     --gitignore # Keep the imported doc out of git
 ]: nothing -> record {
@@ -665,7 +668,7 @@ export def "gi import" [
     }
     # Build the import before anything is written: a session that can't be read
     # must leave no half-written canvas behind.
-    let imported = gi-import-text $file --tools=$tools --live=($session == null)
+    let imported = gi-import-text $file --tools=$tools --live=($session == null) --last-exchange=$last_exchange
 
     mkdir ($paths_doc.abs | path dirname)
     $imported | save --force $paths_doc.abs

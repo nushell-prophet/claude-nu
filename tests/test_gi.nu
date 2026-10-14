@@ -1129,3 +1129,11 @@ def "frontmatter-session is null for a canvas without a session" [] {
 
     assert equal $sid null
 }
+
+@test
+def "import text with the last exchange flag says so in the note" [] {
+    let body = gi-import-text ($FIXTURES_SESSIONS_DIR | path join $"($FIXTURE_SESSION).jsonl") --last-exchange
+
+    assert str contains $body "Only the last exchange is kept."
+    assert equal ($body | split row "## User" | length) 2 "one user turn"
+}
