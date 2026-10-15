@@ -79,9 +79,9 @@ export def projects []: nothing -> table {
         if ($files | is-empty) { return null }
         # Why: the dir name is lossy (`/` and `-` both encode to `-`), so
         # recover the real path from a session's `cwd` for true segments.
-        # Scan newest-first until a file records one — summary-only files
-        # (e.g. legacy sidechain summaries) carry no cwd and must not hide
-        # the whole project.
+        # Scan newest-first until a file records one — a file whose first
+        # lines carry no cwd (e.g. one opening with file-history-snapshot
+        # records) must not hide the whole project.
         let cwd = $files
             | sort-by modified --reverse
             | reduce --fold null {|file found|
@@ -126,12 +126,12 @@ export def "nu-complete claude sessions" []: nothing -> record {
         | each {|file|
             let uuid = $file.name | session-id-from-path
             let raw_lines = try { open --raw $file.name | lines } catch { [] }
-            # Why: the title lives in custom-title/summary/ai-title records
+            # Why: the title lives in custom-title/ai-title records
             # anywhere in the file. String-match first so a Tab press never JSON-parses whole
             # session files; extract-summary then filters false-positive lines
             # (e.g. messages quoting the pattern) by record type.
             let summary = $raw_lines
-                | where $it =~ '"type":"(custom-title|summary|ai-title)"'
+                | where $it =~ '"type":"(custom-title|ai-title)"'
                 | each { try { from json } catch { {} } }
                 | extract-summary
                 | if ($in | is-empty) { "No summary" } else { }

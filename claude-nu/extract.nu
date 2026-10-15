@@ -30,7 +30,6 @@ const SYSTEM_PREFIXES = [
     "<local-command-stderr>"
     "<task-notification>"
     "<system-reminder>"
-    "Caveat:"
     # Written by Claude Code on Esc, with or without " for tool use".
     "[Request interrupted by user"
     # The text block Claude Code puts beside ToolSearch's tool_result.
@@ -216,8 +215,7 @@ export def extract-tool-results []: table -> table {
 # Why this order: a name a human chose outranks one a model generated. A
 # `custom-title` record is what `claude --name` writes, so it is the user's own
 # label — and `gi open` sets it to the canvas path, which is the most useful
-# thing a gi session could be called. Then the legacy `summary` record, which
-# 2.1.x rarely writes any more, and last `ai-title.aiTitle`, the generated one.
+# thing a gi session could be called. Then `ai-title.aiTitle`, the generated one.
 export def extract-summary []: table -> string {
     let records = $in
     # Why the last record of each kind: Claude Code rewrites both titles as the
@@ -226,11 +224,6 @@ export def extract-summary []: table -> string {
 
     if ($from_custom | is-not-empty) {
         return $from_custom
-    }
-    let from_summary = $records | where type? == "summary" | get 0?.summary?
-
-    if ($from_summary | is-not-empty) {
-        return $from_summary
     }
     $records | where type? == "ai-title" | last-of $.aiTitle
 }

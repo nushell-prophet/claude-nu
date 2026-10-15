@@ -505,11 +505,9 @@ export extern "claude auto-mode reset" [
     --yes (-y) # Skip the confirmation prompt
 ]
 
-# ===== Project Commands =====
+# ===== Purge =====
 
-export extern "claude project" []
-
-export extern "claude project purge" [
+export extern "claude purge" [
     path?: string@"nu-complete claude projects" # Project path (omit with --all)
     --all # Purge state for every project (mutually exclusive with [path])
     --dry-run # List what would be deleted without deleting anything

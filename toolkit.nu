@@ -2,21 +2,6 @@ const captures_dir = 'dotnu-captures'
 const fixtures_sessions_dir = 'tests/fixtures/sessions'
 const uuid_jsonl_pattern = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
 
-# Check if a path has uncommitted changes in its git repository
-def has-uncommitted-changes [path: path]: nothing -> bool {
-    if not ($path | path exists) { return false }
-
-    let dir = if ($path | path type) == 'dir' { $path } else { $path | path dirname }
-
-    let git_check = ^git -C $dir rev-parse --git-dir | complete
-
-    if $git_check.exit_code != 0 { return false }
-
-    let status = ^git -C $dir status --porcelain -- $path | complete
-
-    ($status.stdout | str trim | is-not-empty)
-}
-
 # Find nutest module path, or null if not available
 def find-nutest []: nothing -> any {
     for dir in ($env.NU_LIB_DIRS? | default []) {
@@ -181,11 +166,9 @@ def print-test-result [result: record]: nothing -> nothing {
 # Vendor real session files as test fixtures (with obfuscated session IDs)
 @example "Vendor 3 most recent sessions" { nu toolkit.nu vendor-sessions }
 @example "Vendor 5 sessions" { nu toolkit.nu vendor-sessions --count 5 }
-@example "Vendor and commit" { nu toolkit.nu vendor-sessions --commit }
 export def 'main vendor-sessions' [
     ...sessions: string # Session UUIDs to vendor (default: most recent)
     --count: int = 3 # Number of most recent sessions when no UUIDs given
-    --commit # Also create a git commit after copying
 ]: nothing -> nothing {
     use claude-nu/sessions.nu get-sessions-dir
 
@@ -248,18 +231,7 @@ export def 'main vendor-sessions' [
 
         print $"(ansi green)✓(ansi reset) ($old_uuid | str substring 0..8)… → ($new_uuid | str substring 0..8)… (($size))"
     }
-
-    if $commit {
-        let status = git status --porcelain $fixtures_sessions_dir | str trim
-
-        if $status != "" {
-            git add $fixtures_sessions_dir
-            git commit -m "test: vendor session fixtures"
-            print $"(ansi green)Committed session fixtures(ansi reset)"
-        } else {
-            print $"(ansi attr_dimmed)No changes to commit(ansi reset)"
-        }
-    }
+    | ignore
 }
 
 # Diagnostics for one file, each row carrying the resolved line and its source.

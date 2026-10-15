@@ -11,7 +11,6 @@ use ../claude-nu
 # Each fixture's first record type and special properties are documented inline.
 const FIXTURE_PERMMODE_AGENT = '99bf0e5b-212c-4891-abb2-6bc585af2ea0.jsonl' # first: permission-mode, has Agent, mode "plan"
 const FIXTURE_FHS_TASKFAMILY = 'ae3bbbf7-0554-45f7-9653-6ca09689be50.jsonl' # first: file-history-snapshot, has TaskCreate/TaskUpdate/TaskStop
-const FIXTURE_PERMMODE_AGENT2 = 'b370af1e-c96f-46a2-a3fe-66b16f38bc03.jsonl' # first: permission-mode, has Agent
 const FIXTURE_FHS_AGENT = 'b9ce8986-5d19-4ff5-9285-e0ed06464b6c.jsonl' # first: file-history-snapshot, has Agent + TaskCreate/Update
 const FIXTURE_USER_FIRST = 'ef27ae6d-c8d1-4ce8-b0ff-bcfff3954193.jsonl' # 2.1.129 format, first: user
 
@@ -50,7 +49,6 @@ def "messages drops every system and command wrapper prefix" [] {
         '{"type":"user","message":{"content":"<local-command-stderr>err"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<task-notification>agent done"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":"<system-reminder>injected context"},"timestamp":"2024-01-15T10:00:00Z"}'
-        '{"type":"user","message":{"content":"Caveat: heads up"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":[{"type":"text","text":"[Request interrupted by user]"}]},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"user","message":{"content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
@@ -297,11 +295,9 @@ def "extract-summary takes latest ai-title" [] {
 @test
 def "extract-summary prefers a title the user chose over a generated one" [] {
     # custom-title is what `claude --name` writes, and what `gi open` sets to
-    # the canvas path — a human picked it, so it outranks both the legacy
-    # summary record and the model's ai-title.
+    # the canvas path — a human picked it, so it outranks the model's ai-title.
     let records = [
         {type: "ai-title" aiTitle: "Generated title"}
-        {type: "summary" summary: "Legacy summary"}
         {type: "custom-title" customTitle: "todo/my-canvas.md"}
     ]
 
@@ -330,7 +326,7 @@ def "sessions extracts all overview fields from session file" [] {
     let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
 
     let lines = [
-        '{"type":"summary","summary":"Test session about file parsing"}'
+        '{"type":"ai-title","aiTitle":"Test session about file parsing"}'
         '{"type":"user","message":{"content":"Please check @src/main.rs"},"timestamp":"2024-01-15T10:00:00Z"}'
         '{"type":"assistant","message":{"content":[{"type":"text","text":"I will read that file."},{"type":"tool_use","name":"Read","input":{"file_path":"/src/main.rs"}}]},"timestamp":"2024-01-15T10:00:01Z"}'
         '{"type":"user","message":{"content":"Now edit @src/lib.rs please"},"timestamp":"2024-01-15T10:00:02Z"}'
@@ -1685,7 +1681,7 @@ def "sessions handles empty session for derived metrics" [] {
 
     # Single record to avoid empty file edge case
     let lines = [
-        '{"type":"summary","summary":"Empty session"}'
+        '{"type":"ai-title","aiTitle":"Empty session"}'
     ]
 
     $lines | str join "\n" | save --force $temp_file
@@ -1811,7 +1807,7 @@ def "sessions parses single file" [] {
     let temp_file = $temp_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
 
     let lines = [
-        '{"type":"summary","summary":"Test session"}'
+        '{"type":"ai-title","aiTitle":"Test session"}'
         '{"type":"user","message":{"content":"Hello"},"timestamp":"2024-01-15T10:00:00Z"}'
     ]
 
@@ -1834,8 +1830,8 @@ def "sessions parses directory of files" [] {
     let file1 = $temp_dir | path join "11111111-1111-1111-1111-111111111111.jsonl"
     let file2 = $temp_dir | path join "22222222-2222-2222-2222-222222222222.jsonl"
 
-    '{"type":"summary","summary":"Session 1"}' | save --force $file1
-    '{"type":"summary","summary":"Session 2"}' | save --force $file2
+    '{"type":"ai-title","aiTitle":"Session 1"}' | save --force $file1
+    '{"type":"ai-title","aiTitle":"Session 2"}' | save --force $file2
 
     let result = sessions $temp_dir
 
@@ -1853,8 +1849,8 @@ def "sessions ignores non-uuid files in directory" [] {
     let valid_file = $temp_dir | path join "12345678-1234-1234-1234-123456789abc.jsonl"
     let invalid_file = $temp_dir | path join "not-a-uuid.jsonl"
 
-    '{"type":"summary","summary":"Valid"}' | save --force $valid_file
-    '{"type":"summary","summary":"Invalid"}' | save --force $invalid_file
+    '{"type":"ai-title","aiTitle":"Valid"}' | save --force $valid_file
+    '{"type":"ai-title","aiTitle":"Invalid"}' | save --force $invalid_file
 
     let result = sessions $temp_dir
 
@@ -1885,9 +1881,9 @@ def "sessions --all-projects iterates every project dir" [] {
 
     mkdir $proj_a $proj_b
 
-    '{"type":"summary","summary":"From A"}'
+    '{"type":"ai-title","aiTitle":"From A"}'
         | save --force ($proj_a | path join "11111111-1111-1111-1111-111111111111.jsonl")
-    '{"type":"summary","summary":"From B"}'
+    '{"type":"ai-title","aiTitle":"From B"}'
         | save --force ($proj_b | path join "22222222-2222-2222-2222-222222222222.jsonl")
 
     let result = with-env {HOME: $fake_home} { sessions --all-projects }
@@ -2304,30 +2300,11 @@ def "sessions metadata still works for older user-first fixture" [] {
 }
 
 @test
-def "sessions falls back to ai-title aiTitle when no summary record" [] {
-    # All vendored fixtures lack a summary record but have ai-title
+def "sessions titles a vendored session from its ai-title" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_PERMMODE_AGENT
     let result = sessions $p --columns summary | first
 
     assert (($result.summary | str length) > 0)
-}
-
-@test
-def "sessions uses summary record when present in preference to ai-title" [] {
-    let temp_file = $nu.temp-dir | path join $"test-session-(random uuid).jsonl"
-    let lines = [
-        '{"type":"summary","summary":"Real summary record"}'
-        '{"type":"ai-title","aiTitle":"AI title fallback"}'
-        '{"type":"user","sessionId":"x","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
-    ]
-
-    $lines | str join "\n" | save --force $temp_file
-
-    let result = sessions $temp_file --columns summary | first
-
-    rm $temp_file
-
-    assert equal $result.summary "Real summary record"
 }
 
 @test
@@ -2974,7 +2951,7 @@ def "export-session gives a string for one session and a list for many" [] {
             let f = $dir | path join $"($id).jsonl"
 
             [
-                '{"type":"summary","summary":"my topic"}'
+                '{"type":"ai-title","aiTitle":"my topic"}'
                 '{"type":"user","message":{"content":"hi"},"timestamp":"2024-01-15T10:00:00Z"}'
             ] | str join "\n" | save --force $f
             {path: $f}

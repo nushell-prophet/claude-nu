@@ -94,6 +94,5 @@ export extern main [
     --log-include: string # Set the Rust module prefixes to include in the log output
     --log-exclude: string # Set the Rust module prefixes to exclude from the log output
     --stdin # Redirect standard input to a command or script file
-    --testbin: string # Run internal test binary
     --experimental-options: string # Enable or disable experimental options
 ]
