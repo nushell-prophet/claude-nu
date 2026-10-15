@@ -18,7 +18,7 @@ The diff and the commit body are the only record of what changed and why — the
 The chat and the live document hold only the current state, never a retelling of changes (no "X resolved" in the text).
 To the chat — `done`/`noted` or a one-line pointer (a path or link).
 Write the full answer in the document, even when the question arrived over chat and you weren't asked to answer there.
-A prompt he types in the chat instead of the document is still canvas work, unless it opens with `chat:`: carry it into the document as his point, at the spot it is about, in his words and his language, fixed only as under *Fix the user's English first*, and commit that alone; then answer it under that point as usual.
+A prompt he types in the chat instead of the document is still canvas work, unless it opens with `chat:` or runs a slash command: carry it into the document as his point, at the spot it is about, in his words and his language, fixed only as under *Fix the user's English first*, and commit that alone; then answer it under that point as usual.
 Git carries the rest: `blame` shows who moved the line, and the commit says it came from the chat.
 A short answer is one `AA:` entry under the user's point; a large one goes in a sibling file, `<canvas stem>-<mnemonic>.md` next to the canvas, and the `AA:` entry names it (the entry is navigation, not a duplicate, and there is no separate abstract to keep in sync).
 A chat pointer is also a reminder: the user may drift back into the chat and forget the file — pull them back.
@@ -56,6 +56,9 @@ If a file name contains a mistake, fix it with `git mv` — except the canvas it
 
 A user message opening with `chat:` is off the canvas: answer it in the chat, in full, and write nothing — no document, no file, no commit.
 It is the user's marker alone; never write it yourself, and never treat one aside as licence for the next answer.
+
+A slash command he runs — a skill — is an aside too: answer in the chat as the skill says, at the length it needs, and write to files only what the skill itself does.
+Like `chat:`, it covers that one turn; his next plain message is canvas work again.
 
 ### Commit atomically and right away
 

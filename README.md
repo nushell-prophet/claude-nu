@@ -460,6 +460,8 @@ Open your message with `chat:` and that one exchange is off the canvas: the hook
 It is for the questions you ask *about* the work rather than as part of it.
 The marker is read from the prompt that opened the turn, and only from one you typed, so only you can spend one: a marker the agent could write would be the agent lifting its own floor, which is what the hook exists to prevent.
 It covers one turn — the next unmarked message is canvas work again.
+A slash command you run counts as an aside too: a skill carries its own rules for the chat — `/40-land-branch` shows its plan there and waits — so the floor stands down for that turn and the agent answers as the skill says.
+A skill the agent calls on its own never lifts the floor.
 
 **Why activation lives at launch.**
 `gi open` hands the gi plugin — the Canvas style and the skills — to `claude --plugin-dir`, passes the style's name to `claude --settings` (which takes inline JSON, merges with the project's settings rather than replacing them), and sets `$env.GI_CANVAS` in the launch environment.

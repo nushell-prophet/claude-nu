@@ -175,6 +175,20 @@ test('a chat: aside ends with any answer', async ($, on) => {
   }
 })
 
+test('a slash command the user runs ends with any answer', async ($, on) => {
+  stop(on, CANVAS)
+  await $.prompt.submit({ text: '/40-land-branch', command: { name: '40-land-branch', args: '' }, origin: { kind: 'composer' } } as never)
+  expect((await ends($, ANSWER)).block).toBeUndefined()
+  await says($, 'go')
+  expect((await ends($, ANSWER)).block).toBeDefined()
+})
+
+test('a slash command from a peer does not lift the floor', async ($, on) => {
+  stop(on, CANVAS)
+  await $.prompt.submit({ text: '/40-land-branch', command: { name: '40-land-branch', args: '' }, origin: { kind: 'peer-send-message' } } as never)
+  expect((await ends($, ANSWER)).block).toBeDefined()
+})
+
 test('an aside is spent once answered: the next prompt is canvas work again', async ($, on) => {
   stop(on, CANVAS)
   await says($, 'chat: what does --fork do?')

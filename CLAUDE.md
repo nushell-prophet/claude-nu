@@ -64,6 +64,7 @@ Reference-doc fetchers (Claude Code + Nushell docs): `cozy docs claude` / `cozy 
   It lives in `../my-claude-skills/plugins/my-skills/skills/40-gi-canvas/`, deployed with that repo's other skills, and it is the one piece of gi that is not read from this module.
   Its `--distill` cannot call `gi:git-intent-distill` there either, so `distill.md` beside it is a copy of that skill's body: change both together.
 - The `chat:` aside has two halves that must stay in sync: the `prompt.submit` hook in `register.ts` (it reads the marker from the user's prompt that opened the turn, and the Stop hook lets that turn end with any answer) and the matching `chat:` section in the style (answer in chat, write nothing).
+  A slash command the user runs is an aside on the same two halves: the hook takes `e.command` as the marker, and the style's `chat:` section says the skill's own rules govern that turn.
   The marker is only ever the user's: an agent-written one would be the agent lifting its own floor.
 - `gi import` is the only verb runnable from inside the session being captured: `open` launches `claude`, which a live session cannot do for itself.
   Its session is a parameter with the `nu-complete claude sessions` picker, not a switch — a switch could only mean the live session, so the REPL case (import an older chat) would have no spelling at all.

@@ -40,9 +40,14 @@ const SWITCH_FLAGS = ['-q', '--quiet']
 const CREATE_FLAGS = { switch: ['-c', '--create', '-C', '--force-create'], checkout: ['-b', '-B'] }
 
 export const register: Register = on => {
-  // Whether the prompt that opened the current turn is a `chat:` aside. Every
-  // prompt resets it, so an aside is spent once answered, and a notification or
-  // a peer message starting a turn puts the floor back up.
+  // Whether the prompt that opened the current turn is an aside: a `chat:`
+  // message, or a slash command the user ran. Every prompt resets it, so an
+  // aside is spent once answered, and a notification or a peer message starting
+  // a turn puts the floor back up.
+  // Why a slash command: a skill the user runs carries its own instructions for
+  // the chat (`/40-land-branch` shows its plan there and waits), and the floor
+  // pushed that answer into the canvas. A skill the agent calls through the Skill
+  // tool raises no `prompt.submit`, so it never lifts the floor.
   // Why state here and not the transcript at Stop: `prompt.submit` hands over
   // the text as typed, so nothing parses the session file at every turn end.
   // A reload of the mod clears it: the floor is then up for one turn, and the
@@ -52,7 +57,7 @@ export const register: Register = on => {
   on('prompt.submit', ($, e, next) => {
     // An absent origin is the user's own prompt, as the engine's types define it.
     const user = !e.isMeta && (!e.origin || USER_ORIGINS.includes(e.origin.kind))
-    aside = user && e.text.trim().toLowerCase().startsWith(CHAT_MARKER)
+    aside = user && (!!e.command || e.text.trim().toLowerCase().startsWith(CHAT_MARKER))
     return next(e)
   })
 
