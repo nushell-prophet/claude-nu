@@ -78,21 +78,6 @@ def "status reports the session canvas from the environment" [] {
 }
 
 @test
-def "status names the plugin that carries the protocol and its namespaced parts" [] {
-    let status = gi
-
-    # gi writes nothing into a repo any more, so status reports the one
-    # directory every launch reads instead of a list of seeds that could drift.
-    assert ($status.plugin | path join ".claude-plugin" "plugin.json" | path exists)
-    # Plugin components are namespaced by the plugin name — the bare names
-    # resolve to nothing, which is the silent failure this pins.
-    assert equal $status.style "gi:Canvas"
-    assert ("gi:git-intent" in $status.skills)
-    assert ("gi:git-intent-squash-archive" in $status.skills)
-    assert equal ($status.skills | where $it !~ '^gi:') []
-}
-
-@test
 def "status carries no seed fields" [] {
     let columns = gi | columns
 
@@ -100,11 +85,16 @@ def "status carries no seed fields" [] {
     # per-repo copy to locate and nothing that can differ from the module.
     assert ("stale" not-in $columns)
     assert ("root" not-in $columns)
+    # The plugin is read in place, so its directory, style and skills have no
+    # per-repo copy to report either.
+    assert equal ($columns | where $it in [plugin style skills]) []
 }
 
 @test
 def "status lists the canvases of every folder and only session-bound todo notes" [] {
     let root = temp-root
+
+    mkdir $root
 
     plain-canvas $root "gi-canvas/a.md"
     plain-canvas $root "gi/b.md"
@@ -153,7 +143,7 @@ def "open writes nothing into the repo but the canvas" [] {
     mkdir $root
     ^git -C $root init --quiet
     let launched = with-env {PATH: (stub-claude $root | append $env.PATH)} {
-        gi open gi/plan.md --root $root | ignore
+        do { cd $root; gi open gi/plan.md | ignore }
         # Read inside the try, so a launch that wrote nothing fails on the
         # assertion below rather than here — where it would skip the cleanup.
         try { open --raw ($root | path join "claude-args") } catch { "" }
@@ -215,28 +205,6 @@ def "a relative canvas is read where the user stands and not at the repo root" [
 }
 
 @test
-def "the root flag moves the whole run with the canvas included" [] {
-    # The other half of the same rule: --root says where gi runs, so a relative
-    # canvas is read there and not beside the caller — otherwise running gi
-    # against another repo would write the canvas outside the directory it
-    # launches in.
-    let root = temp-root
-
-    mkdir $root
-    ^git -C $root init --quiet
-    with-env {PATH: (stub-claude $root | append $env.PATH)} {
-        gi open gi/plan.md --root $root | ignore
-    }
-    let at_root = $root | path join "gi" "plan.md" | path exists
-    let beside_caller = $env.PWD | path join "gi" "plan.md" | path exists
-
-    rm --recursive --force $root
-
-    assert $at_root
-    assert (not $beside_caller) "the canvas was written next to the caller instead of under --root"
-}
-
-@test
 def "launch args bind the canvas session and name the session after it" [] {
     let sid = "11111111-2222-3333-4444-555555555555"
 
@@ -264,13 +232,16 @@ def "execute ends the launch on a prompt that names the canvas" [] {
 
 @test
 def "a flag typed where the canvas goes is not taken as the canvas" [] {
-    # --root points at a directory that does not exist, so a guard-order
-    # regression cannot reach the launcher and write into the developer's own
-    # checkout.
+    # Run in an empty directory with a stub claude, so a guard-order regression
+    # cannot reach the launcher and write into the developer's own checkout.
     let root = temp-root
+
+    mkdir $root
     # --wrapped hands an undeclared flag before the doc to the positional, so
     # without this a typo would create a canvas named after the flag.
-    let out = try { gi open --model opus --root $root; null } catch {|e| $e.msg }
+    let out = with-env {PATH: (stub-claude $root | append $env.PATH)} {
+        do { cd $root; try { gi open --model opus; null } catch {|e| $e.msg } }
+    }
 
     assert ($out | str contains "not a canvas path")
 
@@ -278,10 +249,15 @@ def "a flag typed where the canvas goes is not taken as the canvas" [] {
     # often typed with no canvas named is in the signature. Proof: with two
     # flags and no canvas, the one that lands in the doc slot is the *second*,
     # so the first was consumed as the flag it is.
-    let named = try { gi open --dangerously-skip-permissions --model opus --root $root; null } catch {|e| $e.msg }
+    let named = with-env {PATH: (stub-claude $root | append $env.PATH)} {
+        do { cd $root; try { gi open --dangerously-skip-permissions --model opus; null } catch {|e| $e.msg } }
+    }
+    let launched = $root | path join "claude-args" | path exists
+
+    rm --recursive --force $root
 
     assert ($named | str contains "--model is not a canvas path")
-    assert (not ($root | path exists))
+    assert (not $launched) "a flag in the canvas slot reached the launcher"
 }
 
 @test
@@ -421,7 +397,7 @@ def "open --fork launches the copy and leaves the source binding alone" [] {
 
     gi-stamp-session $src $sid
     let launched = with-env {PATH: (stub-claude $root | append $env.PATH)} {
-        gi open gi/plan.md --fork --root $root | ignore
+        (do { cd $root; gi open gi/plan.md --fork }) | ignore
         try { open --raw ($root | path join "claude-args") } catch { "" }
     }
     let source_still = gi-frontmatter-session $src
@@ -444,18 +420,24 @@ def "the fork flags refuse the two ways they cannot mean anything" [] {
     # Same reason as above: a guard that stopped firing must not reach the
     # launcher and write a canvas into the repo the suite is running in.
     let root = temp-root
+
+    mkdir $root
     # --fork is the one case where the positional names a source, so with no
     # canvas named there is nothing to copy.
-    let no_doc = try { gi open --fork --root $root; "" } catch {|e| $e.msg }
+    let no_doc = try { (do { cd $root; gi open --fork }); "" } catch {|e| $e.msg }
 
     assert ($no_doc | str contains "--fork needs the canvas")
 
     # Both mint an id, but on different files — the pair names two intentions
     # at once. Refused before anything is copied or launched.
-    let both = try { gi open gi/plan.md --fork --new-session --root $root; "" } catch {|e| $e.msg }
+    let both = try { (do { cd $root; gi open gi/plan.md --fork --new-session }); "" } catch {|e| $e.msg }
+
+    let written = ls $root | is-not-empty
+
+    rm --recursive --force $root
 
     assert ($both | str contains "cannot be combined")
-    assert (not ($root | path exists))
+    assert (not $written) "a refused fork wrote into the run directory"
 }
 
 @test
@@ -590,7 +572,7 @@ def "new hands back the path when it launches nothing" [] {
 
     mkdir $root
     let today = date now | format date '%J'
-    let returned = gi new gi-new --root $root --no-editor --no-claude-launch
+    let returned = (do { cd $root; gi new gi-new --no-editor --no-claude-launch | path expand })
     let doc = $root | path join "gi-canvas" $"($today)-gi-new.md"
     let launched = $root | path join "claude-args" | path exists
     let bound = if ($doc | path exists) { gi-frontmatter-session $doc } else { "no canvas" }
@@ -612,7 +594,7 @@ def "new opens a session bound to the canvas it just wrote" [] {
     ^git -C $root init --quiet
     let today = date now | format date '%J'
     let launched = with-env {PATH: (stub-claude $root | append $env.PATH)} {
-        gi new gi-new --root $root --no-editor
+        (do { cd $root; gi new gi-new --no-editor })
         try { open --raw ($root | path join "claude-args") } catch { "" }
     }
     let doc = $root | path join "gi-canvas" $"($today)-gi-new.md"
@@ -638,7 +620,7 @@ def "new opens the canvas in a pane of its own and starts the session beside it"
 
     stub-zellij $root | ignore
     with-env {PATH: ($bin | append $env.PATH) ZELLIJ: "0" EDITOR: "hx"} {
-        gi new gi-new --root $root
+        (do { cd $root; gi new gi-new })
     }
     let doc = $root | path join "gi-canvas" $"($today)-gi-new.md"
     let edited = try { open --raw ($root | path join "zellij-args") | str trim } catch { "" }
@@ -673,7 +655,7 @@ def branch-repo [branch: string --staged]: nothing -> path {
 def "new leaves main for a branch named after the slug" [] {
     let root = branch-repo main
 
-    gi new gi-new --root $root --no-editor --no-claude-launch | ignore
+    (do { cd $root; gi new gi-new --no-editor --no-claude-launch }) | ignore
     let branch = ^git -C $root branch --show-current | str trim
 
     rm --recursive --force $root
@@ -685,7 +667,7 @@ def "new leaves main for a branch named after the slug" [] {
 def "new stays on main when something is staged" [] {
     let root = branch-repo main --staged
 
-    gi new gi-new --root $root --no-editor --no-claude-launch | ignore
+    (do { cd $root; gi new gi-new --no-editor --no-claude-launch }) | ignore
     let branch = ^git -C $root branch --show-current | str trim
 
     rm --recursive --force $root
@@ -698,7 +680,7 @@ def "new stays on main when something is staged" [] {
 def "new stays on a work branch" [] {
     let root = branch-repo canvas-work
 
-    gi new gi-new --root $root --no-editor --no-claude-launch | ignore
+    (do { cd $root; gi new gi-new --no-editor --no-claude-launch }) | ignore
     let branch = ^git -C $root branch --show-current | str trim
 
     rm --recursive --force $root
@@ -712,7 +694,7 @@ def "a branch that already exists fails before the canvas is written" [] {
 
     ^git -C $root commit --quiet --allow-empty --message init
     ^git -C $root branch gi-new
-    let caught = try { gi new gi-new --root $root --no-editor --no-claude-launch; "no error" } catch { "error" }
+    let caught = try { (do { cd $root; gi new gi-new --no-editor --no-claude-launch }); "no error" } catch { "error" }
     let written = $root | path join "todo" | path exists
 
     rm --recursive --force $root
@@ -761,10 +743,12 @@ def "the canvas folder is gi-canvas when neither exists" [] {
 def "new puts the canvas in todo when the run directory keeps its notes there" [] {
     let root = temp-root
 
+    mkdir $root
+
     mkdir ($root | path join "todo")
     let today = date now | format date '%J'
 
-    gi new gi-new --root $root --no-editor --no-claude-launch | ignore
+    (do { cd $root; gi new gi-new --no-editor --no-claude-launch }) | ignore
     let at_todo = $root | path join "todo" $"($today)-gi-new.md" | path exists
     let made_folder = $root | path join "gi-canvas" | path exists
 
@@ -781,7 +765,7 @@ def "the folder flag moves the canvas out of todo" [] {
     mkdir $root
     let today = date now | format date '%J'
 
-    gi new gi-new --root $root --folder gi --no-editor --no-claude-launch | ignore
+    (do { cd $root; gi new gi-new --folder gi --no-editor --no-claude-launch }) | ignore
     let at_gi = $root | path join "gi" $"($today)-gi-new.md" | path exists
     let at_todo = $root | path join "todo" | path exists
 
@@ -797,7 +781,7 @@ def "a run with no editor set fails before the canvas is written" [] {
 
     mkdir $root
     let caught = with-env {ZELLIJ: "" EDITOR: ""} {
-        try { gi new gi-new --root $root --no-claude-launch; "no error" } catch {|e| $e.msg }
+        try { (do { cd $root; gi new gi-new --no-claude-launch }); "no error" } catch {|e| $e.msg }
     }
     let wrote = $root | path join "todo" | path exists
 
@@ -815,8 +799,8 @@ def "the same slug on the same day names the canvas already there" [] {
     let root = temp-root
 
     mkdir $root
-    gi new gi-new --root $root --no-editor --no-claude-launch | ignore
-    let second = try { gi new gi-new --root $root --no-editor --no-claude-launch; "no error" } catch {|e| $e.msg }
+    (do { cd $root; gi new gi-new --no-editor --no-claude-launch }) | ignore
+    let second = try { (do { cd $root; gi new gi-new --no-editor --no-claude-launch }); "no error" } catch {|e| $e.msg }
 
     rm --recursive --force $root
 
@@ -903,11 +887,13 @@ def "import text with the tools flag keeps tool calls in full" [] {
 @test
 def "import names the canvas from the slug" [] {
     let root = temp-root
+
+    mkdir $root
     let home = temp-root
 
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi import plan --root $root
+        (do { cd $root; gi import plan | update doc { path expand } })
     }
     let body = open --raw $status.doc
 
@@ -922,11 +908,13 @@ def "import names the canvas from the slug" [] {
 @test
 def "import takes a named session with no live session in the environment" [] {
     let root = temp-root
+
+    mkdir $root
     let home = temp-root
 
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
-        gi import plan $FIXTURE_SESSION --root $root
+        (do { cd $root; gi import plan $FIXTURE_SESSION | update doc { path expand } })
     }
     let body = open --raw $status.doc
 
@@ -957,7 +945,7 @@ def "import takes a session by the name the rename command gave it and keys the 
     git -C $root config user.email "test@example.com"
     git -C $root config user.name "test"
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
-        gi import plan my-plan --root $root --commit
+        (do { cd $root; gi import plan my-plan --commit | update doc { path expand } })
     }
     let subject = git -C $root log -1 --format=%s
 
@@ -971,12 +959,14 @@ def "import takes a session by the name the rename command gave it and keys the 
 @test
 def "import takes a session as a jsonl path" [] {
     let root = temp-root
+
+    mkdir $root
     let home = temp-root
 
     stage-session $home
     let file = $home | path join ".claude" "projects" "-tmp-proj" $"($FIXTURE_SESSION).jsonl"
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
-        gi import plan $file --root $root
+        (do { cd $root; gi import plan $file | update doc { path expand } })
     }
 
     rm --recursive --force $root $home
@@ -987,11 +977,13 @@ def "import takes a session as a jsonl path" [] {
 @test
 def "the folder flag moves the canvas and keeps its name" [] {
     let root = temp-root
+
+    mkdir $root
     let home = temp-root
 
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi import plan --folder notes --root $root
+        (do { cd $root; gi import plan --folder notes | update doc { path expand } })
     }
 
     rm --recursive --force $root $home
@@ -1028,12 +1020,14 @@ def "a relative folder is read where the user stands" [] {
 @test
 def "import refuses to overwrite an existing doc" [] {
     let root = temp-root
+
+    mkdir $root
     let home = temp-root
 
     stage-session $home
     let out = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi import plan --root $root | ignore
-        try { gi import plan --root $root | ignore; null } catch {|e| $e.msg }
+        (do { cd $root; gi import plan }) | ignore
+        try { (do { cd $root; gi import plan }) | ignore; null } catch {|e| $e.msg }
     }
 
     rm --recursive --force $root $home
@@ -1044,8 +1038,10 @@ def "import refuses to overwrite an existing doc" [] {
 @test
 def "import with no session errors when no live session id is exported" [] {
     let root = temp-root
+
+    mkdir $root
     let out = with-env {CLAUDE_CODE_SESSION_ID: null} {
-        try { gi import plan --root $root | ignore; null } catch {|e| $e.msg }
+        try { (do { cd $root; gi import plan }) | ignore; null } catch {|e| $e.msg }
     }
 
     rm --recursive --force $root
@@ -1056,11 +1052,13 @@ def "import with no session errors when no live session id is exported" [] {
 @test
 def "the gitignore flag keeps the import out of git beside the doc" [] {
     let root = temp-root
+
+    mkdir $root
     let home = temp-root
 
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi import plan --root $root --gitignore
+        (do { cd $root; gi import plan --gitignore | update doc { path expand } })
     }
     let ignored = open --raw ($status.doc | path dirname | path join ".gitignore") | lines
 
@@ -1080,7 +1078,7 @@ def "the commit flag puts the import into git history" [] {
     git -C $root config user.email "test@example.com"
     git -C $root config user.name "test"
     with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi import plan --root $root --commit | ignore
+        (do { cd $root; gi import plan --commit }) | ignore
     }
     let committed = git -C $root show --name-only --format="%s" HEAD | lines
 
@@ -1104,11 +1102,13 @@ def "commit and gitignore flags contradict each other" [] {
 @test
 def "an imported canvas carries the full session id in its frontmatter" [] {
     let root = temp-root
+
+    mkdir $root
     let home = temp-root
 
     stage-session $home
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: $FIXTURE_SESSION} {
-        gi import plan --root $root
+        (do { cd $root; gi import plan | update doc { path expand } })
     }
     let sid = gi-frontmatter-session $status.doc
 

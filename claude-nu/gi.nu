@@ -35,8 +35,8 @@
 #                      conversation can be carried on in a fresh context while
 #                      the conversation that planned it stays readable.
 #
-# Bare `gi` is the third name and does no work: it reports which plugin supplies
-# the protocol and which canvas the asking session is bound to.
+# Bare `gi` is the third name and does no work: it reports which canvas the
+# asking session is bound to, and the canvases where you stand.
 #
 # Why a plugin and not files copied into each repo, which is what this replaced:
 # `--plugin-dir` loads a directory for one session, reading it in place. Copying
@@ -125,8 +125,7 @@ const GI_PROTECTED_BRANCHES = ["main" "master"]
 
 # Repo root (git top-level) of dir — default PWD — falling back to dir itself
 # outside a repo. Both branches yield a physical (symlink-resolved) path — git
-# canonicalizes --show-toplevel itself. Callers expand a user-given --root to
-# match, so every path comparison downstream stays within one path family.
+# canonicalizes --show-toplevel itself.
 def gi-repo-root [dir?: path]: nothing -> path {
     let dir = $dir | default $env.PWD
     let top = ^git -C $dir rev-parse --show-toplevel | complete
@@ -157,10 +156,10 @@ def gi-leave-trunk [dir: path name: string]: nothing -> nothing {
     ^git -C $dir switch --create $name
 }
 
-# The directory gi runs in: --root when the user names one, otherwise where
-# they are standing. Everything a gi command does happens here — the launch
-# cd's to it, a relative canvas is read against it, and the short form printed
-# and handed to the agent is relative to it.
+# The directory gi runs in: where the user is standing. Everything a gi command
+# does happens here — the session starts in it, a relative canvas is read
+# against it, and the short form printed and handed to the agent is relative
+# to it.
 # `root` (the repo) is a different question and stays a different value: it is
 # the branch the guard reads. That is repo-scoped; the canvas is not.
 # Why not the repo root for both: a path typed on a
@@ -169,8 +168,8 @@ def gi-leave-trunk [dir: path name: string]: nothing -> nothing {
 # Run from `mono/sub`, `gi open todo/x.md` would silently make and bind
 # `mono/todo/x.md`, a second file with the same basename as the one the user
 # meant, and the session would write its whole answer into it.
-def gi-run-dir [root?: path]: nothing -> path {
-    $root | default $env.PWD | path expand
+def gi-run-dir []: nothing -> path {
+    $env.PWD | path expand
 }
 
 # A canvas path in both forms: absolute (what GI_CANVAS carries and what the
@@ -232,8 +231,6 @@ def copy-file [src: path dst: path]: nothing -> nothing {
 # Why `todo/` before creating a folder: a repo that already keeps its working
 # notes in `todo/` gets its canvases there too, beside them, instead of a second
 # folder of working material.
-# Why read against the run directory and not the cwd: `--root` moves where the
-# canvas lands, so it moves where the folder is looked for.
 export def gi-canvas-folder [dir: path]: nothing -> string {
     if ($dir | path join "gi-canvas" | path exists) {
         "gi-canvas"
@@ -401,8 +398,6 @@ export def main []: nothing -> record {
     # Not a `ls gi-canvas/*.md todo/*.md gi/*.md` in the 40-gi-canvas skill
     # because: a repo rarely has all three, and `ls` exits non-zero on any
     # missing one, so the call reads as a failure.
-    # Why here and not in gi-status: `gi import` returns gi-status too, and
-    # these would be read from the cwd, not from where the import writes.
     gi-status
     | insert folder (gi-canvas-folder $dir)
     | insert canvases (gi-canvases $dir)
@@ -496,7 +491,6 @@ def gi-edit [doc: path editor: string]: nothing -> nothing {
 export def --wrapped "gi new" [
     slug: string # What the canvas is about; the file is <date>-<slug>.md
     --folder: path # Where the canvas lands, relative to where you are (default: gi-canvas/ if present, else todo/ if present, else gi-canvas/, created)
-    --root: path # Run gi in this directory instead of here: the canvas is written there and the session starts there (default: your cwd)
     --no-editor # Write the canvas without opening it for editing
     --no-claude-launch # Write the canvas and hand back its path; launch nothing
     --no-hook # Launch with the Canvas style but without the Stop-hook floor (the commit guard stays)
@@ -518,7 +512,7 @@ export def --wrapped "gi new" [
         | append $rest
     # Before the canvas is written, not when it is opened: see gi-editor.
     let editor = if $no_editor { null } else { gi-editor }
-    let dir = gi-run-dir $root
+    let dir = gi-run-dir
     # Read once: a run that crosses midnight between the two uses would name the
     # file for one day and stamp `updated:` with the next.
     let today = date now | format date '%J'
@@ -546,7 +540,7 @@ export def --wrapped "gi new" [
         # thing with. A launch returns nothing — `claude` has the terminal.
         return ($paths_doc.abs | cwd-relative)
     }
-    gi-launch --root $root --doc $doc --hook=(not $no_hook) --execute=$execute --extra $extra
+    gi-launch --doc $doc --hook=(not $no_hook) --execute=$execute --extra $extra
 }
 
 # Open a canvas: launch a session bound to it, creating the canvas from the
@@ -555,7 +549,6 @@ export def --wrapped "gi new" [
 @category claude-nu
 export def --wrapped "gi open" [
     doc?: path # The canvas, relative to where you are (default: <canvas folder>/<date>-canvas.md, the folder as for gi new); with --fork, the canvas to fork FROM
-    --root: path # Run gi in this directory instead of here: the canvas is read there and the session starts there (default: your cwd)
     --no-hook # Launch with the Canvas style but without the Stop-hook floor (the commit guard stays)
     --new-session # Start a fresh session on this canvas, overwriting the id it records
     --fork # Copy the named canvas to its next `_n` sibling and open that, on a session of its own
@@ -604,7 +597,7 @@ export def --wrapped "gi open" [
             label: {text: "flags for `claude` go after the canvas: gi open <doc> <flags>" span: (metadata $doc).span}
         }
     }
-    gi-launch --root $root --doc $doc --hook=(not $no_hook) --new-session=$new_session --fork=$fork --execute=$execute --extra $extra
+    gi-launch --doc $doc --hook=(not $no_hook) --new-session=$new_session --fork=$fork --execute=$execute --extra $extra
 }
 
 # Why a verb of its own and not a flag on `gi enable` (which is what this
@@ -623,7 +616,6 @@ export def "gi import" [
     slug: string # What the canvas is about; the file is <date>-<slug>.md, as gi new names one
     session?: string@"nu-complete claude sessions" # Session UUID, /rename name, or .jsonl path (default: the session this runs inside)
     --folder: path # Where the canvas lands, relative to where you are (default: as for gi new)
-    --root: path # Run gi in this directory instead of here: --folder is read there (default: your cwd)
     --tools # Keep tool calls instead of dropping them: each input in full, each result as a char count
     --last-exchange # Keep only the last finished exchange: the user's last prompt and the reply to it
     --commit # Commit the imported doc
@@ -642,9 +634,8 @@ export def "gi import" [
     # commit subject must come from the session file, not from the argument —
     # keyed on the name they would read `session-<first 8 chars of the name>`.
     let file = resolve-session-file $sid
-    # Read the run directory off the flag before the next line shadows it.
-    let dir = gi-run-dir $root
-    let root = $root | default (gi-repo-root) | path expand
+    let dir = gi-run-dir
+    let root = gi-repo-root
     # Why the slug is required: a canvas named after its session id says
     # nothing about what it holds, and the agent running the import has just
     # read the whole chat, so it can name it in a few words.
@@ -860,7 +851,6 @@ export def gi-launch-args [sid: string doc: string --resume --execute ...extra: 
 # matching the frontmatter, or the canvas can't be reopened a third time.
 def gi-launch [
     --doc: path # The canvas; created from the template when new
-    --root: path # Run gi in this directory instead of here (default: your cwd)
     --hook # Keep the Stop-hook floor up in the session
     --new-session # Mint a fresh session id, overwriting the one the canvas records
     --fork # Open a copy of the named canvas instead, on a session of its own
@@ -868,9 +858,8 @@ def gi-launch [
     --extra: list<string> = [] # Flags forwarded to `claude` untouched
 ]: nothing -> nothing {
     gi-reject-owned-flags $extra
-    # Read the run directory off the flag before the next line shadows it.
-    let dir = gi-run-dir $root
-    let root = $root | default (gi-repo-root) | path expand
+    let dir = gi-run-dir
+    let root = gi-repo-root
     let doc = $doc | default (gi-default-doc $dir)
     # The copy is made here and not in `gi open` so everything below — the
     # session plan, the stamp, GI_CANVAS, --name — sees only the file being
@@ -920,31 +909,19 @@ def gi-launch [
     let args = gi-launch-args $plan.sid $doc_rel --resume=$plan.resume --execute=$execute ...$extra
 
     print $"canvas ($doc_rel), session (gi-session-key $plan.sid)(if $hook { '' } else { ', no Stop hook' })"
-    # cd only matters when --root sent the launch elsewhere; without it this is
-    # already where the user stands. It is not needed to find the style or the
-    # skills: --plugin-dir names them by absolute path, so no directory the
-    # launch stands in can change what loads.
-    do {
-        cd $dir
-        with-env ({GI_CANVAS: $doc_abs} | if $hook { } else { insert GI_NO_HOOK "1" }) {
-            ^claude --plugin-dir $GI_PLUGIN_DIR --settings (gi-launch-settings) ...$args
-        }
+    with-env ({GI_CANVAS: $doc_abs} | if $hook { } else { insert GI_NO_HOOK "1" }) {
+        ^claude --plugin-dir $GI_PLUGIN_DIR --settings (gi-launch-settings) ...$args
     }
 }
 
-# Where the protocol comes from, plus whether the session asking is bound to a
-# canvas. Pipeline-friendly record.
-# Why `style` and `skills` and `stale` are gone: gi seeds nothing into a repo
-# now, so there is no per-repo state to report and nothing that can drift from
-# the module. `plugin` replaces all three — it is the one directory every
-# launch reads, in place.
+# Whether the session asking is bound to a canvas. Pipeline-friendly record.
+# Not the plugin directory, the style and the skills beside it because: they
+# were there to show a per-repo copy that could drift, and the plugin is read
+# in place, so there is nothing left to show.
 def gi-status []: nothing -> record {
     {
         # Read from the environment, not from a file: activation is per session,
         # so "is gi on" is a property of who is asking, not of the repo.
         canvas: ($env.GI_CANVAS? | if ($in | is-not-empty) { cwd-relative } else { })
-        plugin: ($GI_PLUGIN_DIR | cwd-relative)
-        style: $GI_STYLE
-        skills: (ls ($GI_PLUGIN_DIR | path join "skills") | get name | each {|d| $"gi:($d | path basename)" })
     }
 }

@@ -446,7 +446,7 @@ claude-nu gi open gi-canvas/plan.md --new-session # start over on it: mint a fre
 claude-nu gi open gi-canvas/plan.md --fork # ...or keep it as it is and open a copy (gi-canvas/plan_1.md) on a session of its own
 claude-nu gi open gi-canvas/plan.md --execute # start on a first prompt, `@<canvas> go`: the session works the canvas without waiting
 claude-nu gi open gi-canvas/plan.md --dangerously-skip-permissions --model opus # ...any other flag goes straight to `claude`
-claude-nu gi                   # { canvas, plugin, style, skills, folder, canvases }
+claude-nu gi                   # { canvas, folder, canvases }
 ```
 
 **The Stop hook** in the plugin's hooks module is the hard floor that comes with every bound session: the agent's final chat message must stay small — `done`, a status note, a pointer to where the answer landed — at most 3 line breaks and 480 bytes of UTF-8 (about 240 Cyrillic letters); anything bigger blocks the turn with an instruction to move the answer into the canvas and commit it — the block message names the exact file.
@@ -473,7 +473,6 @@ A repo can hold as many canvases as you like — each `gi open` binds one sessio
 
 **One directory.**
 gi runs where you are standing: a relative canvas path is read against your cwd, the session starts there, and the path gi prints, hands to the agent, and quotes in a hook message is relative to the same place — so what you read is what you can paste back.
-`--root <dir>` moves the whole run there instead.
 One thing stays repo-scoped, because it is a property of the repo and not of the canvas: the branch guard reads the repo's branch.
 Anchoring the canvas at the git root as well would, inside a monorepo, silently write to the wrong file: run from `mono/sub`, `gi open todo/x.md` would make and bind `mono/todo/x.md` — a second file with the same name as the one you meant.
 One consequence to know: a canvas opened from a subdirectory gets its own session store, so `claude-nu sessions` at the repo root needs `--all-projects` to list it.
@@ -503,7 +502,7 @@ Numbering is max+1 over the series, never the first free gap: the canvas folder 
 `gi new <slug>` is the naming half of `gi open`: the canvas is `<folder>/<date>-<slug>.md` (`--folder`; by default `gi-canvas/` when the directory has one, else `todo/` when it has that, else a new `gi-canvas/` — the same folder `gi open` and `gi import` pick when given no path), it starts with the todo frontmatter — `status`, `updated` and `agents-mode`, the creation date being in the file name already — and the same header a canvas gets from `gi open`, and the command ends in that launch.
 On `main` or `master` with nothing staged, it first switches to a new branch named after the slug, so the canvas and its commits start off the trunk.
 It then puts the file in front of you, in `$env.EDITOR`, to write the task in: inside zellij in a pane of its own, so the document stays in view while the session runs beside it; outside zellij in the terminal you are in, and the launch follows when the editor exits — with no `$env.EDITOR` set that is an error naming `--no-editor`, never a guess at which editor you have.
-`--no-editor` skips that, `--no-claude-launch` skips the launch and hands back the path instead, and the flags `gi open` defines — `--root`, `--no-hook`, `--execute`, `--dangerously-skip-permissions`, anything else straight to `claude` — work here too.
+`--no-editor` skips that, `--no-claude-launch` skips the launch and hands back the path instead, and the flags `gi open` defines — `--no-hook`, `--execute`, `--dangerously-skip-permissions`, anything else straight to `claude` — work here too.
 `--fork` and `--new-session` are the two it does not take: both act on a canvas that exists and already records a session.
 The same slug on the same day is an error naming the canvas already there, not a second file — a slug is typed on purpose, unlike zellij's `cmd+e` note, which is named after the day alone and numbers a repeat.
 
