@@ -498,7 +498,7 @@ def "session-columns completer offers exactly the selectable columns" [] {
     # always-present path/parent_session_id), so the two never drift apart.
     let produced = sessions $temp_file --all-columns | first | columns | where $it not-in [path parent_session_id]
     # Empty token (cursor right after the flag) → the bare column names.
-    let offered = nu-complete claude session-columns "sessions --columns "
+    let offered = nu-complete claude session-columns {text: ""}
 
     rm $temp_file
 
@@ -510,7 +510,7 @@ def "session-columns completer accumulates comma-separated picks" [] {
     # After a pick + comma, the completer returns full comma-joined values and
     # drops the already-chosen column, so the menu keeps working for the next
     # element — the reason --columns is a comma string, not a list<string>.
-    let offered = nu-complete claude session-columns "sessions --columns version,"
+    let offered = nu-complete claude session-columns {text: "version,"}
 
     assert ("version,cwd" in $offered)
     assert ("version,git_branch" in $offered)

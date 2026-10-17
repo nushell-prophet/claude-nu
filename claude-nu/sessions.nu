@@ -908,9 +908,8 @@ export def piped-session-files [input: any]: nothing -> any {
 # list-typed flag only outside its `[ ]` — where a bare value won't parse — and
 # offers nothing inside the brackets. A string flag completes at the value
 # position, where the inserted text is valid, so the menu actually works.
-export def "nu-complete claude session-columns" [context: string]: nothing -> list<string> {
-    let token = $context | split row ' ' | last
-    let parts = $token | split row ','
+export def "nu-complete claude session-columns" [token: record]: nothing -> list<string> {
+    let parts = $token.text | split row ','
     let chosen = $parts | drop 1
     let prefix = $chosen | str join ','
 

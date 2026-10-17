@@ -32,16 +32,16 @@ def "parse-script-commands extracts flags per subcommand" [] {
 
 @test
 def "nu-complete nu subcommands returns subcommand names with no args typed" [] {
-    let context = $"nu ($FIXTURE_MULTIWORD) "
-    let result = nu-complete nu subcommands $context | sort
+    let place = $"nu ($FIXTURE_MULTIWORD) " | commandline complete --input | get place
+    let result = nu-complete nu subcommands $place | sort
 
     assert equal $result ['bar' 'bar baz' 'qux']
 }
 
 @test
 def "nu-complete nu subcommands returns flags for single-word subcommand" [] {
-    let context = $"nu ($FIXTURE_MULTIWORD) bar "
-    let result = nu-complete nu subcommands $context
+    let place = $"nu ($FIXTURE_MULTIWORD) bar " | commandline complete --input | get place
+    let result = nu-complete nu subcommands $place
 
     assert equal $result ['--alpha']
 }
@@ -51,8 +51,8 @@ def "nu-complete nu subcommands returns flags for multi-word subcommand" [] {
     # Why: multi-word subcommand names like "bar baz" must match against the
     # joined typed args, not against individual tokens. Regression test for
     # the bug where neither "bar" nor "baz" alone matched "bar baz".
-    let context = $"nu ($FIXTURE_MULTIWORD) bar baz "
-    let result = nu-complete nu subcommands $context | sort
+    let place = $"nu ($FIXTURE_MULTIWORD) bar baz " | commandline complete --input | get place
+    let result = nu-complete nu subcommands $place | sort
 
     assert equal $result ['--depth' '--verbose']
 }
@@ -61,8 +61,8 @@ def "nu-complete nu subcommands returns flags for multi-word subcommand" [] {
 def "nu-complete nu subcommands prefers longest matching prefix" [] {
     # Why: with names ["bar", "bar baz"], typing "bar baz" must resolve to
     # "bar baz" (longest match), not "bar" (shorter prefix that also matches).
-    let context = $"nu ($FIXTURE_MULTIWORD) bar baz "
-    let result = nu-complete nu subcommands $context
+    let place = $"nu ($FIXTURE_MULTIWORD) bar baz " | commandline complete --input | get place
+    let result = nu-complete nu subcommands $place
 
     # bar baz's flags, not bar's --alpha
     assert ('--alpha' not-in $result)

@@ -24,9 +24,8 @@ export def parse-script-commands [script: string]: nothing -> table {
     | update name { str replace 'main ' '' }
 }
 
-export def "nu-complete nu subcommands" [context: string]: nothing -> any {
-    let script = $context
-        | split row --regex '\s+'
+export def "nu-complete nu subcommands" [place: record]: nothing -> any {
+    let script = $place.command
         | skip 1
         | where $it ends-with '.nu' and ($it | path exists)
         | get 0?
@@ -36,8 +35,7 @@ export def "nu-complete nu subcommands" [context: string]: nothing -> any {
     let cmds = parse-script-commands $script
     let subcmd_names = $cmds | get name
 
-    let typed_args = $context
-        | split row --regex '\s+'
+    let typed_args = $place.command
         | skip 1
         | where $it !~ '^-' and $it !~ '\.nu$'
 

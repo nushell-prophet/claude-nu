@@ -122,9 +122,8 @@ def ordered []: table -> record {
 
 # Comma-separated multi-value completion: segments already typed stay as a
 # prefix, remaining values are offered for the segment after the last comma.
-def comma-list [context: string]: table -> table {
-    let token = $context | split row ' ' | last
-    let chosen = $token | split row ',' | drop 1
+def comma-list [typed: string]: table -> table {
+    let chosen = $typed | split row ',' | drop 1
     let prefix = $chosen | str join ','
 
     $in
@@ -138,8 +137,8 @@ def "nu-complete claude input-formats" []: nothing -> record { $input_formats | 
 def "nu-complete claude effort" []: nothing -> record { $effort_levels | ordered }
 def "nu-complete claude models" []: nothing -> record { $models | ordered }
 
-def "nu-complete claude tools" [context: string]: nothing -> table { $tools | comma-list $context }
-def "nu-complete claude setting-sources" [context: string]: nothing -> table { $setting_sources | comma-list $context }
+def "nu-complete claude tools" [token: record]: nothing -> table { $tools | comma-list $token.text }
+def "nu-complete claude setting-sources" [token: record]: nothing -> table { $setting_sources | comma-list $token.text }
 
 # Free-text argument: suppress Nushell's file-path fallback
 def "nu-complete claude freetext" []: nothing -> list<string> { [] }
@@ -149,15 +148,15 @@ def "nu-complete claude freetext" []: nothing -> list<string> { [] }
 # a value), so --resume is a bare switch and any session id given lands here as a
 # positional. Offer the session picker only when --resume/-r is on the line;
 # otherwise suppress file completion like plain freetext.
-def "nu-complete claude prompt" [context: string]: nothing -> any {
-    if ($context | split row ' ' | any {|w| $w in ['--resume' '-r'] }) {
+def "nu-complete claude prompt" [place: record]: nothing -> any {
+    if ($place.command | any {|w| $w in ['--resume' '-r'] }) {
         nu-complete claude sessions
     } else { [] }
 }
 
 # Directory suggestions from Nushell's own completion engine
-def "nu-complete claude dirs" [context: string]: nothing -> list<string> {
-    $context | split row ' ' | last | commandline complete --type directory
+def "nu-complete claude dirs" [token: record]: nothing -> list<string> {
+    $token.text | commandline complete --type directory
 }
 
 # ===== Dynamic Completions =====
