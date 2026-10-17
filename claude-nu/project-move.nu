@@ -11,7 +11,8 @@
 # bytes that encode the path. Measured on one 62-line session: the path occurs 65
 # times, 45 of them as that fragment; the other 20 sit inside message texts and
 # tool arguments, where they record what happened at the old location and must
-# stay as written.
+# stay as written. A cwd below the old path, `"cwd":"<old>/`, is swapped too:
+# see `cwd-swaps`.
 
 use discovery.nu [projects-root encode-project-dir]
 
@@ -123,14 +124,15 @@ def count-in-file [file: path needle: string]: nothing -> int {
 # The same touch also lands on ~/.claude.json and history.jsonl: nothing is known
 # to order by their mtime, and a special case would cost more than the uniformity
 # buys.
-def swap-in-file [file: path needle: string replacement: string]: nothing -> nothing {
+def swap-in-file [file: path swaps: table<needle: string, replacement: string>]: nothing -> nothing {
     let before = ls $file | get 0.modified
     let tmp = $"($file).claude-nu-move"
 
     cp $file $tmp
-    open --raw $file
-    | into string
-    | str replace --all --no-expand $needle $replacement
+    $swaps
+    | reduce --fold (open --raw $file | into string) {|swap text|
+        $text | str replace --all --no-expand $swap.needle $swap.replacement
+    }
     | save --raw --force $tmp
     if (ls $file | get 0.modified) != $before {
         rm --force $tmp
@@ -190,7 +192,7 @@ def fold-verdict [from: binary to: binary]: nothing -> string {
 # Claude already knows, so a collision is the normal end state, not a mistake.
 # The question worth asking is not "does the destination exist" but "does it hold
 # anything the source doesn't" — and that is computed, not asked of the user.
-def plan-fold [src: path dst: path rewriting: list<string> needle: string replacement: string]: nothing -> table {
+def plan-fold [src: path dst: path rewriting: list<string> swaps: table]: nothing -> table {
     relative-files $src
     | where ($dst | path join $it | path exists)
     | sort
@@ -208,14 +210,40 @@ def plan-fold [src: path dst: path rewriting: list<string> needle: string replac
         let after = open --raw $from
             | into binary
             | if $from in $rewriting {
-                bytes replace --all ($needle | into binary) ($replacement | into binary)
+                let bytes = $in
+
+                $swaps
+                | reduce --fold $bytes {|swap acc|
+                    $acc | bytes replace --all ($swap.needle | into binary) ($swap.replacement | into binary)
+                }
             } else { }
         let verdict = fold-verdict $after (open --raw $to | into binary)
 
         if $verdict == "conflict" {
             error make {msg: $"($rel) exists in both stores and neither copy contains the other: ($from) and ($to). Nothing was written — settle that file by hand, then rerun."}
         }
-        {kind: $verdict path: $to replaced: null source: $from needle: null replacement: null}
+        {kind: $verdict path: $to replaced: null source: $from swaps: null}
+    }
+}
+
+# The fragments a session record spells its cwd with: the project root, and any
+# directory below it.
+# Why the subdirectory form: an agent that runs `cd` inside a session keeps
+# writing to the same store, so a subagent transcript records `<old>/sub` while
+# it belongs to this project. A session started in `<old>/sub` gets a store of its
+# own (`-old-sub`) and never lands here, so the prefix cannot catch a stranger.
+# Not one prefix `"cwd":"<old>` because: it would also match `<old>-2`, a sibling.
+def cwd-swaps [old: path new: path]: nothing -> table<needle: string, replacement: string> {
+    let root = [{needle: $'"cwd":"($old)"' replacement: $'"cwd":"($new)"'}]
+
+    # Why: when the new path is below the old one, the prefix needle also
+    # matches the new root, so a cwd just rewritten would be rewritten again —
+    # and a rerun cannot tell a finished root from an untouched subdirectory.
+    # Such a move keeps refusing a subdirectory cwd as foreign.
+    if ($new | str starts-with $"($old)/") {
+        $root
+    } else {
+        $root | append {needle: $'"cwd":"($old)/' replacement: $'"cwd":"($new)/'}
     }
 }
 
@@ -225,8 +253,7 @@ def plan-fold [src: path dst: path rewriting: list<string> needle: string replac
 def plan-sessions [src: path dst: path old: path new: path]: nothing -> table {
     if not ($src | path exists) { return [] }
 
-    let needle = $'"cwd":"($old)"'
-    let replacement = $'"cwd":"($new)"'
+    let swaps = cwd-swaps $old $new
     # One read per file: the old-cwd count drives the plan, while the new-cwd
     # count and `records_cwd` are what tell a half-finished rerun and a session
     # that never started apart from a shared directory below.
@@ -236,8 +263,8 @@ def plan-sessions [src: path dst: path old: path new: path]: nothing -> table {
             let text = read-text $row.source
 
             {
-                old: ($text | count-of $needle)
-                new: ($text | count-of $replacement)
+                old: ($swaps | each {|swap| $text | count-of $swap.needle } | math sum)
+                new: ($swaps | each {|swap| $text | count-of $swap.replacement } | math sum)
                 records_cwd: ($text | str contains '"cwd":"')
             }
         }
@@ -251,7 +278,7 @@ def plan-sessions [src: path dst: path old: path new: path]: nothing -> table {
     # showing first.
     let folding = $src != $dst and ($dst | path exists)
     let rewriting = $scanned | where scan.old > 0 | get source
-    let fold = if $folding { plan-fold $src $dst $rewriting $needle $replacement } else { [] }
+    let fold = if $folding { plan-fold $src $dst $rewriting $swaps } else { [] }
     # A copy the destination already contains whole is deleted, not moved, so
     # rewriting its cwd first would be work reported on a file about to vanish.
     let dropped = $fold | where kind == "keep-destination" | get source
@@ -262,12 +289,11 @@ def plan-sessions [src: path dst: path old: path new: path]: nothing -> table {
         | insert kind "session"
         | insert path {|row| $row.source | str replace $src $dst }
         | insert replaced {|row| $row.scan.old }
-        | insert needle $needle
-        | insert replacement $replacement
+        | insert swaps {|_| $swaps }
         # `ls` yields no defined order, and a report that reshuffles between two
         # runs of the same move is hard to read and hard to diff.
         | sort-by path
-        | select kind path replaced source needle replacement
+        | select kind path replaced source swaps
 
     # A move between two paths that encode to the same directory name has
     # nothing to relocate, only cwds to rewrite.
@@ -276,7 +302,7 @@ def plan-sessions [src: path dst: path old: path new: path]: nothing -> table {
     } else {
         let relocation = if $folding { "sessions-fold" } else { "sessions-dir" }
 
-        [{kind: $relocation path: $dst replaced: null source: $src needle: null replacement: null}]
+        [{kind: $relocation path: $dst replaced: null source: $src swaps: null}]
         | append $fold
         | append $files
     }
@@ -322,7 +348,7 @@ def plan-swap [file: path kind: string needle: string replacement: string]: noth
     if $hits == 0 {
         []
     } else {
-        [{kind: $kind path: $file replaced: $hits source: $file needle: $needle replacement: $replacement}]
+        [{kind: $kind path: $file replaced: $hits source: $file swaps: [{needle: $needle replacement: $replacement}]}]
     }
 }
 
@@ -337,6 +363,7 @@ def plan-swap [file: path kind: string needle: string replacement: string]: noth
 #
 # Occurrences of the old path inside message texts and tool arguments are left
 # alone: they are a record of what happened, not a pointer to the project.
+# A `cwd` below the old path, written when a session ran `cd`, moves with it.
 # Projects nested under the old path (git worktrees, for instance) are separate
 # projects and are not moved with it.
 #
@@ -417,10 +444,10 @@ export def main [
         }
     }
     if $dry_run {
-        return ($plan | reject source needle replacement)
+        return ($plan | reject source swaps)
     }
 
-    $plan | where needle != null | each {|row| swap-in-file $row.source $row.needle $row.replacement }
+    $plan | where swaps != null | each {|row| swap-in-file $row.source $row.swaps }
 
     # Relocate last, so that a run which dies partway can be finished by running
     # it again: the sessions are still under the old name, the files already
@@ -430,5 +457,5 @@ export def main [
     if "sessions-dir" in $plan.kind { mv $src $dst }
     if "sessions-fold" in $plan.kind { fold-into $src $dst $plan }
 
-    $plan | reject source needle replacement
+    $plan | reject source swaps
 }

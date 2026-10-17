@@ -376,6 +376,47 @@ def "refuses to rename a sessions directory two projects share" [] {
 }
 
 @test
+def "moves a transcript whose cwd is below the project" [] {
+    let home = fake-home
+    let shared = projects-dir $home | path join "-work-demo"
+
+    # A subagent that ran `cd sub` keeps writing to the store of its session.
+    '{"type":"user","cwd":"/work/demo/sub"}' | save --raw ($shared | path join "aaaa" "subagents" "agent-2.jsonl")
+    with-env {HOME: $home} { project-move $OLD $NEW | ignore }
+    let moved = open --raw (projects-dir $home | path join "-work-moved-demo" "aaaa" "subagents" "agent-2.jsonl")
+
+    rm --recursive --force $home
+
+    assert equal $moved '{"type":"user","cwd":"/work/moved/demo/sub"}'
+}
+
+@test
+def "a move into a subdirectory of the project rewrites the root cwd once" [] {
+    let home = fake-home
+
+    with-env {HOME: $home} { project-move $OLD "/work/demo/inner" | ignore }
+    let moved = open --raw (projects-dir $home | path join "-work-demo-inner" "aaaa.jsonl")
+
+    rm --recursive --force $home
+
+    assert equal ($moved | str contains '"cwd":"/work/demo/inner"') true
+    assert equal ($moved | str contains '/inner/inner') false
+}
+
+@test
+def "still refuses a sibling whose path only starts with the project path" [] {
+    let home = fake-home
+
+    # `/work/demo-2` is not below `/work/demo`; it only shares the first letters.
+    '{"type":"user","cwd":"/work/demo-2"}' | save --raw (projects-dir $home | path join "-work-demo" "cccc.jsonl")
+    let failed = try { with-env {HOME: $home} { project-move $OLD $NEW }; false } catch { true }
+
+    rm --recursive --force $home
+
+    assert $failed
+}
+
+@test
 def "moves past a session file that records no cwd" [] {
     let home = fake-home
 
