@@ -57,7 +57,7 @@ export def main []: [nothing -> table record -> table table -> table list<string
         # Why only here: `project_name` needs the transcript's `cwd`, and most
         # sessions run no workflow, so only the few that did pay for the read.
         let project_name = $session_file
-            | read-session-records --contains '"cwd"'
+            | read-session-records --contains ['"cwd"']
             | pick-first $.cwd
             | project-display-name
 

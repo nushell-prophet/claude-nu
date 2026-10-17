@@ -72,7 +72,7 @@ A resumed or forked session repeats its parent's records under the same `uuid`; 
 - `message` — User message content
 - `timestamp` — When message was sent
 - `uuid` — The record's own id: its address inside the session
-- `kind` — What the row is: `typed`, `bash-input` (a `!` command), `bash-output` (what it printed), `system` (only with `--include-system`) or `response` (only with `--include-responses`)
+- `kind` — What the row is: `typed`, `bash-input` (a `!` command), `bash-output` (what it printed), `file` (a file attached with `@`, or the part of a file that changed on disk outside the agent's Edit and Write tools during the session), `system` (only with `--include-system`) or `response` (only with `--include-responses`)
 - `session` — Session UUID, the selector to pipe onward
 - `project` — Project directory the session belongs to, encoded (`/` turned into `-`) — a display name, not a real path
 - `project_name` — The same project, readable: its `cwd`'s last two path segments, same form as `projects.name`. `""` when the session carries no `cwd`
@@ -83,6 +83,9 @@ A resumed or forked session repeats its parent's records under the same `uuid`; 
 The rendered text cannot tell a `!git log` from a `git log` output the user pasted: both become the same fenced block.
 So the kind is read from the raw record — `isMeta`, `isCompactSummary` and the wrapper tags — and the user's own words are `where kind == typed`.
 An editor selection stays `typed`, because most such messages also carry the user's own words.
+A `file` row is there because a task is often written in a file, such as a gi canvas or a todo note.
+The prompt is then only `@<file> go`, so the user's words are in the file and `where kind == typed` leaves them out.
+A changed file is not always the user's work: the agent's own shell edits, a formatter and git also change files on disk.
 
 **The turns around a hit.**
 `--context N` needs a regex.

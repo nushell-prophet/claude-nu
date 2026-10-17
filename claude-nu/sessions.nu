@@ -187,8 +187,10 @@ export def "nu-complete claude sessions" []: nothing -> record {
 # is what gets filtered, and here a row is one message with a timestamp of its
 # own — so `messages --since 1wk` returns last week's messages, not every
 # message of a session that happens to have been open last week.
-# Every row carries a `kind`: `typed`, `bash-input`, `bash-output`, `system`
-# (only with --include-system) or `response` (only with --include-responses).
+# Every row carries a `kind`: `typed`, `bash-input`, `bash-output`, `file` (a
+# file attached with `@`, or a file changed on disk outside the agent's Edit and
+# Write tools during the session; its role is `attachment`), `system` (only with
+# --include-system) or `response` (only with --include-responses).
 # Why a column and not a flag per kind: the user's own words are
 # `where kind == typed`, and the pasted output of a `!` command stays one
 # `where` away instead of being guessed from the text.
@@ -276,15 +278,19 @@ export def messages [
         # JSONL for the user-type marker before decoding — assistant turns, tool
         # results, and summaries (the ~70% bulk) never reach the JSON parser. The
         # `where type? == "user"` below still runs, so the prefilter only narrows.
+        # Not `"type":"attachment"` for the file rows because: most attachment
+        # records are reminders Claude Code writes every turn, and the marker
+        # would parse them all to keep a few.
         let records = if $include_responses {
             $session_file | read-session-records
         } else {
-            $session_file | read-session-records --contains '"type":"user"'
+            $session_file | read-session-records --contains ['"type":"user"' '"type":"file"' '"type":"edited_text_file"']
         }
         let dialogue = $records
             | if $include_responses { } else { where type? == "user" }
             | extract-dialogue $extract_text --keep-system=$include_system
             | insert kind { message-kind }
+            | append ($records | attached-files)
 
         # Why: sorting the ISO-8601 timestamp strings sorts chronologically,
         # so one sort here serves both the --raw and rendered branches.
@@ -420,7 +426,7 @@ export def tool-calls [
         # Why --results reads the user records too: a result is a tool_result
         # block on the user record that follows the call, joined by the call's id.
         let records = $session_file
-            | if $results { read-session-records } else { read-session-records --contains '"type":"assistant"' }
+            | if $results { read-session-records } else { read-session-records --contains ['"type":"assistant"'] }
         let outcomes = if $results {
             $records
             | where type? == "user"
@@ -596,7 +602,7 @@ export def slash-commands [
         # and every one of them carries the tag — a file with no match never
         # reaches the JSON parser. `extract-slash-command` re-reads the tag, so
         # this only narrows.
-        let records = $session_file | read-session-records --contains "<command-name>"
+        let records = $session_file | read-session-records --contains ["<command-name>"]
 
         $records
         | each {|record|

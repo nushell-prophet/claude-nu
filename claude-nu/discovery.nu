@@ -368,7 +368,7 @@ def sessions-named [name: string]: list<path> -> list<path> {
     $files
     | rg-filter-session-files $marker --fixed-strings
     | where {
-        read-session-records --contains '"custom-title"'
+        read-session-records --contains ['"custom-title"']
         | where type? == "custom-title"
         | get --optional customTitle
         | compact
@@ -393,16 +393,24 @@ export def session-id-from-path []: path -> string {
 # by substring before decoding, so a caller wanting one record type (messages
 # wants user turns — only ~30% of lines) never parses the rest; the caller still
 # re-filters the decoded `type`, so a line merely quoting the marker can't slip in.
-export def read-session-records [--contains: string]: path -> table {
+# A line is kept when it holds any of the markers: messages wants user turns and
+# the attached-file records, which carry no `"type":"user"`.
+export def read-session-records [--contains: list<string>]: path -> table {
     let file = $in
     # Why the NUL trim: an unclean shutdown can leave a transcript extended by a
     # run of NUL bytes that were never written. A raw NUL is never valid JSON,
     # so the trim drops no record — while one such file on the machine stopped
     # every `--all-projects` read. Only a trailing run: a NUL anywhere else is a
     # shape nobody has seen, and it still fails below.
+    # Why one regex of escaped literals: a closure per line made the
+    # all-projects `messages` search four times slower.
+    let pattern = $contains
+        | default []
+        | each { str replace --all --regex '[\\^$.|?*+()\[\]{}]' '\$0' }
+        | str join "|"
     let raw = open --raw $file
         | str trim --right --char (char nul)
-        | if $contains == null { } else { lines | where ($it | str contains $contains) | str join "\n" }
+        | if $contains == null { } else { lines | where $it =~ $pattern | str join "\n" }
 
     # Why: `from json --objects` is lazy, so its error surfaces wherever the
     # caller consumes the table — pointing at some pipeline in discovery.nu and

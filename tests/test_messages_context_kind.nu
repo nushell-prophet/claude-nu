@@ -269,3 +269,57 @@ def "messages --context refuses a negative count" [] {
 
     assert equal $result "--context cannot be negative"
 }
+
+# =============================================================================
+# file rows
+# =============================================================================
+
+# Attachment records as Claude Code writes them: an `@` file with its whole
+# text, a file the user edited during the session (the snippet carries line
+# numbers), an `@` file the agent had already read (no text), and one of the
+# reminders written every turn.
+const FILE_LINES = [
+    '{"type":"user","uuid":"u1","message":{"content":"@todo/song.md go"},"timestamp":"2024-01-15T10:00:00Z"}'
+    '{"type":"attachment","uuid":"f1","attachment":{"type":"file","filename":"/r/todo/song.md","content":{"type":"text","file":{"filePath":"/r/todo/song.md","content":"a phrase: nobody knows"}}},"timestamp":"2024-01-15T10:00:01Z"}'
+    '{"type":"attachment","uuid":"f2","attachment":{"type":"edited_text_file","filename":"/r/gi-canvas/plan.md","snippet":"7\tfirst line\n8\tsecond line"},"timestamp":"2024-01-15T10:00:02Z"}'
+    '{"type":"attachment","uuid":"f3","attachment":{"type":"file","filename":"/r/x.md","content":{"type":"file_unchanged"}},"timestamp":"2024-01-15T10:00:03Z"}'
+    '{"type":"attachment","uuid":"f4","attachment":{"type":"date","content":"nobody knows"},"timestamp":"2024-01-15T10:00:04Z"}'
+]
+
+@test
+def "messages returns attached and edited files as rows of kind file" [] {
+    let f = session-file $FILE_LINES
+    let result = {path: $f} | messages | select uuid kind message
+
+    rm $f
+
+    assert equal $result [
+        [uuid kind message];
+        [u1 typed "@todo/song.md go"]
+        [f1 file "a phrase: nobody knows"]
+        [f2 file "first line\nsecond line"]
+    ]
+}
+
+@test
+def "messages finds a phrase that only an attached file holds" [] {
+    let f = session-file $FILE_LINES
+    let found = {path: $f} | messages 'nobody knows' | get uuid
+    let typed = {path: $f} | messages | where kind == typed | get uuid
+
+    rm $f
+
+    assert equal $found [f1]
+    assert equal $typed [u1]
+}
+
+@test
+def "file rows do not count as user messages of a session" [] {
+    let f = session-file $FILE_LINES
+    let result = sessions $f --columns user_msg_count,turn_count | first
+
+    rm $f
+
+    assert equal $result.user_msg_count 1
+    assert equal $result.turn_count 1
+}
