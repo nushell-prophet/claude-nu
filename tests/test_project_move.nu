@@ -635,6 +635,35 @@ def "does not resolve a file by a rewrite that will never happen to it" [] {
 }
 
 @test
+def "drops a source copy the destination holds verbatim with the old cwd" [] {
+    let home = fake-home
+    # What a snapshot restore leaves behind: the store under its new name holds
+    # the same bytes as the old one, the old cwd included.
+    let verbatim = [$USER_LINE $ASSISTANT_LINE] | str join "\n" | $"($in)\n"
+    let dst = seed-destination $home "aaaa.jsonl" $verbatim
+    let report = with-env {HOME: $home} { project-move $OLD $NEW }
+    let content = open --raw ($dst | path join "aaaa.jsonl")
+
+    rm --recursive --force $home
+
+    assert equal ($report | where kind == keep-destination | get path | path basename) [aaaa.jsonl]
+    assert equal $content (rewritten $USER_LINE $ASSISTANT_LINE)
+}
+
+@test
+def "rewrites an old cwd the destination store still records" [] {
+    let home = fake-home
+    let dst = seed-destination $home "cccc.jsonl" $"($SUBAGENT_LINE)\n"
+    let report = with-env {HOME: $home} { project-move $OLD $NEW }
+    let content = open --raw ($dst | path join "cccc.jsonl")
+
+    rm --recursive --force $home
+
+    assert equal ($report | where kind == session | get path | path basename | sort) [aaaa.jsonl agent-1.jsonl cccc.jsonl]
+    assert equal $content (rewritten $SUBAGENT_LINE)
+}
+
+@test
 def "refuses a pair where neither copy contains the other" [] {
     let home = fake-home
 

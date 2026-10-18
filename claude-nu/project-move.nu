@@ -187,12 +187,22 @@ def fold-verdict [from: binary to: binary]: nothing -> string {
     }
 }
 
+# The swaps applied to bytes, as `swap-in-file` will apply them to the text.
+def swap-bytes [swaps: table]: binary -> binary {
+    let bytes = $in
+
+    $swaps
+    | reduce --fold $bytes {|swap acc|
+        $acc | bytes replace --all ($swap.needle | into binary) ($swap.replacement | into binary)
+    }
+}
+
 # Plan rows for the files that exist in both stores.
 # Why a fold and not a refusal: a project that moves twice comes back to a name
 # Claude already knows, so a collision is the normal end state, not a mistake.
 # The question worth asking is not "does the destination exist" but "does it hold
 # anything the source doesn't" — and that is computed, not asked of the user.
-def plan-fold [src: path dst: path rewriting: list<string> swaps: table]: nothing -> table {
+def plan-fold [src: path dst: path rewriting: list<string> dst_rewriting: list<string> swaps: table]: nothing -> table {
     relative-files $src
     | where ($dst | path join $it | path exists)
     | sort
@@ -209,15 +219,13 @@ def plan-fold [src: path dst: path rewriting: list<string> swaps: table]: nothin
         # transcripts are known to be UTF-8.
         let after = open --raw $from
             | into binary
-            | if $from in $rewriting {
-                let bytes = $in
-
-                $swaps
-                | reduce --fold $bytes {|swap acc|
-                    $acc | bytes replace --all ($swap.needle | into binary) ($swap.replacement | into binary)
-                }
-            } else { }
-        let verdict = fold-verdict $after (open --raw $to | into binary)
+            | if $from in $rewriting { swap-bytes $swaps } else { }
+        # The destination is compared as it will look too: a copy that still
+        # records the old cwd gets the same swap before anything is folded.
+        let target = open --raw $to
+            | into binary
+            | if $to in $dst_rewriting { swap-bytes $swaps } else { }
+        let verdict = fold-verdict $after $target
 
         if $verdict == "conflict" {
             error make {msg: $"($rel) exists in both stores and neither copy contains the other: ($from) and ($to). Nothing was written — settle that file by hand, then rerun."}
@@ -278,7 +286,21 @@ def plan-sessions [src: path dst: path old: path new: path]: nothing -> table {
     # showing first.
     let folding = $src != $dst and ($dst | path exists)
     let rewriting = $scanned | where scan.old > 0 | get source
-    let fold = if $folding { plan-fold $src $dst $rewriting $swaps } else { [] }
+    # Why the destination is scanned too: a store restored from a snapshot taken
+    # before an earlier move is a verbatim copy that still records the old cwd.
+    # Compared as it stands, it made two byte-identical copies a conflict, and
+    # whatever the fold kept there went on pointing at the old path.
+    let dst_scanned = if $folding {
+        jsonl-files $dst
+        | wrap source
+        | insert old {|row|
+            let text = read-text $row.source
+
+            $swaps | each {|swap| $text | count-of $swap.needle } | math sum
+        }
+        | where old > 0
+    } else { [] }
+    let fold = if $folding { plan-fold $src $dst $rewriting $dst_scanned.source $swaps } else { [] }
     # A copy the destination already contains whole is deleted, not moved, so
     # rewriting its cwd first would be work reported on a file about to vanish.
     let dropped = $fold | where kind == "keep-destination" | get source
@@ -290,10 +312,17 @@ def plan-sessions [src: path dst: path old: path new: path]: nothing -> table {
         | insert path {|row| $row.source | str replace $src $dst }
         | insert replaced {|row| $row.scan.old }
         | insert swaps {|_| $swaps }
+        | select kind path replaced source swaps
+        # A destination copy the source replaces is overwritten, so its rewrite
+        # would be work reported on a file about to vanish.
+        | append (
+            $dst_scanned
+            | where source not-in ($fold | where kind == "keep-source" | get path)
+            | each {|row| {kind: "session" path: $row.source replaced: $row.old source: $row.source swaps: $swaps} }
+        )
         # `ls` yields no defined order, and a report that reshuffles between two
         # runs of the same move is hard to read and hard to diff.
         | sort-by path
-        | select kind path replaced source swaps
 
     # A move between two paths that encode to the same directory name has
     # nothing to relocate, only cwds to rewrite.
