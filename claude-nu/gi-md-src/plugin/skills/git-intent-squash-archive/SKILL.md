@@ -11,6 +11,9 @@ But those abandoned attempts are the record of *why* the surviving shape won, so
 This rewrites the branch (`git reset --soft`, `git tag -f`).
 That is why steps 1 and 6 stop instead of warning: on a trunk the reset would rewrite history other people have, and once it has run there is nothing left to confirm.
 
+In the mono — a repo with `mono.yml` at its root (`test -f "$(git rev-parse --show-toplevel)/mono.yml"`) — **STOP**, and tell the user to land the branch with `/mono-land` instead.
+Why: `mono-land` squashes and archives too, under a tag name the mono's shared tag namespace can hold, and lands the branch.
+
 Verify the working tree is clean (`git status --porcelain` returns empty).
 If not, stop and ask the user to commit or stash first.
 

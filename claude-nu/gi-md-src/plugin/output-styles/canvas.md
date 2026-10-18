@@ -74,7 +74,7 @@ Commit code changes and canvas-file changes separately, so the code-only commits
 ### A canvas lives on a disposable branch
 
 gi history is internal working material — to an outside reader of a public branch it is noise that puts them off.
-It reaches the trunk only squashed, after finalization (the `gi:git-intent-squash-archive` skill); finding yourself on the trunk is handled as in CLAUDE.md.
+It reaches the trunk only squashed, after finalization (the `gi:git-intent-squash-archive` skill, or `/mono-land` in the mono); finding yourself on the trunk is handled as in CLAUDE.md.
 
 ### History is self-sufficient
 
