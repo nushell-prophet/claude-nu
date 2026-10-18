@@ -23,12 +23,16 @@ export def projects-root []: nothing -> path {
 }
 
 # The directory name Claude Code gives a project under ~/.claude/projects: its
-# absolute path with every `/` turned into `-`. Lossy on purpose — a `-` already
-# in the path is indistinguishable from a separator — so the name identifies a
+# absolute path with every character but an ASCII letter or digit turned into
+# `-`, so `.claude` becomes `-claude`. Lossy on purpose — a `-` already in the
+# path is indistinguishable from a separator — so the name identifies a
 # directory, never a project. Recovering the real path means reading a session's
 # `cwd` (see `projects`).
+# Why: the rule is Claude Code's own `replace(/[^a-zA-Z0-9]/g, "-")`, read from
+# its 2.1.302 binary. A name over 200 characters also gets a hash suffix there,
+# which this does not reproduce.
 export def encode-project-dir []: path -> string {
-    str replace --all '/' '-'
+    str replace --all --regex '[^a-zA-Z0-9]' '-'
 }
 
 # Sessions directory for the current project: ~/.claude/projects/<encoded-pwd>

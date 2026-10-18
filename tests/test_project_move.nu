@@ -206,6 +206,23 @@ def "rewrites cwd without a rename when the encoded name is unchanged" [] {
     assert equal ($content | str contains '"cwd":"/work-demo"') true
 }
 
+@test
+def "finds the sessions of a path with a dot, as Claude Code names them" [] {
+    let home = $nu.temp-dir | path join $"project-move-(random uuid)"
+    # Claude Code turns every character but a letter or digit into `-`, so the
+    # worktree path below lands in `-work-demo--claude-worktrees-x`.
+    let session_dir = $home | path join ".claude" "projects" "-work-demo--claude-worktrees-x"
+
+    mkdir $session_dir
+    '{"type":"user","cwd":"/work/demo/.claude/worktrees/x"}' | save --raw ($session_dir | path join "aaaa.jsonl")
+    with-env {HOME: $home} { project-move "/work/demo/.claude/worktrees/x" $NEW | ignore }
+    let content = open --raw (projects-dir $home | path join "-work-moved-demo" "aaaa.jsonl")
+
+    rm --recursive --force $home
+
+    assert equal ($content | str contains '"cwd":"/work/moved/demo"') true
+}
+
 # =============================================================================
 # The awkward shapes a real ~/.claude can take
 # =============================================================================
@@ -213,7 +230,7 @@ def "rewrites cwd without a rename when the encoded name is unchanged" [] {
 @test
 def "moves a project whose path holds glob metacharacters" [] {
     let home = $nu.temp-dir | path join $"project-move-(random uuid)"
-    let session_dir = $home | path join ".claude" "projects" "-work-demo[1]"
+    let session_dir = $home | path join ".claude" "projects" "-work-demo-1-"
 
     mkdir $session_dir
     '{"type":"user","cwd":"/work/demo[1]"}' | save --raw ($session_dir | path join "aaaa.jsonl")
