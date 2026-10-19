@@ -1017,17 +1017,23 @@ export def main [
         }
     }
     let active_window = $active_since_at != null or $active_until_at != null
-    # Why: piped string is a target path (`"dir" | sessions`); piped table
-    # carries path/session columns like the other commands accept.
-    let piped_path = if ($input | describe) == "string" { $input } else { null }
-    let piped_files = if $piped_path == null { resolve-piped-sessions $input } else { null }
+    # Why a piped string equal to --session is no second scope: inside
+    # `each {|id| ... }` the item is also piped into the first command of the
+    # closure, so `each {|id| claude-nu sessions --session $id }` pipes in the
+    # very id it names.
+    let input = if ($input | describe) == "string" and $input == $session { null } else { $input }
+    # Why a string becomes a list of one: a list already reads each string as a
+    # path when one exists there, otherwise as a selector as `--session` reads
+    # it. So `$id | sessions` works inside `each`, where `--session` would be a
+    # second scope.
+    let input = if ($input | describe) == "string" { [$input] } else { $input }
 
     # Why data-driven: every scope selector excludes every other, so one check
     # over the active set covers all pairs — the old pairwise ifs had to
     # hand-enumerate each combination and could miss one.
     let active_scopes = [
         [scope active];
-        ["piped input" ($piped_files != null or $piped_path != null)]
+        ["piped input" ($input != null)]
         ["--session" ($session != null)]
         ["--last" $last]
         ["--all-projects" $all_projects]
@@ -1039,6 +1045,9 @@ export def main [
     if ($active_scopes | length) > 1 {
         error make $"($active_scopes | str join ' and ') are mutually exclusive — pick one session scope"
     }
+    # Why after the check: resolving a piped id that names nothing fails with
+    # "Session not found", which would hide the conflict the caller wrote.
+    let piped_files = resolve-piped-sessions $input
     # Why: --last/--session resolve to a single file — a subagent one when
     # --session names `agent-<id>` — so there is nothing to widen with
     # subagents; flag it as a no-op rather than silently ignore.
@@ -1070,7 +1079,7 @@ export def main [
         # Why: piped rows and positional paths mean the same thing (`projects |
         # sessions` pipes project dirs), so they share one expansion.
         $paths
-        | if ($in | is-empty) { [($piped_path | default (get-sessions-dir))] } else { }
+        | if ($in | is-empty) { [(get-sessions-dir)] } else { }
         | expand-session-paths --subagents=$subagents
     }
 

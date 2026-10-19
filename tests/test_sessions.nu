@@ -3677,3 +3677,52 @@ def "export-session last exchange skips the running turn only in the live sessio
     assert str contains (last-exchange-md) "importing now"
     assert not (last-exchange-md | str contains "second question")
 }
+
+# A home whose one project store holds one fixture session, for the selectors
+# that name a session by id instead of by path.
+def id-home []: nothing -> record {
+    let home = $nu.temp-dir | path join $"sessions-id-(random uuid)"
+    let store = $home | path join ".claude" "projects" "-work-demo"
+
+    mkdir $store
+    open --raw ($FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST) | save --raw ($store | path join $FIXTURE_USER_FIRST)
+    {home: $home id: ($FIXTURE_USER_FIRST | str substring 0..7)}
+}
+
+@test
+def "a piped id selects the session that --session names" [] {
+    let h = id-home
+    let piped = with-env {HOME: $h.home} { $h.id | sessions --columns session_id | get session_id }
+    let flagged = with-env {HOME: $h.home} { null | sessions --session $h.id --columns session_id | get session_id }
+
+    rm --recursive --force $h.home
+
+    assert equal $piped $flagged
+    assert equal ($piped | length) 1
+}
+
+@test
+def "each with --session is not a second scope" [] {
+    let h = id-home
+    # Inside `each` the item is piped into the closure too, so this call
+    # carries the id twice: once piped, once in the flag.
+    let ids = with-env {HOME: $h.home} {
+        [$h.id] | each {|id| sessions --session $id --columns session_id } | flatten | get session_id
+    }
+
+    rm --recursive --force $h.home
+
+    assert equal ($ids | length) 1
+}
+
+@test
+def "a piped string that differs from --session is still a conflict" [] {
+    let h = id-home
+    let err = with-env {HOME: $h.home} {
+        try { "other" | sessions --session $h.id | ignore; "" } catch {|e| $e.msg }
+    }
+
+    rm --recursive --force $h.home
+
+    assert str contains $err "mutually exclusive"
+}
