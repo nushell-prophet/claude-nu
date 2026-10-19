@@ -239,10 +239,6 @@ def "moves a project whose path holds glob metacharacters" [] {
 
     rm --recursive --force $home
 
-    # The directory name is built from the project path, so `[1]` in it used to
-    # turn the file walk into a pattern matching nothing: the sessions dropped
-    # out of the plan while the rename went ahead, leaving records pointing at a
-    # path that no longer exists.
     assert equal ($content | str contains '"cwd":"/work/moved/demo"') true
 }
 
@@ -325,9 +321,7 @@ def "refuses a file it cannot read as text" [] {
 
     rm --recursive --force $home
 
-    # A non-UTF8 transcript used to count as zero occurrences and vanish from
-    # the plan, then throw at write time. Now it stops the move before anything
-    # is written.
+    # A non-UTF8 transcript stops the move before anything is written.
     assert $failed
     assert equal ($untouched | str contains '"cwd":"/work/demo"') true
 }

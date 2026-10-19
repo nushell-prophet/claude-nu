@@ -38,15 +38,12 @@
 # Bare `gi` is the third name and does no work: it reports which canvas the
 # asking session is bound to, and the canvases where you stand.
 #
-# Why a plugin and not files copied into each repo, which is what this replaced:
-# `--plugin-dir` loads a directory for one session, reading it in place. Copying
-# was copy-if-absent, so every repo was pinned to whatever the module held when
-# it was first seeded, and nothing anybody reads reported the drift — repos ran
-# months of canvas sessions on a style and skills the module had long since
-# rewritten. Reading in place cannot go stale, writes nothing into the repo, and
-# still loads only for launches gi makes, so a plain `claude` anywhere is
-# untouched. It also deleted the whole seeding half of this file: gi-paths,
-# gi-seed, gi-stale, the `.claude/.gitignore` block, and `gi enable` itself.
+# Why a plugin and not files copied into each repo:
+# `--plugin-dir` loads a directory for one session, reading it in place. A copy
+# pins each repo to whatever the module held when it was seeded, and nothing
+# anybody reads reports the drift. Reading in place cannot go stale, writes
+# nothing into the repo, and still loads only for launches gi makes, so a plain
+# `claude` anywhere is untouched.
 # Plugin components are namespaced by the plugin's name, so the style is
 # `gi:Canvas` and the skills are `gi:git-intent` and friends — verified against
 # the CLI, an unnamespaced `Canvas` resolves to nothing and the launch is
@@ -600,13 +597,9 @@ export def --wrapped "gi open" [
     gi-launch --doc $doc --hook=(not $no_hook) --new-session=$new_session --fork=$fork --execute=$execute --extra $extra
 }
 
-# Why a verb of its own and not a flag on `gi enable` (which is what this
-# replaced): enable seeds distributed text and makes no canvas, so an import
-# living there dragged in a path and three flags the command had no other use
-# for, plus three run-time guards to keep them apart. Why the session is a
-# parameter and not "the session I run inside": a switch can only ever mean the
-# live one, so importing an older chat from the REPL was impossible, and a
-# switch gives a completer nothing to complete.
+# Why the session is a parameter and not "the session I run inside": a switch
+# can only ever mean the live one, so importing an older chat from the REPL
+# would be impossible, and a switch gives a completer nothing to complete.
 
 # Write a canvas from a session's dialogue: the canvas header, an import note,
 # then the user's messages and Claude's visible replies. The doc records that
@@ -691,9 +684,6 @@ export def "gi import" [
     }
 
     print $"canvas: ($paths_doc.rel)"
-    # Nothing to check before this line any more: the style and the skills ride
-    # the launch as a plugin, so there is no per-repo state an import could find
-    # missing and no seeded copy that could have drifted.
     print $"open a bound session on it:  claude-nu gi open ($paths_doc.rel)"
     if $session == null {
         # The log can never hold the turn that ran the import (Claude Code writes

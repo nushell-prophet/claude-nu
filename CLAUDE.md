@@ -73,9 +73,6 @@ Reference-doc fetchers (Claude Code + Nushell docs): `cozy docs claude` / `cozy 
   `root` stays a separate value for the one repo-scoped thing left: the branch guard.
   Not the repo root: inside a monorepo the root is never where you work, so `gi open todo/x.md` from `mono/sub` would make and bind `mono/todo/x.md`.
   Cost accepted: a canvas opened from a subdirectory gets its own session store (`~/.claude/projects/` is keyed by cwd), so `claude-nu sessions` at the root will not list it without `--all-projects`; `claude --resume <id>` finds it anyway, since v2.1.223 searches every project on the machine.
-- A repo seeded by the old gi keeps its copies until they are deleted by hand, and project skills coexist with plugin skills rather than override them — so a canvas session there loads each gi skill twice, the repo's copy bare and frozen, the plugin's as `gi:*`.
-  Four paths to remove: `.claude/output-styles/canvas.md`, `.claude/skills/git-intent*`, `.claude/skills/gi-canvas`, the `# gi seeds` block in `.claude/.gitignore`.
-  No code does this: gi no longer reads those paths, so it cannot tell its own leftovers from files the user put there.
 - `40-gi-canvas` is the in-session entry point: it runs `gi import` and hands the user the command to launch the bound session, because a session cannot bind itself.
 
 ## Commands

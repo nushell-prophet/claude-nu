@@ -340,8 +340,8 @@ export def messages [
 # top-level session of the current project, piped session rows narrow it, the
 # regex argument gets the same rg pre-filter over the raw JSONL, and `--no-rg`
 # turns that off.
-# Why a command and not another `sessions` column: `bash_commands` was the only
-# window onto agent actions, and it is Bash-only — mining this store for
+# Why a command and not another `sessions` column: `bash_commands` is Bash-only —
+# mining this store for
 # `claude-nu` invocations, 82 of the 588 an agent made came through
 # `mcp__nushell__evaluate` and were invisible. It also aggregates per session,
 # so a matched command carries no timestamp and no row of its own, and the

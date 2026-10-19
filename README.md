@@ -528,7 +528,7 @@ The `40-gi-canvas` skill drives the whole flow from inside a chat session, so yo
 The one write is Claude Code's own: an interactive load of the hooks module puts editor types (`tsconfig.json`, `.claude-plugin/types/`) into the plugin folder, inside this module, never into your repo.
 Both are gitignored, and a read-only plugin folder still loads.
 So a canvas launch writes exactly one thing into your repo: the canvas.
-There is no `.claude/` from gi, no `.gitignore` block explaining it, and no `gi enable` verb — nothing is seeded, so nothing has to be refreshed.
+There is no `.claude/` from gi — nothing is seeded, so nothing has to be refreshed.
 
 Reading in place cannot go stale.
 It also keeps the protocol opt-in: the plugin loads only for launches gi makes, so a plain `claude` anywhere else is untouched — which a machine-wide install into `~/.claude/skills/` would have given up.
@@ -537,18 +537,12 @@ It also keeps the protocol opt-in: the plugin loads only for launches gi makes, 
 Claude Code prefixes a plugin's components with the plugin's name, so the style is `gi:Canvas` and the skills are `/gi:git-intent`, `/gi:git-intent-readback`, `/gi:git-intent-distill`, `/gi:git-intent-squash-archive`.
 The prefix is not cosmetic: a bare `Canvas` in `outputStyle` resolves to nothing and the session starts with no style **and no error**, which is gi silently half on.
 
-**A repo seeded by the old gi needs cleaning out by hand.**
-Nothing migrates it, on purpose: gi no longer reads those paths, so it cannot tell its own leftovers from files you put there.
-Project skills and plugin skills coexist rather than override, so until you remove them a canvas session in such a repo loads each gi skill twice — once bare from the repo copy, which is frozen at whatever the module held when that repo was first seeded, and once as `gi:*` from the plugin.
-Four things to delete: `.claude/output-styles/canvas.md`, `.claude/skills/git-intent*`, `.claude/skills/gi-canvas`, and the `# gi seeds` block in `.claude/.gitignore` (delete the file if that block is all it holds).
-
 **One skill is not in the plugin.**
 `40-gi-canvas` (the `40-` prefix is that repo's, so its skills group in the menu) turns the chat you are already in into a canvas, which means it has to be there in sessions gi did *not* launch — exactly where `--plugin-dir` never reaches.
 It ships with the rest of your own skills instead, and is the one piece of gi that is installed rather than read from the module.
 
-**Why `import` is its own verb.**
-It was `gi enable --from-session`, which put a canvas-writing switch on the one command that makes no canvases, and dragged in a path plus three flags that meant nothing without it — enforced by run-time guards a signature states for free.
-As a switch it could also only ever mean the live session, so an older chat could not be imported from the REPL at all, and there was nothing for a completer to complete.
+**Why `import` takes its session as a parameter.**
+A switch could only ever mean the live session, so an older chat could not be imported from the REPL at all, and there would be nothing for a completer to complete.
 
 Canvases come from `gi open`, which creates one from the template and binds a session to it in the same breath, or from `gi import`, which writes one from a dialogue — so no two verbs ever write the same file.
 
