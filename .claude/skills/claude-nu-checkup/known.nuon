@@ -34,6 +34,13 @@
         fork-context-ref: {status: ignored note: "written into the parent's transcript when Agent(subagent_type: fork) spawns a child — agentId, parentSessionId, parentLastUuid, contextLength, the point the fork branched off. Bookkeeping, not dialogue"}
         cost-state: {status: ignored note: "a running cost snapshot for the session (2.1.250+): totalCostUSD, totalAPIDuration, totalToolDuration, totalDuration, totalLinesAdded/Removed, and modelUsage keyed by model id. A session may hold several; the last one is current. Not read: token_usage already carries the cost/effort signal from message.usage, and totalCostUSD is 0 with an empty modelUsage in half a 40-session window — a snapshot written before any billed call, so it is not a signal every session has. modelUsage is where real dollars per model live if a cost column is ever wanted"}
         bridge-session: {status: ignored note: "cloud-bridge bookkeeping written when a session is bridged to a remote one (2.1.250+): bridgeSessionId (cse_*), lastSequenceNum, ownerAccountUuid, ownerOrganizationUuid. Plumbing, not dialogue"}
+        api-request: {status: ignored note: "a log of one API call (first seen 2026-10-14, 2.1.30x): querySource, shapeHash, params with model, betas and effort. One per call, in subagent transcripts too. Not dialogue: the assistant record already carries the model and usage. The type is not user or assistant, so no reader picks it up"}
+        api-request-blob: {status: ignored note: "one content-addressed piece of an API request (by `hash`, first seen 2026-10-14): a message with role user or system holding the system prompt, the CLAUDE.md text, deferred-tool lists. Text nobody typed, so it must never reach messages — and it does not, because readers key on `type`, not on `message.role`. It holds tool definitions, so `\"name\":\"Bash\"` occurs in it: the rg pre-filter of `tool-calls --tool` now passes every new file, which costs speed, not correctness. 40 of these were 200 KB of a 1.1 MB transcript on 2026-10-19"}
+        api-request-shape: {status: ignored note: "the request skeleton a shapeHash names (first seen 2026-10-14): the system blocks and tool list of a session or a subagent. Same reasons as api-request-blob"}
+        progress: {status: ignored note: "hook and tool progress events (data.type hook_progress and others). Old versions only: the newest is from 2.1.83, 2026-03-28"}
+        dev-mods: {status: ignored note: "names the dev-mods folder of a session (~/.claude/dev-mods/<session>); plugin plumbing"}
+        frame-link: {status: ignored note: "artifactCount and a timestamp, written when a session publishes artifacts; no dialogue"}
+        continued-in: {status: ignored note: "continuedInSessionId: the session that took this one over. 1 record on disk on 2026-10-19. A reader that joins a session to its continuation would start here"}
     }
 
     content_blocks: {
@@ -43,6 +50,9 @@
         tool_result: {status: handled note: "render-block --tools, tool_errors"}
         server_tool_use: {status: ignored note: "server-side tool call (advisor). render-block returns '' — correct here, the paired result is encrypted"}
         advisor_tool_result: {status: ignored note: "content is advisor_redacted_result with encrypted_content; there is nothing to render"}
+        tool_addition: {status: ignored note: "a tool_reference added mid-conversation (the advisor tool, for one). Only inside api-request-blob records: 295 of 295 on disk on 2026-10-19"}
+        fallback: {status: ignored note: "an assistant block naming a model fallback (from claude-fable-5 to claude-opus-5); nothing to render. Old versions only: 5 on disk, the newest from 2.1.220"}
+        document: {status: ignored note: "a PDF the user attached, as base64 in a user record. Not typed text, like the body of an @file, so render-block drops it. 1 on disk on 2026-10-19, from 2.1.170"}
     }
 
     tool_names: {
@@ -68,6 +78,16 @@
         SendFeedback: {status: ignored note: "drafts Claude Code feedback, queued locally for the user to approve; no metric asks for it, and tool_call_count counts it generically. 1 call in the newest 300 session files on 2026-09-01"}
         StructuredOutput: {status: ignored note: "the tool a Workflow subagent given a `schema` calls to return its answer; no metric asks for it, and tool_call_count counts it generically. Lives only in Workflow subagent transcripts (agent-*.jsonl), exactly one call each because the agent prompt demands one: on 2026-09-22 at --window 120, 34 calls, all in agent-*.jsonl, none in a top-level session"}
         ScheduleWakeup: {status: rare note: "self-paced /loop: schedules the next wakeup of the session; no metric asks for it, and tool_call_count counts it generically. Only in /loop sessions: 1 call in the newest 40 files on 2026-10-07 (claude 2.1.292)"}
+        Grep: {status: ignored note: "no metric asks for it; tool_counts and tool_call_count count it generically. Still in the tool lists of some subagents (nushell-reviewer, quote-digger); 730 calls on disk on 2026-10-19"}
+        Glob: {status: ignored note: "same as Grep: 277 calls on disk on 2026-10-19"}
+        ExitPlanMode: {status: ignored note: "no metric asks for it: plan_mode_used reads EnterPlanMode"}
+        EnterWorktree: {status: ignored note: "no metric asks for it; tool_counts counts it. The worktree-state record holds the paths"}
+        ExitWorktree: {status: ignored note: "same as EnterWorktree"}
+        TaskList: {status: ignored note: "TODO-list read, like TaskCreate; no metric asks for it, tool_counts counts it"}
+        TaskOutput: {status: ignored note: "reads the output of a background task; no metric asks for it, tool_counts counts it"}
+        Artifact: {status: ignored note: "publishes a page; no metric asks for it, tool_counts counts it"}
+        ReportFindings: {status: ignored note: "the typed findings list of /code-review; no metric asks for it, tool_counts counts it"}
+        SubagentHandback: {status: ignored note: "a subagent handing control back; no metric asks for it, tool_counts counts it. 1 call on disk on 2026-10-19"}
     }
 
     usage_fields: {
@@ -96,7 +116,7 @@
         command-name: {status: handled drops: true note: "slash-command wrapper"}
         command-message: {status: handled drops: true note: "slash-command wrapper"}
         local-command-caveat: {status: handled drops: true note: "slash-command wrapper"}
-        local-command-stdout: {status: handled drops: true note: "slash-command wrapper"}
+        local-command-stdout: {status: rare drops: true note: "slash-command wrapper; present only when a local command such as /context printed something. 0 in the newest 40 files on 2026-10-19, yet 51 records since 2026-10-12, the newest written by 2.1.303 that day"}
         local-command-stderr: {status: rare drops: true note: "slash-command wrapper; present only when the command wrote to stderr"}
         task-notification: {status: handled drops: true note: "a finished background agent reporting in its own voice, filed under type: user"}
         system-reminder: {status: rare drops: true note: "Claude Code injects it. Dropped only when it leads the text — that is a turn nobody typed. A reminder appended after the user's own words leaves those words first, so the message survives the str-starts-with check whole. Leading occurrences are genuinely rare: 6 of 4690 user records in the newest 150 sessions, and 0 in a 40-session window — most reminders are appended mid-message, not leading, so a default-window run reports this dead. Rare, not dead"}
