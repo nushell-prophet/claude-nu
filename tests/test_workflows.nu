@@ -55,6 +55,35 @@ def "workflows lists one row per run of a piped session" [] {
 }
 
 @test
+def "a subagent row of sessions pipes on by session to its own transcript" [] {
+    # Why this fixture: it has a plain subagent. `session_id` on that row names
+    # the parent, so a `session` copied from it would read the parent's
+    # transcript instead of the agent's.
+    let home = $nu.temp-dir | path join $"fake-home-(random uuid)"
+    let project = $home | path join ".claude" "projects" "-fixture-project"
+
+    mkdir ($project | path dirname)
+    ^cp --recursive $FIXTURE_PROJECT $project
+
+    let checked = with-env {HOME: $home} {
+        let agents = sessions $project --subagents | where parent_session_id != null
+
+        {
+            sessions: ($agents | get session)
+            by_session: ($agents | select session | records | get uuid)
+            by_path: ($agents | select path | records | get uuid)
+        }
+    }
+
+    rm --recursive --force $home
+
+    assert ($checked.sessions | is-not-empty)
+    assert ($checked.sessions | all { str starts-with "agent-" })
+    assert ($checked.by_path | is-not-empty)
+    assert equal $checked.by_session $checked.by_path
+}
+
+@test
 def "workflows --since and --until filter by the start of each run" [] {
     let session = {path: (fixture-session $FIXTURE_WF_SESSION)}
 

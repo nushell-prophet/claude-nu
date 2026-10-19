@@ -53,7 +53,10 @@ const SESSION_COLUMNS = [
 ]
 
 # Columns every `sessions` row carries whatever --columns selects.
-const ROW_COLUMNS = [path parent_session_id]
+# Why `session`: every other command keys its rows by it, and it is read from
+# the path the way `messages` reads it — `agent-<id>` on a subagent row, where
+# `session_id` names the parent.
+const ROW_COLUMNS = [path session parent_session_id]
 
 # Selectable columns read from the file listing, not from the records: a
 # selection of only these opens no session file.
@@ -1121,7 +1124,7 @@ export def main [
     } else {
         # Why: fail fast on a typo'd column name — parse-session-columns would
         # otherwise silently omit it, hiding the mistake.
-        # Why the two row columns are accepted and dropped here: every row
+        # Why the row columns are accepted and dropped here: every row
         # carries them anyway, and the help names them, so asking for one is
         # not a typo — it was refused as an unknown column.
         let unknown = $requested | difference $all_names | difference $ROW_COLUMNS
@@ -1164,6 +1167,7 @@ export def main [
         | merge $from_listing
         | select ...$selected
         | insert path $row.path
+        | insert session ($row.path | session-id-from-path)
         | insert parent_session_id $row.parent_session_id
     }
 }

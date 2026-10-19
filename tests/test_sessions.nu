@@ -469,7 +469,7 @@ def "sessions default columns are the overview set" [] {
     # Not derived from SESSION_COLUMNS on purpose — that would be a tautology and
     # could never catch an accidental `default` flip. Changing the overview set
     # is meant to trip this test so the change stays intentional.
-    assert equal $cols [summary last_timestamp user_messages path parent_session_id]
+    assert equal $cols [summary last_timestamp user_messages path session parent_session_id]
 }
 
 @test
@@ -483,7 +483,7 @@ def "sessions column flag narrows output to base plus requested" [] {
 
     rm $temp_file
 
-    assert equal ($result | columns) [version path parent_session_id]
+    assert equal ($result | columns) [version path session parent_session_id]
     assert equal $result.version "2.1.233"
 }
 
@@ -495,8 +495,8 @@ def "session-columns completer offers exactly the selectable columns" [] {
         | save --force $temp_file
 
     # The completer must offer exactly what --all-columns can produce (sans the
-    # always-present path/parent_session_id), so the two never drift apart.
-    let produced = sessions $temp_file --all-columns | first | columns | where $it not-in [path parent_session_id]
+    # always-present path/session/parent_session_id), so the two never drift apart.
+    let produced = sessions $temp_file --all-columns | first | columns | where $it not-in [path session parent_session_id]
     # Empty token (cursor right after the flag) → the bare column names.
     let offered = nu-complete claude session-columns {text: ""}
 
@@ -3463,7 +3463,7 @@ def "sessions --columns accepts the columns every row carries" [] {
     let p = $FIXTURES_SESSIONS_DIR | path join $FIXTURE_USER_FIRST
     let row = sessions $p --columns session_id,parent_session_id,path | first
 
-    assert equal ($row | columns) [session_id path parent_session_id]
+    assert equal ($row | columns) [session_id path session parent_session_id]
 }
 
 @test

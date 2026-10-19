@@ -35,7 +35,7 @@ def "sessions size and modified come from the file listing" [] {
     let result = null | sessions $FIXTURES_SESSIONS_DIR --columns size,modified
     let listed = ls $FIXTURES_SESSIONS_DIR | where name ends-with ".jsonl" | select name size modified
 
-    assert equal ($result | columns) [size modified path parent_session_id]
+    assert equal ($result | columns) [size modified path session parent_session_id]
     for row in $result {
         let file = $listed | where name == $row.path | first
 
@@ -70,7 +70,7 @@ def "a selection of only listing columns opens no session file" [] {
 def "listing columns keep the requested order among parsed ones" [] {
     let result = null | sessions $FIXTURES_SESSIONS_DIR --columns modified,session_id,size
 
-    assert equal ($result | columns) [modified session_id size path parent_session_id]
+    assert equal ($result | columns) [modified session_id size path session parent_session_id]
 }
 
 @test
@@ -215,7 +215,7 @@ def "active window leaves the selected columns as they are" [] {
 
     rm --recursive --force $store.home
 
-    assert equal ($result | columns) [session_id path parent_session_id]
+    assert equal ($result | columns) [session_id path session parent_session_id]
 }
 
 @test

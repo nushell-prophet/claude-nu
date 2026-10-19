@@ -90,7 +90,7 @@ claude-nu sessions --session '99bf0e5b' --columns token_usage,assistant_msg_coun
 
 # How many columns `--all-columns` computes; `--columns` tab-completes their names.
 claude-nu sessions --session '99bf0e5b' --all-columns | columns | length | print $in
-# => 38
+# => 39
 
 # A session as markdown, to read or to archive next to the code.
 claude-nu sessions --session '99bf0e5b'

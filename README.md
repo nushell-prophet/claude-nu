@@ -207,12 +207,13 @@ claude-nu sessions --subagents --columns agent_id,agent_type,agent_label | where
 - `last_timestamp` — Last activity
 - `user_messages` — List of user message texts
 - `path` — Session file path
+- `session` — The session's id as every other command's rows name it, so a row pipes on by it: the UUID, or `agent-<id>` on a subagent row
 - `parent_session_id` — Parent UUID for subagent transcripts
 
 **Additional columns:** request via `--columns name1,name2` (or `--all-columns` for everything).
-Any `--columns` selection narrows output to `path`/`parent_session_id` plus the requested columns.
+Any `--columns` selection narrows output to `path`/`session`/`parent_session_id` plus the requested columns.
 
-- `session_id` — UUID
+- `session_id` — The `sessionId` the records carry: on a subagent row, the parent's
 - `first_timestamp` — Session start time
 - `user_msg_count` — Number of user messages
 - `user_msg_length` — Total chars typed by user
