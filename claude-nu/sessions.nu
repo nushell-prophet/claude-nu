@@ -979,7 +979,7 @@ export def main [
     --last # Only the most recent session of the current project
     --all-projects # Enumerate sessions across every project under ~/.claude/projects
     --subagents # Also list subagent transcripts (<uuid>/subagents/agent-*.jsonl); off by default
-    --columns (-c): string@"nu-complete claude session-columns" # Comma-separated columns to include (default: overview set)
+    --columns: string@"nu-complete claude session-columns" # Comma-separated columns to include (default: overview set)
     --all-columns # Include all columns
     --since: any # Only sessions last active at or after this point — a duration means ago (`1wk`), or a datetime/date string
     --until: any # Only sessions last active at or before this point
