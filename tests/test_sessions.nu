@@ -2219,15 +2219,15 @@ def "extract-agents recognizes the Agent tool name of Claude Code 2 dot 1" [] {
 }
 
 @test
-def "extract-agents ignores the retired Task tool name" [] {
+def "extract-agents reads the old Task tool name too" [] {
     let tool_calls = [
-        {name: "Task" input: {subagent_type: "Explore" description: "Retired name"}}
+        {name: "Task" input: {subagent_type: "Explore" description: "Old name"}}
         {name: "Agent" input: {subagent_type: "general-purpose" description: "Current name"}}
+        {name: "TaskCreate" input: {subject: "a TODO item, not an agent"}}
     ]
     let agents = $tool_calls | extract-agents
 
-    assert equal ($agents | length) 1
-    assert equal ($agents | first | get type) "general-purpose"
+    assert equal ($agents | get type) [Explore general-purpose]
 }
 
 @test

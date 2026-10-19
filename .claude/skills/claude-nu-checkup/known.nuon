@@ -61,6 +61,7 @@
         Write: {status: handled note: "edited_files"}
         Read: {status: handled note: "read_files"}
         Agent: {status: handled note: "extract-agents"}
+        Task: {status: rare note: "extract-agents — the name of the Agent tool before 2.1.x, same input shape. Old versions only: 7 calls in 6 cozy sessions on 2026-10-19, so a default-window run never sees it"}
         Skill: {status: handled note: "skill_invocations"}
         AskUserQuestion: {status: rare note: "ask_user_count — the reader is live, the tool is just infrequent: counted on 2026-09-01 over the newest sessions, 0 calls in a 40-file window, 2 in 150, 10 in 300. A default-window run therefore reports it dead. Same pair as EnterPlanMode/plan_mode_used. Re-check at --window 300 before believing it died"}
         EnterPlanMode: {status: rare note: "plan_mode_used — only present when the session used plan mode"}
