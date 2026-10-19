@@ -55,7 +55,7 @@ def "messages drops every system and command wrapper prefix" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = {path: $temp_file} | messages | get message
+    let result = {path: $temp_file} | messages | get text
 
     rm $temp_file
 
@@ -75,7 +75,7 @@ def "messages keeps a message that only ends with a system reminder" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = {path: $temp_file} | messages | get message
+    let result = {path: $temp_file} | messages | get text
 
     rm $temp_file
 
@@ -93,7 +93,7 @@ def "messages --include-system keeps the wrapper messages" [] {
 
     $lines | str join "\n" | save --force $temp_file
 
-    let result = {path: $temp_file} | messages --include-system | get message
+    let result = {path: $temp_file} | messages --include-system | get text
 
     rm $temp_file
 
@@ -112,7 +112,7 @@ def "messages renders bang bash commands as user turns" [] {
         '{"type":"user","message":{"content":"<bash-stdout>+ added &lt;tag&gt;</bash-stdout><bash-stderr>warn: x</bash-stderr>"},"timestamp":"2024-01-15T10:00:01Z"}'
     ] | str join "\n" | save --force $f
 
-    let result = {path: $f} | messages | get message
+    let result = {path: $f} | messages | get text
 
     rm $f
 
@@ -575,7 +575,7 @@ def "messages reads a session handed to it as a full path" [] {
     rm $temp_file
 
     assert equal ($result | length) 1
-    assert equal ($result | first | get message) "Hello from path test"
+    assert equal ($result | first | get text) "Hello from path test"
 }
 
 @test
@@ -611,7 +611,7 @@ def "piping top-level sessions into messages excludes subagents" [] {
     '{"type":"user","message":{"content":"gamma subagent message"},"timestamp":"2024-01-15T10:00:00Z"}'
         | save --force ($sessions_dir | path join $parent_uuid "subagents" "agent-abc123.jsonl")
 
-    let msgs = sessions $sessions_dir | where parent_session_id == null | messages | get message
+    let msgs = sessions $sessions_dir | where parent_session_id == null | messages | get text
 
     rm --recursive --force $fake_home
 
@@ -647,7 +647,7 @@ def "sessions --all-projects piped into messages covers every session" [] {
 
     rm --recursive --force $fake_home
 
-    let all = $result | get message
+    let all = $result | get text
 
     assert ("a-old" in $all)
     assert ("a-new" in $all)
@@ -685,7 +685,7 @@ def "messages with no input reads every session of the current project" [] {
     # Only the matching message with one, tagged with its session — a selector
     # callers can pipe straight back into export-session/messages.
     assert equal ($found | length) 1
-    assert ($found.0.message | str contains "needle")
+    assert ($found.0.text | str contains "needle")
     assert equal $found.0.session "11111111-1111-1111-1111-111111111111"
 }
 
@@ -778,7 +778,7 @@ def "sessions --all-projects piped into messages searches every project" [] {
 
     rm --recursive --force $fake_home
 
-    let msgs = $result | get message
+    let msgs = $result | get text
 
     assert equal ($result | length) 2
     assert ("needle in A" in $msgs)
@@ -814,7 +814,7 @@ def "messages with no input skips subagent transcripts" [] {
     rm --recursive --force $fake_home $proj_dir
 
     assert equal ($result | length) 1
-    assert ($result.0.message | str contains "top level")
+    assert ($result.0.text | str contains "top level")
 }
 
 @test
@@ -844,7 +844,7 @@ def "messages matches a regex and not just a literal" [] {
 
     rm --recursive --force $fake_home $proj_dir
 
-    let msgs = $result | get message
+    let msgs = $result | get text
 
     assert equal ($result | length) 2
     assert ($msgs | any { str contains "staging" })
@@ -914,7 +914,7 @@ def "messages --no-rg matches an anchored pattern the rg pre-filter misses" [] {
     # one message that starts with "deploy" and excludes the mid-string one.
     assert equal ($default | length) 0
     assert equal ($no_rg | length) 1
-    assert equal $no_rg.0.message "deploy to staging"
+    assert equal $no_rg.0.text "deploy to staging"
 }
 
 # =============================================================================
@@ -1244,7 +1244,7 @@ def "messages keys subagent rows by real project and not the subagents folder" [
     rm --recursive --force $fake_home
 
     assert equal ($result.project | uniq) ["-proj-a"]
-    let all = $result | get message
+    let all = $result | get text
 
     assert ("top-level msg" in $all)
     assert ("subagent msg" in $all)
@@ -2642,7 +2642,7 @@ def "messages default drops thinking-only assistant turns" [] {
     let result = {path: $p} | messages --include-responses
 
     # No [thinking] prefix should leak when --include-thinking is absent
-    assert not ($result | get message | any { str contains "[thinking]" })
+    assert not ($result | get text | any { str contains "[thinking]" })
 }
 
 @test
@@ -2670,7 +2670,7 @@ def "messages --include-thinking prefixes thinking blocks" [] {
 
     rm $temp_file
 
-    let assistant_msg = $result | where role == "assistant" | first | get message
+    let assistant_msg = $result | where role == "assistant" | first | get text
 
     assert ($assistant_msg | str contains "[thinking] pondering the question")
     assert ($assistant_msg | str contains "answer")
@@ -2926,7 +2926,7 @@ def "messages regex argument filters by rendered text" [] {
         '{"type":"user","message":{"content":"write the tests"},"timestamp":"2024-01-15T10:00:01Z"}'
     ] | str join "\n" | save --force $f
 
-    let result = {path: $f} | messages "deploy" | get message
+    let result = {path: $f} | messages "deploy" | get text
 
     rm $f
 
@@ -3095,9 +3095,9 @@ def "messages --since and --until filter by the timestamp of each message" [] {
         $'{"type":"user","message":{"content":"recent message"},"timestamp":"($recent)"}'
     ] | str join "\n" | save --force $f
 
-    let since = {path: $f} | messages --since 1day | get message
-    let until = {path: $f} | messages --until 1day | get message
-    let window = {path: $f} | messages --since 1day --until 1min | get message
+    let since = {path: $f} | messages --since 1day | get text
+    let until = {path: $f} | messages --until 1day | get text
+    let window = {path: $f} | messages --since 1day --until 1min | get text
 
     rm $f
 
@@ -3292,9 +3292,9 @@ def "a record copied into a resumed session comes back once from the older file"
 
     rm --recursive $dir
 
-    assert equal ($messages | select message uuid session) [
-        {message: "said after resuming" uuid: "u-2" session: "22222222-2222-2222-2222-222222222222"}
-        {message: "said once" uuid: "u-1" session: "11111111-1111-1111-1111-111111111111"}
+    assert equal ($messages | select text uuid session) [
+        {text: "said after resuming" uuid: "u-2" session: "22222222-2222-2222-2222-222222222222"}
+        {text: "said once" uuid: "u-1" session: "11111111-1111-1111-1111-111111111111"}
     ]
     assert equal ($calls | select id uuid session) [
         {id: "toolu_1" uuid: "a-1" session: "11111111-1111-1111-1111-111111111111"}
@@ -3532,7 +3532,7 @@ def "messages --include-thinking skips a redacted thinking block" [] {
         '{"type":"assistant","uuid":"a-2","message":{"content":[{"type":"thinking","thinking":"plan it"}]},"timestamp":"2024-01-15T10:00:02Z"}'
     ] | str join "\n" | save --force $temp_file
 
-    let result = {path: $temp_file} | messages --include-responses --include-thinking | get message
+    let result = {path: $temp_file} | messages --include-responses --include-thinking | get text
 
     rm $temp_file
 

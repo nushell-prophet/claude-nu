@@ -12,12 +12,12 @@ fixture-home
 
 # Search by regex. Each row carries `uuid`, the record's own id: the address.
 claude-nu messages 'rename'
-| select message uuid
-| update message { lines | first | str substring 0..40 }
+| select text uuid
+| update text { lines | first | str substring 0..40 }
 | update uuid { str substring 0..8 }
 | print $in
 # => ╭───┬───────────────────────────────────────────┬───────────╮
-# => │ # │                  message                  │   uuid    │
+# => │ # │                   text                    │   uuid    │
 # => ├───┼───────────────────────────────────────────┼───────────┤
 # => │ 0 │   Vendored: nu-multiproof/nu-multiproof   │ e81f8ee1- │
 # => │ 1 │ I ran the command, but I dropped --rename │ 2534ae26- │
@@ -29,11 +29,11 @@ claude-nu messages 'rename'
 # hit in its session, like `rg --context`, and a `hit` column marks the match.
 # With `--include-responses` the assistant reply is a neighbour too.
 claude-nu messages 'dropped --rename' --context 1 --include-responses
-| select hit kind message
-| update message { lines | first | str substring 0..45 }
+| select hit kind text
+| update text { lines | first | str substring 0..45 }
 | print $in
 # => ╭─────┬─────────┬────────────┬─────────────────────────────────────────────────╮
-# => │   # │   hit   │    kind    │                     message                     │
+# => │   # │   hit   │    kind    │                      text                       │
 # => ├─────┼─────────┼────────────┼─────────────────────────────────────────────────┤
 # => │   0 │ false   │ response   │ Implementation done. All 32 tests pass.         │
 # => │   1 │ true    │ typed      │ I ran the command, but I dropped --rename and   │
@@ -63,12 +63,12 @@ claude-nu messages | where kind == typed | length | print $in
 # Rows come session by session, chronological inside each; `sort-by timestamp`
 # gives one timeline.
 claude-nu messages --since 2026-05-09T18:40:00Z --until 2026-05-09T19:00:00Z
-| select timestamp message
+| select timestamp text
 | update timestamp { format date '%T' }
-| update message { lines | first | str substring 0..40 }
+| update text { lines | first | str substring 0..40 }
 | print $in
 # => ╭───┬───────────┬───────────────────────────────────────────╮
-# => │ # │ timestamp │                  message                  │
+# => │ # │ timestamp │                   text                    │
 # => ├───┼───────────┼───────────────────────────────────────────┤
 # => │ 0 │ 18:54:04  │ orchestrate agents to implement and check │
 # => │ 1 │ 18:54:09  │ orchestrate agents to implement and check │
@@ -83,7 +83,7 @@ claude-nu messages --since 2026-05-09T18:40:00Z --until 2026-05-09T19:00:00Z
 # How much the user said per session, the census past agents built with jq.
 claude-nu messages
 | group-by session
-| items {|s rows| {session: ($s | str substring 0..8) messages: ($rows | length) chars: ($rows.message | str length | math sum)} }
+| items {|s rows| {session: ($s | str substring 0..8) messages: ($rows | length) chars: ($rows.text | str length | math sum)} }
 | print $in
 # => ╭───┬───────────┬──────────┬───────╮
 # => │ # │  session  │ messages │ chars │

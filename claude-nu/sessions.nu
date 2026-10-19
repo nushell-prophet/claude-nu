@@ -307,7 +307,7 @@ export def messages [
         } else {
             $filtered
             | each {|msg|
-                {role: $msg.type message: $msg.text timestamp: ($msg.timestamp? | into datetime) uuid: $msg.uuid? kind: $msg.kind}
+                {role: $msg.type text: $msg.text timestamp: ($msg.timestamp? | into datetime) uuid: $msg.uuid? kind: $msg.kind}
                 | if $context == null { } else { insert hit $msg.hit }
             }
             | if $include_responses { } else { reject role }

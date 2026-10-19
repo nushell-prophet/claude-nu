@@ -99,7 +99,7 @@ def "messages kind is read from the record and not from the rendered text" [] {
 
     rm $f
 
-    assert equal ($result.message | uniq | length) 1 "both render the same"
+    assert equal ($result.text | uniq | length) 1 "both render the same"
     assert equal $result.kind [typed bash-input]
 }
 
@@ -289,12 +289,12 @@ const FILE_LINES = [
 @test
 def "messages returns attached and edited files as rows of kind file" [] {
     let f = session-file $FILE_LINES
-    let result = {path: $f} | messages | select uuid kind message
+    let result = {path: $f} | messages | select uuid kind text
 
     rm $f
 
     assert equal $result [
-        [uuid kind message];
+        [uuid kind text];
         [u1 typed "@todo/song.md go"]
         [f1 file "a phrase: nobody knows"]
         [f2 file "first line\nsecond line"]

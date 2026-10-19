@@ -69,7 +69,7 @@ Rows come session by session — newest session first, chronological inside each
 A resumed or forked session repeats its parent's records under the same `uuid`; `messages`, `tool-calls`, `slash-commands` and `records` keep one copy, the one in the session listed last — by default the least recently active, usually the parent where it was first written — so a resumed conversation is not counted twice.
 
 **Output:**
-- `message` — User message content
+- `text` — User message content
 - `timestamp` — When message was sent
 - `uuid` — The record's own id: its address inside the session
 - `kind` — What the row is: `typed`, `bash-input` (a `!` command), `bash-output` (what it printed), `file` (a file attached with `@`, or the part of a file that changed on disk outside the agent's Edit and Write tools during the session), `system` (only with `--include-system`) or `response` (only with `--include-responses`)
@@ -77,7 +77,7 @@ A resumed or forked session repeats its parent's records under the same `uuid`; 
 - `project` — Project directory the session belongs to, encoded (`/` turned into `-`) — a display name, not a real path
 - `project_name` — The same project, readable: its `cwd`'s last two path segments, same form as `projects.name`. `""` when the session carries no `cwd`
 
-`--include-responses` adds `role`; `--context` adds `hit`; `--raw` replaces `message` with the raw record's `type` and fields.
+`--include-responses` adds `role`; `--context` adds `hit`; `--raw` replaces `text` with the raw record's `type` and fields.
 
 **Why `kind`.**
 The rendered text cannot tell a `!git log` from a `git log` output the user pasted: both become the same fenced block.
