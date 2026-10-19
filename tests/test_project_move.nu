@@ -709,3 +709,123 @@ def "refuses a move that goes nowhere" [] {
 
     assert $failed
 }
+
+# =============================================================================
+# Links into the store
+# =============================================================================
+
+# A link the way Claude Code writes one for a session that continues `aaaa`:
+# `<store>/<session>/subagents/agent-1.jsonl`, by absolute path, to the agent
+# transcript in `aaaa`.
+def link-agent [home: path store: string session: string]: nothing -> path {
+    let target = projects-dir $home | path join "-work-demo" "aaaa" "subagents" "agent-1.jsonl"
+    let link = projects-dir $home | path join $store $session "subagents" "agent-1.jsonl"
+
+    mkdir ($link | path dirname)
+    ^ln -s $target $link
+    $link
+}
+
+def link-target [link: path]: nothing -> string {
+    ls --long $link | get 0.target
+}
+
+@test
+def "retargets a link inside the store to the moved store" [] {
+    let home = fake-home
+    link-agent $home "-work-demo" "dddd" | ignore
+    let report = with-env {HOME: $home} { project-move $OLD $NEW }
+    let moved = projects-dir $home | path join "-work-moved-demo"
+    let link = $moved | path join "dddd" "subagents" "agent-1.jsonl"
+    let target = link-target $link
+    let readable = open --raw $link | str contains '"cwd":"/work/moved/demo"'
+
+    rm --recursive --force $home
+
+    assert equal $target ($moved | path join "aaaa" "subagents" "agent-1.jsonl")
+    assert $readable
+    assert equal ($report | where kind == link | get path) [$link]
+}
+
+@test
+def "retargets a link another store holds into the moved store" [] {
+    let home = fake-home
+    let link = link-agent $home "-work-other" "eeee"
+    let report = with-env {HOME: $home} { project-move $OLD $NEW }
+    let target = link-target $link
+
+    rm --recursive --force $home
+
+    assert equal $target (projects-dir $home | path join "-work-moved-demo" "aaaa" "subagents" "agent-1.jsonl")
+    assert equal ($report | where kind == link | get path) [$link]
+}
+
+@test
+def "plans the file behind a link once" [] {
+    let home = fake-home
+    link-agent $home "-work-demo" "dddd" | ignore
+    let report = with-env {HOME: $home} { project-move $OLD $NEW --dry-run }
+
+    rm --recursive --force $home
+
+    assert equal ($report | where kind == session | get path | path basename) [aaaa.jsonl agent-1.jsonl]
+}
+
+@test
+def "repairs a link that an earlier move left pointing into the old store" [] {
+    let home = fake-home
+    let old_target = link-agent $home "-work-demo" "dddd" | link-target $in
+    # A move that ran before links were retargeted: the store is at its new
+    # name, every other trace of the old path is gone, the link still points
+    # into the old store.
+    with-env {HOME: $home} { project-move $OLD $NEW | ignore }
+    let moved_link = projects-dir $home | path join "-work-moved-demo" "dddd" "subagents" "agent-1.jsonl"
+    ^ln -s -f -n $old_target $moved_link
+    let report = with-env {HOME: $home} { project-move $OLD $NEW }
+    let readable = $moved_link | path exists
+
+    rm --recursive --force $home
+
+    assert equal ($report | get kind) [link]
+    assert $readable
+}
+
+@test
+def "drops a source link the destination store already holds as a file" [] {
+    let home = fake-home
+    link-agent $home "-work-demo" "dddd" | ignore
+    let dst = seed-destination $home ("dddd" | path join "subagents" "agent-1.jsonl") (rewritten $SUBAGENT_LINE)
+    let report = with-env {HOME: $home} { project-move $OLD $NEW }
+    let kept = $dst | path join "dddd" "subagents" "agent-1.jsonl"
+    let still_file = ($kept | path type) == "file"
+
+    rm --recursive --force $home
+
+    assert $still_file
+    assert equal ($report | where kind == keep-destination | get path) [$kept]
+    assert equal ($report | where kind == link) []
+}
+
+@test
+def "retargets a link to a directory, not the files in it" [] {
+    let home = fake-home
+    # The shape of a workflow run resumed in another session:
+    # `<session>/subagents/workflows/wf_*` links to the run's directory.
+    let run = projects-dir $home | path join "-work-demo" "aaaa" "subagents" "workflows" "wf_1"
+    let link = projects-dir $home | path join "-work-demo" "dddd" "subagents" "workflows" "wf_1"
+
+    mkdir $run ($link | path dirname)
+    '{"type":"user","cwd":"/work/demo"}' | save --raw ($run | path join "agent-2.jsonl")
+    ^ln -s $run $link
+    with-env {HOME: $home} { project-move $OLD $NEW | ignore }
+    let moved = projects-dir $home | path join "-work-moved-demo"
+    let moved_link = $moved | path join "dddd" "subagents" "workflows" "wf_1"
+    let target = ls --long --directory $moved_link | get 0.target
+    let inside = ls $moved_link | get name | path basename
+
+    rm --recursive --force $home
+
+    assert equal $target ($moved | path join "aaaa" "subagents" "workflows" "wf_1")
+    # `ln -n`: the old link is replaced, not given a new link inside its target.
+    assert equal $inside [agent-2.jsonl]
+}

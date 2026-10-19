@@ -50,11 +50,16 @@ def normalize-project-path []: path -> path {
 # A path held in a variable is literal to `ls`, so the walk is spelled out.
 # Not `discover-session-files` because: it filters names by the UUID pattern,
 # and a `cwd` needs rewriting whatever the file is called.
+# Why a symlink is skipped: its target is a transcript of its own. In this store
+# that file is rewritten where it lies; in another store it belongs to another
+# project.
 def jsonl-files [dir: path]: nothing -> list<path> {
     ls $dir
     | each {|entry|
         if $entry.type == "dir" {
             jsonl-files $entry.name
+        } else if $entry.type == "symlink" {
+            []
         } else {
             [($entry.name | path expand)]
         }
@@ -209,6 +214,15 @@ def plan-fold [src: path dst: path rewriting: list<string> dst_rewriting: list<s
     | each {|rel|
         let from = $src | path join $rel
         let to = $dst | path join $rel
+
+        # Why a link always yields: it stands for a transcript another session
+        # holds, and the destination already has a file of that name — the same
+        # agent id, so the same transcript. Moved over it, the link would
+        # replace a real file with a pointer.
+        if ($from | path type) == "symlink" {
+            return {kind: "keep-destination" path: $to replaced: null source: $from swaps: null}
+        }
+
         # Compared as the source will look after its cwd swap, not as it looks
         # now: the swap runs first, so comparing the current bytes would resolve
         # a pair that never exists on disk. Which is also why the swap is applied
@@ -337,6 +351,35 @@ def plan-sessions [src: path dst: path old: path new: path]: nothing -> table {
     }
 }
 
+# Plan rows for the symlinks that point into the moving store: `path` is where
+# the link ends up, `target` what it points at after the move.
+# Why: Claude Code gives a session that continues another one links to the
+# subagent transcripts and workflow directories of that session, by absolute
+# path. A store that moves leaves each such link pointing at a directory that is
+# gone, and a reader that lists the link then fails to open it.
+# Why the whole projects root and not `src` alone: a session resumed from
+# another project links into this store from outside it.
+# Why `glob` here, unlike `jsonl-files`: the pattern is the projects root, built
+# from HOME; the encoded project names below it are matched by `**`, never
+# parsed as a pattern.
+def plan-links [src: path dst: path]: nothing -> table {
+    if $src == $dst { return [] }
+
+    glob (projects-root | path join "**") --no-dir --no-file
+    | each {|link| ls --long --directory $link | get 0 }
+    | where target starts-with $"($src)/"
+    | sort-by name
+    | each {|link|
+        let path = if ($link.name | str starts-with $"($src)/") {
+            $link.name | str replace $src $dst
+        } else {
+            $link.name
+        }
+
+        {kind: "link" path: $path replaced: null source: $link.name swaps: null target: ($link.target | str replace $src $dst)}
+    }
+}
+
 # Move the source store into a destination store that already exists, file by
 # file, applying the verdicts the plan settled. A directory rename cannot merge,
 # and every file here is either already accounted for at the destination or has
@@ -459,8 +502,12 @@ export def main [
         ] | str join "\n")}
     }
 
+    let sessions = plan-sessions $src $dst $old $new
+    # A link the fold deletes needs no new target.
+    let dropped = $sessions | where kind == "keep-destination" | get source
     let plan = [
-        (plan-sessions $src $dst $old $new)
+        $sessions
+        (plan-links $src $dst | where source not-in $dropped)
         (plan-swap (prompt-history) "history" $'"project":"($old)"' $'"project":"($new)"')
         (plan-swap $config "config" $'"($old)"' $'"($new)"')
     ] | flatten
@@ -473,7 +520,7 @@ export def main [
         }
     }
     if $dry_run {
-        return ($plan | reject source swaps)
+        return ($plan | reject --optional source swaps target)
     }
 
     $plan | where swaps != null | each {|row| swap-in-file $row.source $row.swaps }
@@ -486,5 +533,13 @@ export def main [
     if "sessions-dir" in $plan.kind { mv $src $dst }
     if "sessions-fold" in $plan.kind { fold-into $src $dst $plan }
 
-    $plan | reject source swaps
+    # After the relocation, because a link inside the store is only at its new
+    # `path` once the store has moved. A run that dies before this line leaves
+    # links still pointing into the old store, and a rerun plans them again.
+    # Not `--symbolic --force --no-dereference` because: the BSD ln of macOS has
+    # no long flags. `-n` replaces a link to a directory instead of writing a
+    # new link inside that directory.
+    $plan | where kind == "link" | each {|row| ^ln -s -f -n $row.target $row.path }
+
+    $plan | reject --optional source swaps target
 }
