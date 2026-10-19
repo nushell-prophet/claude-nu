@@ -292,11 +292,11 @@ The one thing it uniquely holds is the built-in commands that never reach the mo
 
 ### The time window
 
-`--since` and `--until` are on `sessions`, `messages`, `tool-calls`, `slash-commands` and `timeline`.
+`--since` and `--until` are on `sessions`, `messages`, `tool-calls`, `slash-commands`, `timeline`, `records` and `workflows`.
 Each takes a duration meaning *ago* (`--since 1wk`, `--until 3day`), a date (`2026-08-01`), or a `datetime` value — so "what did I do last week" is a flag, not a filter you write afterwards.
 
 What the window is measured against is the row you are asking for.
-In `messages`, `tool-calls` and `slash-commands` a row is one message, one call or one invocation, so the window is compared to its own timestamp.
+In `messages`, `tool-calls`, `timeline`, `slash-commands` and `records` a row is one message, one call, one block, one invocation or one record, so the window is compared to its own timestamp; a `workflows` row is one run, compared by its `started`.
 In `sessions` a row is a whole session, timed by its file's mtime — its last activity, the same clock that already orders every listing here.
 Deciding the window from a parsed `first_timestamp` instead would have to parse every session to find out which sessions to parse, which is the cost the window exists to avoid.
 

@@ -55,6 +55,14 @@ def "workflows lists one row per run of a piped session" [] {
 }
 
 @test
+def "workflows --since and --until filter by the start of each run" [] {
+    let session = {path: (fixture-session $FIXTURE_WF_SESSION)}
+
+    assert equal ($session | claude-nu workflows --since 2026-09-01T10:30:00Z | get id) [wf_bbbb2222-002]
+    assert equal ($session | claude-nu workflows --until 2026-09-01T10:30:00Z | get id) [wf_aaaa1111-001]
+}
+
+@test
 def "workflows reads status and duration and agents and phases from the state file" [] {
     let run = {path: (fixture-session $FIXTURE_WF_SESSION)} | claude-nu workflows | where id == wf_aaaa1111-001 | first
 

@@ -2,7 +2,7 @@
 # their state files.
 
 use sessions.nu [piped-session-files drop-copied-records]
-use discovery.nu [top-level-session-files top-level-session-file workflow-state-files read-workflow-state read-session-records project-dir-name project-display-name session-id-from-path]
+use discovery.nu [top-level-session-files top-level-session-file workflow-state-files read-workflow-state read-session-records project-dir-name project-display-name session-id-from-path resolve-time-bound mtime-filter-session-files]
 use extract.nu [pick-first]
 
 # The Workflow tool runs of Claude Code sessions, one row per run:
@@ -13,6 +13,8 @@ use extract.nu [pick-first]
 # Scoping works as in `messages`: no input reads every top-level session of the
 # current project, piped session rows narrow it, a `projects` row stands for
 # that project. A piped subagent transcript stands for the session that ran it.
+# `--since`/`--until` keep the runs whose `started` falls in the window; a run
+# with no recorded start is outside any window.
 # Why a command and not a `sessions` column: a run is a row of its own — one
 # session launches several, and "which runs failed" is a filter over runs.
 # Why the state file and not the agents' `journal.jsonl`: the journal holds only
@@ -25,9 +27,16 @@ use extract.nu [pick-first]
 @example "runs of this project that did not complete" { claude-nu workflows | where status != completed | select id name status error }
 @example "the longest runs across every project" { claude-nu projects | claude-nu workflows | sort-by duration --reverse | select id name duration agent_count project_name }
 @example "the agents of the latest run, by phase" { claude-nu workflows | sort-by started | last | get agents | group-by phase }
-export def main []: [nothing -> table record -> table table -> table list<string> -> table] {
+export def main [
+    --since: any # Only runs started at or after this point — a duration means ago (`1wk`), or a datetime/date string
+    --until: any # Only runs started at or before this point
+]: [nothing -> table record -> table table -> table list<string> -> table] {
     let input = $in
     let piped_files = piped-session-files $input
+
+    # Why up here: same as in `messages` — a bad bound fails before any parsing.
+    let since_at = if $since == null { null } else { $since | resolve-time-bound "--since" }
+    let until_at = if $until == null { null } else { $until | resolve-time-bound "--until" }
 
     let scoped_files = if $piped_files != null {
         $piped_files
@@ -50,6 +59,10 @@ export def main []: [nothing -> table record -> table table -> table list<string
     }
 
     $session_files
+    # Why the mtime cut is safe: launching or resuming a run writes the tool
+    # call into the transcript, so a session that lists a run started after the
+    # bound was written after it too.
+    | if $since_at == null { } else { mtime-filter-session-files $since_at }
     | each {|session_file|
         let state_files = $session_file | workflow-state-files
 
@@ -84,6 +97,8 @@ export def main []: [nothing -> table record -> table table -> table list<string
         }
     }
     | flatten
+    | if $since_at == null { } else { where started != null and started >= $since_at }
+    | if $until_at == null { } else { where started != null and started <= $until_at }
     # Why: a resumed run is one run, and both the session that started it and
     # the one that resumed it list it. Both rows name the launching session,
     # so which one is kept does not change the row.

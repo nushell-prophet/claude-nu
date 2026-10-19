@@ -511,10 +511,16 @@ export def tool-name-pattern [tools: list<string>]: nothing -> string {
 @example "the permission modes the last session ran in" { claude-nu sessions --last | claude-nu records | where type == permission-mode | get record.permissionMode }
 export def records [
     regex?: string # Filter records by regex over the record as JSON (`'"type":"system"'`)
+    --since: any # Only records at or after this point — a duration means ago (`1wk`), or a datetime/date string
+    --until: any # Only records at or before this point
     --no-rg # Skip the ripgrep file pre-filter and match entirely in-engine (exact regex semantics, slower)
 ]: [nothing -> table record -> table table -> table list<string> -> table] {
     let input = $in
     let piped_files = piped-session-files $input
+
+    # Why up here: same as in `messages` — a bad bound fails before any parsing.
+    let since_at = if $since == null { null } else { $since | resolve-time-bound "--since" }
+    let until_at = if $until == null { null } else { $until | resolve-time-bound "--until" }
 
     let scoped_files = if $piped_files != null {
         $piped_files
@@ -530,12 +536,18 @@ export def records [
     }
 
     $scoped_files
+    | if $since_at == null { } else { mtime-filter-session-files $since_at }
     | if $regex == null or $no_rg { } else { rg-filter-session-files $regex }
     | each {|session_file|
         let records = $session_file | read-session-records
 
         $records
         | each {|r| {type: ($r.type? | default "") uuid: $r.uuid? timestamp: ($r.timestamp? | if $in == null { } else { into datetime }) record: $r} }
+        # Why a record with no timestamp is dropped by a bound: it cannot be
+        # placed inside the window, and keeping it would answer "since X" with
+        # rows nobody can show to be after X.
+        | if $since_at == null { } else { where timestamp != null and timestamp >= $since_at }
+        | if $until_at == null { } else { where timestamp != null and timestamp <= $until_at }
         | if $regex == null { } else { where ($it.record | to json --raw) =~ $regex }
         | insert session ($session_file | session-id-from-path)
         | insert project ($session_file | project-dir-name)

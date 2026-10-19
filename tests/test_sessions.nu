@@ -3504,6 +3504,28 @@ def "records yields every line with its type and the whole record" [] {
 }
 
 @test
+def "records --since and --until filter by the timestamp of each record" [] {
+    let f = $nu.temp-dir | path join $"test-records-window-(random uuid).jsonl"
+    let recent = (date now) - 1hr | format date "%+"
+
+    [
+        '{"type":"permission-mode","permissionMode":"plan","sessionId":"s"}'
+        '{"type":"user","uuid":"u-old","message":{"content":"old"},"timestamp":"2024-01-15T10:00:00Z"}'
+        $'{"type":"user","uuid":"u-new","message":{"content":"new"},"timestamp":"($recent)"}'
+    ] | str join "\n" | save --force $f
+
+    let since = [$f] | records --since 1day | get uuid
+    let until = [$f] | records --until 1day | get uuid
+    let unbounded = [$f] | records | get uuid
+
+    rm $f
+
+    assert equal $since [u-new]
+    assert equal $until [u-old] "a record with no timestamp is outside any window"
+    assert equal $unbounded [null u-old u-new]
+}
+
+@test
 def "export-session --tools keeps a tool result inside the assistant turn" [] {
     let temp_file = $nu.temp-dir | path join $"test-export-results-(random uuid).jsonl"
 
