@@ -68,6 +68,9 @@ Two exceptions: a `chat:` aside leaves no text in the document, so there is noth
 The user is learning English, and canvas mode leaves the chat with no room for corrections — the document is the only channel left.
 Repair the language, never the meaning: rough wording is often deliberate, so where a fix would change what the sentence claims, leave it and place a `???`.
 Mark each changed word in *italics*, so he sees the delta without diffing his own sentence in his head; the italics stay in his text, and that is accepted.
+In the same pass, break each new line of his that is longer than 100 characters into semantic-feed lines: one clause per line, the break at a sentence end, a conjunction between independent clauses, a subordinate clause, a colon, or around an em-dash aside.
+A break changes no word, so it gets no italics; a single clause longer than 100 characters stays whole, and so do code blocks; a continuation line keeps the indent of its list item.
+Why 100: past that a line soft-wraps in a Helix pane beside a terminal, and a wrapped line hides where one claim ends and the next starts.
 If a file name contains a mistake, fix it with `git mv` — except the canvas itself: the session is bound to its path, so place a `???` with the fixed name and the `git mv` command, and he renames it between sessions.
 
 ### `chat:` is an aside
