@@ -179,7 +179,18 @@ test('a slash command the user runs ends with any answer', async ($, on) => {
   stop(on, CANVAS)
   await $.prompt.submit({ text: '/40-land-branch', command: { name: '40-land-branch', args: '' }, origin: { kind: 'composer' } } as never)
   expect((await ends($, ANSWER)).block).toBeUndefined()
-  await says($, 'go')
+  await says($, 'next step')
+  expect((await ends($, ANSWER)).block).toBeDefined()
+})
+
+test('a go in chat ends with any answer', async ($, on) => {
+  stop(on, CANVAS)
+  for (const text of ['go', 'Go ahead', '  go.']) {
+    await says($, text)
+    expect((await ends($, ANSWER)).block).toBeUndefined()
+  }
+  // A word that only starts with the letters is canvas work.
+  await says($, 'good, now rewrite the import section')
   expect((await ends($, ANSWER)).block).toBeDefined()
 })
 

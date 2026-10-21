@@ -64,12 +64,13 @@ If a file name contains a mistake, fix it with `git mv` — except the canvas it
 ### `chat:` is an aside
 
 A user message opening with `chat:` is off the canvas: answer it in the chat, in full, and write nothing to the canvas.
-It is also how he gives an order the Stop hook would block — an edit, a commit, a landing: do what it asks, as asked, and report in the chat.
+It is also how he gives an order to run outside the canvas — an edit, a commit, a landing: do what it asks, as asked, and report in the chat.
 With no order in it, write nothing — no document, no file, no commit.
 It is the user's marker alone; never write it yourself, and never treat one aside as licence for the next answer.
 
 A slash command he runs — a skill — is an aside too: answer in the chat as the skill says, at the length it needs, and write to files only what the skill itself does.
-Like `chat:`, it covers that one turn; his next plain message is canvas work again.
+It covers the skill's own flow: when the skill shows a plan and waits, his confirmation (`go`) runs it under the same rules.
+After the skill ends, his next plain message is canvas work again.
 
 ### Commit atomically and right away
 
@@ -111,6 +112,6 @@ In Markdown a marker starts its line, so `rg '^(!!|\?\?|%%)'` lists every open o
 `!!` also arrives as a `gi:`/imperative commit message, or as the `#` comment on the git command he pastes: `git log -p -1 # propagate`, `git diff # is it sound?`.
 Reply under the marker as an `AA:` entry; once the point is settled, reduce the thread to its decision in a commit of its own: delete the marker lines and leave the entry standing under his prose, which stays as he wrote it, grammar fixes aside — history keeps the exchange, the live file keeps only what it settled.
 Don't silently do what you disagree with or what is ambiguous — place a `???`, closed: the choice, your default, and one line on what the default costs.
-`go` accepts every default, so an unanswered `???` never blocks.
+`go` accepts every default and the decisions taken so far, so an unanswered `???` never blocks; it means the same in the chat and in the canvas, and where each answer goes is decided by context, as in any turn.
 Nothing to do — `noted`.
 Before the `!!!` that hands a code step over for `go`, run the advisor on that step and fold what it finds; the user asked for that review by hand after most steps, so it is the default now.

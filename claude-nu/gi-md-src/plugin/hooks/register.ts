@@ -21,6 +21,14 @@ const DEFAULT_MAX_LEN = 480
 // start of their message: `chat: what does this flag do?`.
 const CHAT_MARKER = 'chat:'
 
+// A chat message that is `go` alone, or opens with it (`go ahead`): the agent
+// goes on by the defaults and the decisions taken so far, and judges from the
+// context where the answer goes; the floor only stops forcing it into the canvas.
+// Why every `go`, not only one after an aside: the user wants the floor off
+// whenever he says go in chat; when he wants the answers in the canvas, he
+// writes `go` in the canvas, or the context puts them there.
+const GO = /^go\b/
+
 // The prompt sources that are the user's own words. Why the user's alone: a
 // marker the agent or another session could write would lift the floor that
 // exists to hold the agent.
@@ -41,7 +49,7 @@ const CREATE_FLAGS = { switch: ['-c', '--create', '-C', '--force-create'], check
 
 export const register: Register = on => {
   // Whether the prompt that opened the current turn is an aside: a `chat:`
-  // message, or a slash command the user ran. Every prompt resets it, so an
+  // message, a `go`, or a slash command the user ran. Every prompt resets it, so an
   // aside is spent once answered, and a notification or a peer message starting
   // a turn puts the floor back up.
   // Why a slash command: a skill the user runs carries its own instructions for
@@ -57,7 +65,8 @@ export const register: Register = on => {
   on('prompt.submit', ($, e, next) => {
     // An absent origin is the user's own prompt, as the engine's types define it.
     const user = !e.isMeta && (!e.origin || USER_ORIGINS.includes(e.origin.kind))
-    aside = user && (!!e.command || e.text.trim().toLowerCase().startsWith(CHAT_MARKER))
+    const text = e.text.trim().toLowerCase()
+    aside = user && (!!e.command || text.startsWith(CHAT_MARKER) || GO.test(text))
     return next(e)
   })
 
