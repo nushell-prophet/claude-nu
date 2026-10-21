@@ -507,7 +507,7 @@ Numbering is max+1 over the series, never the first free gap: the canvas folder 
 
 **Starting a canvas from a slug.**
 `gi new <slug>` is the naming half of `gi open`: the canvas is `<folder>/<date>-<slug>.md` (`--folder`; by default `gi-canvas/` when the directory has one, else `todo/` when it has that, else a new `gi-canvas/` — the same folder `gi open` and `gi import` pick when given no path), it starts with the todo frontmatter — `status`, `updated` and `agents-mode`, the creation date being in the file name already — and the same header a canvas gets from `gi open`, and the command ends in that launch.
-On `main` or `master` with nothing staged, it first switches to a new branch named after the slug, so the canvas and its commits start off the trunk.
+It first switches to a new branch named after the slug, made from the current one, so the canvas and its commits start on a branch of their own; `--current-branch` stays where it is, and so does a run on a branch already named after the slug.
 It then puts the file in front of you, in `$env.EDITOR`, to write the task in: inside zellij in a pane of its own, so the document stays in view while the session runs beside it; outside zellij in the terminal you are in, and the launch follows when the editor exits — with no `$env.EDITOR` set that is an error naming `--no-editor`, never a guess at which editor you have.
 `--no-editor` skips that, `--no-claude-launch` skips the launch and hands back the path instead, and the flags `gi open` defines — `--no-hook`, `--execute`, `--dangerously-skip-permissions`, anything else straight to `claude` — work here too.
 `--fork` and `--new-session` are the two it does not take: both act on a canvas that exists and already records a session.

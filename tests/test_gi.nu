@@ -639,15 +639,11 @@ def "new opens the canvas in a pane of its own and starts the session beside it"
     assert $launched "the session did not start after the editor pane opened"
 }
 
-# A repo on `branch`, optionally with a file staged, for the trunk tests.
-def branch-repo [branch: string --staged]: nothing -> path {
+# A repo on `branch`, for the branch tests.
+def branch-repo [branch: string]: nothing -> path {
     let root = temp-root
 
     ^git init --quiet --initial-branch $branch $root
-    if $staged {
-        "x\n" | save ($root | path join "staged.txt")
-        ^git -C $root add staged.txt
-    }
     $root
 }
 
@@ -664,28 +660,44 @@ def "new leaves main for a branch named after the slug" [] {
 }
 
 @test
-def "new stays on main when something is staged" [] {
-    let root = branch-repo main --staged
+def "new branches off a work branch too" [] {
+    let root = branch-repo canvas-work
 
+    ^git -C $root commit --quiet --allow-empty --message init
     (do { cd $root; gi new gi-new --no-editor --no-claude-launch }) | ignore
+    let branch = ^git -C $root branch --show-current | str trim
+    let base = ^git -C $root merge-base canvas-work gi-new | str trim
+    let tip = ^git -C $root rev-parse canvas-work | str trim
+
+    rm --recursive --force $root
+
+    assert equal $branch "gi-new"
+    assert equal $base $tip "the new branch did not start from the current one"
+}
+
+@test
+def "new stays on the current branch with --current-branch" [] {
+    let root = branch-repo main
+
+    (do { cd $root; gi new gi-new --current-branch --no-editor --no-claude-launch }) | ignore
     let branch = ^git -C $root branch --show-current | str trim
 
     rm --recursive --force $root
 
-    # Staged files are work in progress on the trunk: the switch stays the user's.
     assert equal $branch "main"
 }
 
 @test
-def "new stays on a work branch" [] {
-    let root = branch-repo canvas-work
+def "new stays on a branch already named after the slug" [] {
+    let root = branch-repo gi-new
 
-    (do { cd $root; gi new gi-new --no-editor --no-claude-launch }) | ignore
+    let caught = try { (do { cd $root; gi new gi-new --no-editor --no-claude-launch }); "no error" } catch {|e| $e.msg }
     let branch = ^git -C $root branch --show-current | str trim
 
     rm --recursive --force $root
 
-    assert equal $branch "canvas-work"
+    assert equal $caught "no error"
+    assert equal $branch "gi-new"
 }
 
 @test
@@ -695,7 +707,7 @@ def "a branch that already exists fails before the canvas is written" [] {
     ^git -C $root commit --quiet --allow-empty --message init
     ^git -C $root branch gi-new
     let caught = try { (do { cd $root; gi new gi-new --no-editor --no-claude-launch }); "no error" } catch { "error" }
-    let written = $root | path join "todo" | path exists
+    let written = $root | path join "gi-canvas" | path exists
 
     rm --recursive --force $root
 

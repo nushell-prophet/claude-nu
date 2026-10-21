@@ -139,17 +139,18 @@ def gi-branch [root: path]: nothing -> any {
     if $out.exit_code == 0 and ($branch | is-not-empty) { $branch }
 }
 
-# Move a fresh canvas off the trunk: on a protected branch with nothing staged,
-# switch to a new branch named `name`. Why: gi commits must not land on the
-# trunk, and a new canvas is the moment new work starts. With files staged the
-# user is in the middle of something there, so the switch stays theirs; the
-# launch note still names it.
-# A branch that already exists fails here, with git's own message.
-def gi-leave-trunk [dir: path name: string]: nothing -> nothing {
-    if (gi-branch $dir) not-in $GI_PROTECTED_BRANCHES { return }
-    let staged = ^git -C $dir diff --cached --quiet | complete
+# Start a fresh canvas on a branch of its own: switch to a new branch named
+# `name`, made from the current one. Why: a new canvas is the moment new work
+# starts, and its commits belong together on one branch — whatever branch the
+# user stands on, not only the trunk. `--current-branch` on `gi new` is the
+# opt-out. Outside a repo there is no branch to make.
+# Already on a branch named `name`: the user made the task branch first, so the
+# canvas belongs on it. Any other existing branch of that name fails here, with
+# git's own message.
+def gi-branch-off [dir: path name: string]: nothing -> nothing {
+    let repo = ^git -C $dir rev-parse --is-inside-work-tree | complete
 
-    if $staged.exit_code != 0 { return }
+    if $repo.exit_code != 0 or (gi-branch $dir) == $name { return }
     ^git -C $dir switch --create $name
 }
 
@@ -482,12 +483,14 @@ def gi-edit [doc: path editor: string]: nothing -> nothing {
 # here.
 
 # Create a canvas and open a session bound to it: `<folder>/<date>-<slug>.md`,
-# the editor for writing the task in, then the launch. On main or master with
-# nothing staged, it first switches to a new branch named after the slug.
+# the editor for writing the task in, then the launch. It first switches to a
+# new branch named after the slug, made from the current one; --current-branch
+# stays where it is.
 @category claude-nu
 export def --wrapped "gi new" [
     slug: string # What the canvas is about; the file is <date>-<slug>.md
     --folder: path # Where the canvas lands, relative to where you are (default: gi-canvas/ if present, else todo/ if present, else gi-canvas/, created)
+    --current-branch # Stay on the current branch instead of switching to a new one named after the slug
     --no-editor # Write the canvas without opening it for editing
     --no-claude-launch # Write the canvas and hand back its path; launch nothing
     --no-hook # Launch with the Canvas style but without the Stop-hook floor (the commit guard stays)
@@ -527,7 +530,7 @@ export def --wrapped "gi new" [
         }
     }
     # Before the canvas is written: a switch that fails leaves nothing behind.
-    gi-leave-trunk $dir $slug
+    if not $current_branch { gi-branch-off $dir $slug }
     mkdir ($paths_doc.abs | path dirname)
     gi-new-text $today | save --raw $paths_doc.abs
     if $editor != null { gi-edit $paths_doc.abs $editor }
