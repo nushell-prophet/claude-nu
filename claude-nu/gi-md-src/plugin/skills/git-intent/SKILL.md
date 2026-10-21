@@ -55,7 +55,7 @@ The subject prefix is `gi:` (quiet — the commit *is* the unit, no surrounding 
   So `!!` do it, `??` answer it, `%%` a remark to take into account — "nothing to change" is a valid outcome.
   Leave your own `!!!` / `???` / `%%%` standing until the user clears them, or until his `go` accepts the default a `???` carries; then fold it in the same commit as the work.
 - Removed after processing — in code, fold the result into the surrounding text and remove the whole comment, including any closing delimiters (`*/`, `-->`), not just the marker token.
-  In a document the user writes in — a canvas, a note of his — the text is his: reply under the marker as one `AA:` entry — your summary, prefixed so a reader and `git blame` both see whose line it is — delete the marker line in that same commit, and leave the entry standing under his prose, which stays as written.
+  In a document the user writes in — a canvas, a note of his — the text is his: reply under the marker as one `AA:` entry — your summary, prefixed so a reader and `git blame` both see whose line it is — and once the point is settled, reduce the thread to its decision in a commit of its own: delete the marker lines and leave the entry standing under his prose, which stays as written.
   A large answer goes in a sibling file, `<doc stem>-<mnemonic>.md`, and the `AA:` entry names it.
   When answering a `??` needs the user back, leave a `???` in its place instead.
 - Comments with no marker are persistent context — leave alone
@@ -121,5 +121,5 @@ The subject prefix is `gi:` (quiet — the commit *is* the unit, no surrounding 
 ## Related
 
 - `/gi:git-intent-readback` — when the commits to process are the user's answers to your questions, run this first: restate them and stop, instead of executing a reading nobody confirmed
-- `/gi:git-intent-distill` — when the document has filled up with spent markers and superseded deliberation, cut it back to current state before the next loop
+- `/gi:canvas-tidy` — when the document has filled up with spent markers and superseded deliberation, cut it back to current state before the next loop
 - `/gi:git-intent-squash-archive` — when done iterating, squash the branch into one clean commit preserved as a git tag

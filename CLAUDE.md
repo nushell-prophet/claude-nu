@@ -56,13 +56,13 @@ Reference-doc fetchers (Claude Code + Nushell docs): `cozy docs claude` / `cozy 
   Its API is marked early access and may change between Claude Code releases.
   Where an organization manages Claude Code, `prompt.compose` and `classic.Stop` run only for plugins the managed settings list, so there the agent gets no canvas line and no Stop floor, with no error (`claude plugin validate` says so).
   The commit guard on `tool.call` still runs there.
-  **Plugin components are namespaced by the plugin name.** The style is `gi:Canvas` (`GI_STYLE`) and the skills are `gi:git-intent`, `gi:git-intent-readback`, `gi:git-intent-distill`, `gi:git-intent-squash-archive`.
+  **Plugin components are namespaced by the plugin name.** The style is `gi:Canvas` (`GI_STYLE`) and the skills are `gi:git-intent`, `gi:git-intent-readback`, `gi:canvas-tidy`, `gi:git-intent-squash-archive`.
   A bare `Canvas` in `outputStyle` resolves to nothing and the session starts style-less **with no error** — verified against the CLI, and the reason `gi-launch-settings` is pinned by its own test.
   So any prose naming a gi skill writes the prefix; the frontmatter `name:` inside each `SKILL.md` does not, since the plugin adds it.
   Keep the style file itself comment-free: it is shipped verbatim and injected into every consumer session's system prompt.
 - The `40-gi-canvas` entry-point skill is deliberately **not** in the plugin: it turns a running non-gi chat into a canvas, so it has to exist in sessions gi did not launch, which is exactly where `--plugin-dir` never applies.
   It lives in `../my-claude-skills/plugins/my-skills/skills/40-gi-canvas/`, deployed with that repo's other skills, and it is the one piece of gi that is not read from this module.
-  Its `--distill` cannot call `gi:git-intent-distill` there either, so `distill.md` beside it is a copy of that skill's body: change both together.
+  Its tidy pass after the import cannot call `gi:canvas-tidy` there either, so `tidy.md` beside it is a copy of that skill's body: change both together.
 - The `chat:` aside has two halves that must stay in sync: the `prompt.submit` hook in `register.ts` (it reads the marker from the user's prompt that opened the turn, and the Stop hook lets that turn end with any answer) and the matching `chat:` section in the style (answer in chat, write nothing).
   A slash command the user runs is an aside on the same two halves: the hook takes `e.command` as the marker, and the style's `chat:` section says the skill's own rules govern that turn.
   The marker is only ever the user's: an agent-written one would be the agent lifting its own floor.

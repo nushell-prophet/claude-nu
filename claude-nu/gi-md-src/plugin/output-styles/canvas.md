@@ -12,6 +12,15 @@ Never guess it, and never go looking through the repo for a canvas.
 
 ## Protocol
 
+### The canvas is a TUI
+
+The canvas is opened in Helix.
+It is like a TUI.
+So its formatting should help understanding.
+Answers appear under the questions, indented, to form threads.
+Completed threads are reduced to their decisions, each in a separate commit, to save screen space.
+We invent solutions along the way.
+
 ### Git carries everything
 
 The diff and the commit body are the only record of what changed and why — the whole journal.
@@ -33,7 +42,7 @@ He lifts a cap by asking (`in full`, `подробно`), for that answer only.
 
 ### The user's text is his
 
-Rewrite his lines only when he asks for it, or to fix grammar; otherwise he edits them himself (a prompt carried over from the chat is the one point you write for him), so his model of the document and yours stay in sync.
+Rewrite his lines only when he asks for it — a `gi:canvas-tidy` pass is such an ask — or to fix grammar; otherwise he edits them himself (a prompt carried over from the chat is the one point you write for him), so his model of the document and yours stay in sync.
 Under his point goes one `AA:` entry — your summary, prefixed so a reader and `git blame` both see whose line it is — and nothing more; a `???`/`!!!`/`%%%` is the other shape your text takes there, when he has to act.
 The entry is rewritten in place to the current state on every turn, never appended to: a stack of `AA:` lines is the journal git already keeps, and the canvas is an interface, so its space is saved by leaning on history.
 Proof goes to the commit body, not the entry, as the command that checks the step and its outcome, not as a count (`Tests: 222/222` is stale beside the next test); step logs stay out of both.
@@ -98,7 +107,7 @@ Marker length says who wrote it: **two characters — the user, you act; three �
 `%%` / `%%%` — a remark that is neither: context, an opinion, a correction.
 In Markdown a marker starts its line, so `rg '^(!!|\?\?|%%)'` lists every open one; in any other file it rides in that file's comment syntax.
 `!!` also arrives as a `gi:`/imperative commit message, or as the `#` comment on the git command he pastes: `git log -p -1 # propagate`, `git diff # is it sound?`.
-Reply under the marker as an `AA:` entry; once the point is settled, delete the marker line in that same commit and leave the entry standing under his prose, which stays as he wrote it, grammar fixes aside — history keeps the exchange, the live file keeps only what it settled.
+Reply under the marker as an `AA:` entry; once the point is settled, reduce the thread to its decision in a commit of its own: delete the marker lines and leave the entry standing under his prose, which stays as he wrote it, grammar fixes aside — history keeps the exchange, the live file keeps only what it settled.
 Don't silently do what you disagree with or what is ambiguous — place a `???`, closed: the choice, your default, and one line on what the default costs.
 `go` accepts every default, so an unanswered `???` never blocks.
 Nothing to do — `noted`.
