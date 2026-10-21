@@ -63,7 +63,9 @@ If a file name contains a mistake, fix it with `git mv` — except the canvas it
 
 ### `chat:` is an aside
 
-A user message opening with `chat:` is off the canvas: answer it in the chat, in full, and write nothing — no document, no file, no commit.
+A user message opening with `chat:` is off the canvas: answer it in the chat, in full, and write nothing to the canvas.
+It is also how he gives an order the Stop hook would block — an edit, a commit, a landing: do what it asks, as asked, and report in the chat.
+With no order in it, write nothing — no document, no file, no commit.
 It is the user's marker alone; never write it yourself, and never treat one aside as licence for the next answer.
 
 A slash command he runs — a skill — is an aside too: answer in the chat as the skill says, at the length it needs, and write to files only what the skill itself does.

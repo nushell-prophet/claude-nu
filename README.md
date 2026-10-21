@@ -460,8 +460,8 @@ A turn may still end there, so landing a branch onto the trunk is not blocked.
 The byte budget is tunable via `GI_HOOK_MAX_LEN`.
 
 **`chat:` is the way out.**
-Open your message with `chat:` and that one exchange is off the canvas: the hook lets the turn end with any answer, and the style tells the agent to answer in chat and write nothing — no document, no commit.
-It is for the questions you ask *about* the work rather than as part of it.
+Open your message with `chat:` and that one exchange is off the canvas: the hook lets the turn end with any answer, and the style tells the agent to answer in chat and write nothing to the canvas.
+It is for the questions you ask *about* the work rather than as part of it, and for an order to run outside the canvas (an edit, a commit, a landing) that reports in the chat.
 The marker is read from the prompt that opened the turn, and only from one you typed, so only you can spend one: a marker the agent could write would be the agent lifting its own floor, which is what the hook exists to prevent.
 It covers one turn — the next unmarked message is canvas work again.
 A slash command you run counts as an aside too: a skill carries its own rules for the chat — `/40-land-branch` shows its plan there and waits — so the floor stands down for that turn and the agent answers as the skill says.

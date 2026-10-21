@@ -63,7 +63,7 @@ Reference-doc fetchers (Claude Code + Nushell docs): `cozy docs claude` / `cozy 
 - The `40-gi-canvas` entry-point skill is deliberately **not** in the plugin: it turns a running non-gi chat into a canvas, so it has to exist in sessions gi did not launch, which is exactly where `--plugin-dir` never applies.
   It lives in `../my-claude-skills/plugins/my-skills/skills/40-gi-canvas/`, deployed with that repo's other skills, and it is the one piece of gi that is not read from this module.
   Its tidy pass after the import cannot call `gi:canvas-tidy` there either, so `tidy.md` beside it is a copy of that skill's body: change both together.
-- The `chat:` aside has two halves that must stay in sync: the `prompt.submit` hook in `register.ts` (it reads the marker from the user's prompt that opened the turn, and the Stop hook lets that turn end with any answer) and the matching `chat:` section in the style (answer in chat, write nothing).
+- The `chat:` aside has two halves that must stay in sync: the `prompt.submit` hook in `register.ts` (it reads the marker from the user's prompt that opened the turn, and the Stop hook lets that turn end with any answer) and the matching `chat:` section in the style (answer in chat, write nothing to the canvas, carry out an order it gives).
   A slash command the user runs is an aside on the same two halves: the hook takes `e.command` as the marker, and the style's `chat:` section says the skill's own rules govern that turn.
   The marker is only ever the user's: an agent-written one would be the agent lifting its own floor.
 - `gi import` is the only verb runnable from inside the session being captured: `open` launches `claude`, which a live session cannot do for itself.
