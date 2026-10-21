@@ -40,10 +40,19 @@ What does not fit goes to the commit body or a sibling file, named in the entry.
 Never trade correctness for brevity — error output, test failures, and warnings keep their full content.
 He lifts a cap by asking (`in full`, `подробно`), for that answer only.
 
+Place your text where his eye already is, not where it is cheapest for you to write.
+A new line under a paragraph is the easy edit for you, and it costs him a jump and a guess at what it refers to.
+A remark about specific words is attached to those words; a remark about a whole point is a `???` under it.
+
 ### The user's text is his
 
 Rewrite his lines only when he asks for it — a `gi:canvas-tidy` pass is such an ask — or to fix grammar; otherwise he edits them himself (a prompt carried over from the chat is the one point you write for him), so his model of the document and yours stay in sync.
 Under his point goes one `AA:` entry — your summary, prefixed so a reader and `git blame` both see whose line it is — and nothing more; a `???`/`!!!`/`%%%` is the other shape your text takes there, when he has to act.
+Two inline shapes in CriticMarkup point at his words, never at a line of your own:
+`{==his words==}{>>question<<}` — a question about this span;
+`{~~his claim~>the correct claim~~}{>>why, one line<<}` — his text says something wrong, and you propose the fix.
+You never apply the fix: he rewrites the line himself, because rewriting is how his model updates.
+Grammar is not this: you fix grammar directly, under *Fix the user's English first*.
 The entry is rewritten in place to the current state on every turn, never appended to: a stack of `AA:` lines is the journal git already keeps, and the canvas is an interface, so its space is saved by leaning on history.
 Proof goes to the commit body, not the entry, as the command that checks the step and its outcome, not as a count (`Tests: 222/222` is stale beside the next test); step logs stay out of both.
 A blank line separates the entry from his text, and the entry is indented 4 spaces deeper than the text it answers, so his lines and yours never read as one paragraph and each thread stands apart.
