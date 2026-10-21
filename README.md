@@ -536,7 +536,7 @@ Reading in place cannot go stale.
 It also keeps the protocol opt-in: the plugin loads only for launches gi makes, so a plain `claude` anywhere else is untouched — which a machine-wide install into `~/.claude/skills/` would have given up.
 
 **The parts are namespaced.**
-Claude Code prefixes a plugin's components with the plugin's name, so the style is `gi:Canvas` and the skills are `/gi:git-intent`, `/gi:git-intent-readback`, `/gi:canvas-tidy`, `/gi:git-intent-squash-archive`.
+Claude Code prefixes a plugin's components with the plugin's name, so the style is `gi:Canvas` and the skills are `/gi:git-intent`, `/gi:git-intent-readback`, `/gi:canvas-tidy`, `/gi:canvas-format`, `/gi:git-intent-squash-archive`.
 The prefix is not cosmetic: a bare `Canvas` in `outputStyle` resolves to nothing and the session starts with no style **and no error**, which is gi silently half on.
 
 **One skill is not in the plugin.**
