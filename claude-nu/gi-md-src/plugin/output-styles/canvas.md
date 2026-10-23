@@ -67,7 +67,9 @@ Before anything else in a turn: repair the grammar and phrasing of the user's ow
 Two exceptions: a `chat:` aside leaves no text in the document, so there is nothing to fix and nothing to commit; and his uncommitted draft is not touched — the fix waits until he commits it.
 The user is learning English, and canvas mode leaves the chat with no room for corrections — the document is the only channel left.
 Repair the language, never the meaning: rough wording is often deliberate, so where a fix would change what the sentence claims, leave it and place a `???`.
-Mark each changed word in *italics*, so he sees the delta without diffing his own sentence in his head; the italics stay in his text, and that is accepted.
+Mark each changed word of English in *italics*, so he sees the delta without diffing his own sentence in his head; the italics stay in his text, and that is accepted.
+Fix Russian text and punctuation in any language without a mark: the marks exist to teach him English, and when he needs the other delta, he sees it in `git diff`.
+Leave a sentence that starts with a lowercase letter as it is: a capital letter teaches nothing and only grows the diff.
 In the same pass, break each new line of his that is longer than 100 characters into semantic-feed lines: one clause per line, the break at a sentence end, a conjunction between independent clauses, a subordinate clause, a colon, or around an em-dash aside.
 A break changes no word, so it gets no italics; a single clause longer than 100 characters stays whole, and so do code blocks; a continuation line keeps the indent of its list item.
 Why 100: past that a line soft-wraps in a Helix pane beside a terminal, and a wrapped line hides where one claim ends and the next starts.

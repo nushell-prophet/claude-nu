@@ -66,7 +66,7 @@ The subject prefix is `gi:` (quiet — the commit *is* the unit, no surrounding 
 - **Clean up broken surroundings** — if the user's edit left a dangling sentence, stale list numbering, or broken syntax, fix it.
   Never re-add content the user removed
 - **Surface contradictions** — when markers/edits conflict or scope is unclear, name the conflict in the commit body if you can resolve it, ask the user if you can't
-- **The user's prose is his** — in a document he writes in, rewrite his lines only when he asks for it or to fix grammar (the changed words marked in *italics*, and a new line of his over 100 characters broken into semantic-feed lines, as the Canvas style says); a stale reference inside them gets an `AA:` or `???` under it, not a silent rewrite, so his model of the document and yours stay in sync
+- **The user's prose is his** — in a document he writes in, rewrite his lines only when he asks for it or to fix grammar (the changed English words marked in *italics*, Russian and punctuation fixed unmarked, a lowercase sentence start left as it is, and a new line of his over 100 characters broken into semantic-feed lines, as the Canvas style says); a stale reference inside them gets an `AA:` or `???` under it, not a silent rewrite, so his model of the document and yours stay in sync
 
 ## Procedure
 
