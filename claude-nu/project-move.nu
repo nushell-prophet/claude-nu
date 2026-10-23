@@ -141,7 +141,10 @@ def swap-in-file [file: path swaps: table<needle: string, replacement: string>]:
     | save --raw --force $tmp
     if (ls $file | get 0.modified) != $before {
         rm --force $tmp
-        error make {msg: $"($file) changed while claude-nu was rewriting it — nothing was written to it; rerun the move"}
+        error make {
+            msg: $"($file) changed while claude-nu was rewriting it — nothing was written to it"
+            help: "rerun the move"
+        }
     }
     mv --force $tmp $file
     touch --modified --timestamp $before $file
@@ -163,7 +166,7 @@ def swap-in-file [file: path swaps: table<needle: string, replacement: string>]:
 # refuse a move nobody can then make.
 def refuse-shared-dir [scanned: table src: path old: path]: nothing -> nothing {
     let foreign = $scanned
-        | where scan.records_cwd and scan.old == 0 and scan.new == 0
+        | where $it.scan.records_cwd and scan.old == 0 and scan.new == 0
         | sort-by source
 
     if ($foreign | is-not-empty) {
@@ -242,7 +245,10 @@ def plan-fold [src: path dst: path rewriting: list<string> dst_rewriting: list<s
         let verdict = fold-verdict $after $target
 
         if $verdict == "conflict" {
-            error make {msg: $"($rel) exists in both stores and neither copy contains the other: ($from) and ($to). Nothing was written — settle that file by hand, then rerun."}
+            error make {
+                msg: $"($rel) exists in both stores and neither copy contains the other: ($from) and ($to). Nothing was written."
+                help: "settle that file by hand, then rerun"
+            }
         }
         {kind: $verdict path: $to replaced: null source: $from swaps: null}
     }
@@ -325,7 +331,7 @@ def plan-sessions [src: path dst: path old: path new: path]: nothing -> table {
         | insert kind "session"
         | insert path {|row| $row.source | str replace $src $dst }
         | insert replaced {|row| $row.scan.old }
-        | insert swaps {|_| $swaps }
+        | insert swaps $swaps
         | select kind path replaced source swaps
         # A destination copy the source replaces is overwritten, so its rewrite
         # would be work reported on a file about to vanish.
@@ -494,12 +500,14 @@ export def main [
     if $merges_config {
         # The two entries are printed rather than diffed: which side wins is a
         # judgement per field, so the useful thing to hand over is both records.
-        error make {msg: ([
-            $"($config) already has an entry for ($new) — merging two settings records is not this command's job."
-            "Read both, fold them into one by hand, then rerun:"
-            $"  open ($config) | get projects | get \"($old)\""
-            $"  open ($config) | get projects | get \"($new)\""
-        ] | str join "\n")}
+        error make {
+            msg: $"($config) already has an entry for ($new) — merging two settings records is not this command's job."
+            help: ([
+                "Read both, fold them into one by hand, then rerun:"
+                $"  open ($config) | get projects | get \"($old)\""
+                $"  open ($config) | get projects | get \"($new)\""
+            ] | str join "\n")
+        }
     }
 
     let sessions = plan-sessions $src $dst $old $new

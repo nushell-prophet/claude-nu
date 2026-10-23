@@ -959,7 +959,7 @@ def "import takes a session by the name the rename command gave it and keys the 
     let status = with-env {HOME: $home CLAUDE_CODE_SESSION_ID: null} {
         (do { cd $root; gi import plan my-plan --commit | update doc { path expand } })
     }
-    let subject = git -C $root log -1 --format=%s
+    let subject = git -C $root log --max-count 1 --format=%s
 
     rm --recursive --force $root $home
 

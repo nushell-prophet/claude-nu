@@ -35,8 +35,8 @@ export def main [
     let piped_files = piped-session-files $input
 
     # Why up here: same as in `messages` — a bad bound fails before any parsing.
-    let since_at = if $since == null { null } else { $since | resolve-time-bound "--since" }
-    let until_at = if $until == null { null } else { $until | resolve-time-bound "--until" }
+    let since_at = $since | resolve-time-bound "--since"
+    let until_at = $until | resolve-time-bound "--until"
 
     let scoped_files = if $piped_files != null {
         $piped_files

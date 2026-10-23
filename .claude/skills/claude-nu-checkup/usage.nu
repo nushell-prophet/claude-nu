@@ -13,23 +13,18 @@
 const REPO = path self ../../..
 
 use ($REPO | path join claude-nu)
-use ($REPO | path join claude-nu discovery.nu) [UUID_JSONL_PATTERN AGENT_JSONL_PATTERN]
+use ($REPO | path join claude-nu discovery.nu) [UUID_JSONL_PATTERN AGENT_JSONL_PATTERN projects-root]
 
 const SUBCOMMANDS = 'claude-nu (projects|sessions|messages|tool-calls|timeline|records|workflows|slash-commands|export-session)'
 
 # The cause decides where the fix goes; the order matters, the first match wins.
 export def cause []: string -> string {
-    let text = $in
-    if $text =~ "neither a Nushell built-in|`claude-nu` .*not found|module_not_found|module_missing_mod_nu_file" {
-        'not-loaded'
-    } else if $text =~ 'column_not_found|Unknown session column' {
-        'column-guess'
-    } else if $text =~ 'Path not found|Session (file )?not found|File not found|ambiguous|names more than one transcript|No session files|No sessions directory' {
-        'selector'
-    } else if $text =~ 'mutually exclusive' {
-        'scope-conflict'
-    } else {
-        'other'
+    match $in {
+        $t if $t =~ "neither a Nushell built-in|`claude-nu` .*not found|module_not_found|module_missing_mod_nu_file" => 'not-loaded'
+        $t if $t =~ 'column_not_found|Unknown session column' => 'column-guess'
+        $t if $t =~ 'Path not found|Session (file )?not found|File not found|ambiguous|names more than one transcript|No session files|No sessions directory' => 'selector'
+        $t if $t =~ 'mutually exclusive' => 'scope-conflict'
+        _ => 'other'
     }
 }
 
@@ -37,11 +32,11 @@ export def cause []: string -> string {
 def main [
     --since: string = '2wk' # How far back to look: a duration meaning ago, or a date
     --json # Machine-readable output, for agents
-]: nothing -> any {
+]: nothing -> oneof<string, nothing> {
     # Why every transcript and not `claude-nu projects`: a project row stands
     # for its top-level sessions only, and much of the claude-nu use is by
     # subagents a study launched.
-    let calls = ls (($env.HOME | path join .claude projects '**' '*.jsonl') | into glob)
+    let calls = ls ((projects-root | path join '**' '*.jsonl') | into glob)
         | where name =~ $UUID_JSONL_PATTERN or name =~ $AGENT_JSONL_PATTERN
         | get name
         | claude-nu tool-calls --results --since $since 'claude-nu '

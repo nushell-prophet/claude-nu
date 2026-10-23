@@ -132,7 +132,7 @@ def gi-repo-root [dir?: path]: nothing -> path {
 
 # Current branch at root, or null outside a repo / on detached HEAD — nothing
 # to protect there, so the branch guard passes.
-def gi-branch [root: path]: nothing -> any {
+def gi-branch [root: path]: nothing -> oneof<string, nothing> {
     let out = ^git -C $root branch --show-current | complete
     let branch = $out.stdout | str trim
 
@@ -497,7 +497,7 @@ export def --wrapped "gi new" [
     --execute # Start the session on a first prompt, `@<canvas> go`, so it works on the canvas without waiting
     --dangerously-skip-permissions # Pass claude's flag of the same name through
     ...rest: string # Any other flags go straight to `claude`
-]: nothing -> any {
+]: nothing -> oneof<path, nothing> {
     # Same rule as `gi open`'s canvas argument: under --wrapped an undeclared
     # flag typed before the positional becomes the positional, so a typo would
     # otherwise create `todo/<date>---modle.md` instead of reaching the
@@ -683,7 +683,7 @@ export def "gi import" [
     }
     if $commit {
         ^git -C $root add -- $paths_doc.abs
-        ^git -C $root commit --quiet -m $"gi: import session (gi-session-key $file) as the working doc" -m "Dialogue up to the import; the full session log stays outside the repo." -- $paths_doc.abs
+        ^git -C $root commit --quiet --message $"gi: import session (gi-session-key $file) as the working doc" --message "Dialogue up to the import; the full session log stays outside the repo." -- $paths_doc.abs
     }
 
     print $"canvas: ($paths_doc.rel)"

@@ -24,7 +24,7 @@ const MODULE = 'claude-nu'
 @category claude-nu
 export def main [
     slug?: string@"nu-complete claude-nu examples" # Which example to paste; omit to get the table
-]: nothing -> any {
+]: nothing -> oneof<table<slug: string, description: string, example: string>, nothing> {
     if $slug == null { return (example-table) }
 
     let found = example-table | where slug == $slug

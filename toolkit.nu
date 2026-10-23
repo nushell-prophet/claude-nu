@@ -1,9 +1,8 @@
 const captures_dir = 'dotnu-captures'
 const fixtures_sessions_dir = 'tests/fixtures/sessions'
-const uuid_jsonl_pattern = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$'
 
 # Find nutest module path, or null if not available
-def find-nutest []: nothing -> any {
+def find-nutest []: nothing -> oneof<path, nothing> {
     for dir in ($env.NU_LIB_DIRS? | default []) {
         let candidate = $dir | path join 'nutest'
 
@@ -59,7 +58,7 @@ export def 'main test-unit' [
     --json # force machine-readable JSON output even on a terminal
     --pretty # force the human view even when output is piped
     --all # human view: also list passing tests (default shows only failures)
-]: nothing -> any {
+]: nothing -> oneof<string, nothing> {
     let flat = collect-unit-results
 
     if (machine-mode --json=$json --pretty=$pretty) {
@@ -92,7 +91,7 @@ def collect-unit-results []: nothing -> table {
     }
 
     let tests_path = 'tests' | path expand
-    let result = ^nu -c $"use ($nutest_path); nutest run-tests --path ($tests_path) --returns table --display nothing | to json --raw" | complete
+    let result = ^nu --commands $"use ($nutest_path); nutest run-tests --path ($tests_path) --returns table --display nothing | to json --raw" | complete
 
     if $result.exit_code != 0 {
         print --stderr $"(ansi red)✗(ansi reset) nutest failed"
@@ -121,7 +120,7 @@ def collect-unit-results []: nothing -> table {
 # parse error in it, which nutest reports as one synthetic failing row. Indexing
 # that string for `.msg` threw, so a whole unparseable suite surfaced as a crash
 # inside this toolkit instead of as the parse error it is.
-def failure-message []: any -> any {
+def failure-message []: any -> oneof<string, nothing> {
     let msgs = $in
         | default []
         | each {|o| if ($o | describe) == "string" { $o | str trim } else { $o.msg? } }
@@ -170,7 +169,7 @@ export def 'main vendor-sessions' [
     ...sessions: string # Session UUIDs to vendor (default: most recent)
     --count: int = 3 # Number of most recent sessions when no UUIDs given
 ]: nothing -> nothing {
-    use claude-nu/sessions.nu get-sessions-dir
+    use claude-nu/sessions.nu [get-sessions-dir UUID_JSONL_PATTERN session-id-from-path]
 
     let sessions_dir = get-sessions-dir
 
@@ -181,12 +180,10 @@ export def 'main vendor-sessions' [
 
     let source_files = if ($sessions | is-empty) {
         let available = ls $sessions_dir
-            | where name =~ $uuid_jsonl_pattern
+            | where name =~ $UUID_JSONL_PATTERN
             | sort-by modified --reverse
 
-        let to_take = [($available | length) $count] | math min
-
-        $available | first $to_take | get name
+        $available | first $count | get name
     } else {
         $sessions | each {|s|
             if ($s | str ends-with '.jsonl') { $s } else {
@@ -204,7 +201,7 @@ export def 'main vendor-sessions' [
         }
 
         let raw = open --raw $file
-        let old_uuid = $file | path basename | str replace '.jsonl' ''
+        let old_uuid = $file | session-id-from-path
         let new_uuid = random uuid
 
         # Replace filename UUID throughout the file

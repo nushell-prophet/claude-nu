@@ -819,9 +819,10 @@ def "messages with no input skips subagent transcripts" [] {
 
 @test
 def "messages matches a regex and not just a literal" [] {
-    # Why: rg pre-filters the files, then `messages` re-applies the regex to the
-    # extracted text — both use Rust's regex engine, so an actual pattern
-    # (alternation here) must survive the round-trip and a non-match must drop.
+    # Why: rg pre-filters the files with the Rust regex crate, then `messages`
+    # re-applies the regex with Nushell's fancy-regex to the extracted text. A
+    # plain alternation means the same in both engines, so it must survive the
+    # round-trip and a non-match must drop.
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $nu.temp-dir | path join $"fake-proj-(random uuid)"
 
@@ -1121,9 +1122,9 @@ def "a prompt-skill Claude Code ships is not a built-in" [] {
     # The grey zone, decided one way: /init, /simplify, /code-review, /schedule
     # are skills the model runs like any other, so they are work and get
     # counted. Only what Claude Code handles locally is housekeeping.
-    assert equal ("/schedule" | is-builtin-slash-command) false
-    assert equal ("/init" | is-builtin-slash-command) false
-    assert equal ("/clear" | is-builtin-slash-command) true
+    assert not ("/schedule" | is-builtin-slash-command)
+    assert not ("/init" | is-builtin-slash-command)
+    assert ("/clear" | is-builtin-slash-command)
 }
 
 @test
@@ -3400,17 +3401,17 @@ def "an id in two projects is an error naming both paths" [] {
     let home = two-project-store
     let errors = with-env {HOME: $home} {
         [agent-aaaa $TWICE_SESSION "11111111"] | each {|selector|
-            try { resolve-session-file $selector --sessions-dir ($home | path join "elsewhere"); "" } catch {|e| $e.msg }
+            try { resolve-session-file $selector --sessions-dir ($home | path join "elsewhere"); {msg: "" help: ""} } catch {|e| {msg: $e.msg help: $e.details.help} }
         }
     }
 
     rm --recursive --force $home
 
     for err in $errors {
-        assert str contains $err "more than one transcript"
-        assert str contains $err "-proj-a"
-        assert str contains $err "-proj-b"
-        assert not ($err | str contains "give more characters")
+        assert str contains $err.msg "more than one transcript"
+        assert str contains $err.msg "-proj-a"
+        assert str contains $err.msg "-proj-b"
+        assert not ($err.help | str contains "give more characters")
     }
 }
 

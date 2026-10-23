@@ -24,7 +24,7 @@ export def parse-script-commands [script: string]: nothing -> table {
     | update name { str replace 'main ' '' }
 }
 
-export def "nu-complete nu subcommands" [place: record]: nothing -> any {
+export def "nu-complete nu subcommands" [place: record]: nothing -> oneof<list<string>, nothing> {
     let script = $place.command
         | skip 1
         | where $it ends-with '.nu' and ($it | path exists)

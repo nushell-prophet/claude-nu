@@ -128,7 +128,7 @@ def comma-list [typed: string]: table -> table {
 
     $in
     | where value not-in $chosen
-    | if ($prefix | is-empty) { } else { update value {|it| $"($prefix),($it.value)" } }
+    | if ($prefix | is-empty) { } else { update value { $"($prefix),($in)" } }
 }
 
 def "nu-complete claude output-formats" []: nothing -> record { $output_formats | ordered }

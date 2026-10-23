@@ -123,9 +123,9 @@ def "rewrites cwd in top-level and subagent transcripts" [] {
 
     rm --recursive --force $home
 
-    assert equal ($top | str contains '"cwd":"/work/moved/demo"') true
-    assert equal ($top | str contains '"cwd":"/work/demo"') false
-    assert equal ($sub | str contains '"cwd":"/work/moved/demo"') true
+    assert str contains $top '"cwd":"/work/moved/demo"'
+    assert not ($top | str contains '"cwd":"/work/demo"')
+    assert str contains $sub '"cwd":"/work/moved/demo"'
 }
 
 @test
@@ -139,8 +139,8 @@ def "leaves the old path where it is a record of what happened" [] {
 
     # A file the session read and a path quoted in a message are history, not a
     # pointer to the project — rewriting them would falsify the transcript.
-    assert equal ($top | str contains '"file_path":"/work/demo/README.md"') true
-    assert equal ($top | str contains 'look at /work/demo/README.md') true
+    assert str contains $top '"file_path":"/work/demo/README.md"'
+    assert str contains $top 'look at /work/demo/README.md'
 }
 
 @test
@@ -169,11 +169,11 @@ def "moves the prompt history and the config entries" [] {
 
     rm --recursive --force $home
 
-    assert equal ($history | str contains '"project":"/work/moved/demo"') true
+    assert str contains $history '"project":"/work/moved/demo"'
     # Both the `projects` key and the `githubRepoPaths` value carry the path.
-    assert equal ($config | str contains '"/work/moved/demo": {') true
-    assert equal ($config | str contains '"/work/moved/demo"') true
-    assert equal ($config | str contains '"/work/demo"') false
+    assert str contains $config '"/work/moved/demo": {'
+    assert str contains $config '"/work/moved/demo"'
+    assert not ($config | str contains '"/work/demo"')
 }
 
 @test
@@ -188,8 +188,8 @@ def "leaves an unrelated project alone" [] {
     rm --recursive --force $home
 
     assert $other_there
-    assert equal ($history | str contains '"project":"/work/other"') true
-    assert equal ($config | str contains '"/work/other"') true
+    assert str contains $history '"project":"/work/other"'
+    assert str contains $config '"/work/other"'
 }
 
 @test
@@ -203,11 +203,11 @@ def "rewrites cwd without a rename when the encoded name is unchanged" [] {
 
     rm --recursive --force $home
 
-    assert equal ($content | str contains '"cwd":"/work-demo"') true
+    assert str contains $content '"cwd":"/work-demo"'
 }
 
 @test
-def "finds the sessions of a path with a dot, as Claude Code names them" [] {
+def "finds the sessions of a path with a dot as Claude Code names them" [] {
     let home = $nu.temp-dir | path join $"project-move-(random uuid)"
     # Claude Code turns every character but a letter or digit into `-`, so the
     # worktree path below lands in `-work-demo--claude-worktrees-x`.
@@ -220,7 +220,7 @@ def "finds the sessions of a path with a dot, as Claude Code names them" [] {
 
     rm --recursive --force $home
 
-    assert equal ($content | str contains '"cwd":"/work/moved/demo"') true
+    assert str contains $content '"cwd":"/work/moved/demo"'
 }
 
 # =============================================================================
@@ -239,7 +239,7 @@ def "moves a project whose path holds glob metacharacters" [] {
 
     rm --recursive --force $home
 
-    assert equal ($content | str contains '"cwd":"/work/moved/demo"') true
+    assert str contains $content '"cwd":"/work/moved/demo"'
 }
 
 @test
@@ -291,7 +291,7 @@ def "rewrites through a symlinked config instead of replacing the link" [] {
     rm --recursive --force $home
 
     assert equal $still_link "symlink"
-    assert equal ($content | str contains '"/work/moved/demo"') true
+    assert str contains $content '"/work/moved/demo"'
 }
 
 @test
@@ -308,7 +308,7 @@ def "moves a project Claude knows only from its config" [] {
     # `mv` on a missing source dies with a bare "Not found" and the plan would
     # have promised a move it could not make.
     assert equal ($report | get kind) [history config]
-    assert equal ($config | str contains '"/work/moved/demo"') true
+    assert str contains $config '"/work/moved/demo"'
 }
 
 @test
@@ -323,7 +323,7 @@ def "refuses a file it cannot read as text" [] {
 
     # A non-UTF8 transcript stops the move before anything is written.
     assert $failed
-    assert equal ($untouched | str contains '"cwd":"/work/demo"') true
+    assert str contains $untouched '"cwd":"/work/demo"'
 }
 
 @test
@@ -354,8 +354,8 @@ def "a run that dies partway is finished by running it again" [] {
     # The transcript already done reports no occurrences and drops out of the
     # second plan; what is left gets written, and then the rename happens.
     assert equal ($report | get kind) [sessions-dir session history config]
-    assert equal ($top | str contains '"cwd":"/work/moved/demo"') true
-    assert equal ($sub | str contains '"cwd":"/work/moved/demo"') true
+    assert str contains $top '"cwd":"/work/moved/demo"'
+    assert str contains $sub '"cwd":"/work/moved/demo"'
 }
 
 # =============================================================================
@@ -382,8 +382,8 @@ def "refuses to rename a sessions directory two projects share" [] {
     # name while its own config entry still points at the old path.
     assert $failed
     assert $still_old_name
-    assert equal ($ours | str contains '"cwd":"/work/demo"') true
-    assert equal ($theirs | str contains '"cwd":"/work-demo"') true
+    assert str contains $ours '"cwd":"/work/demo"'
+    assert str contains $theirs '"cwd":"/work-demo"'
 }
 
 @test
@@ -410,8 +410,8 @@ def "a move into a subdirectory of the project rewrites the root cwd once" [] {
 
     rm --recursive --force $home
 
-    assert equal ($moved | str contains '"cwd":"/work/demo/inner"') true
-    assert equal ($moved | str contains '/inner/inner') false
+    assert str contains $moved '"cwd":"/work/demo/inner"'
+    assert not ($moved | str contains '/inner/inner')
 }
 
 @test
@@ -464,7 +464,7 @@ def "finishes a rerun whose config swap already landed" [] {
     # The new path alone in the config is our own work, not a second project —
     # reading it as a merge would make the move impossible to finish.
     assert equal ($report | get kind) [sessions-dir session session]
-    assert equal ($content | str contains '"cwd":"/work/moved/demo"') true
+    assert str contains $content '"cwd":"/work/moved/demo"'
 }
 
 @test
@@ -483,7 +483,7 @@ def "refuses when the config already carries the destination" [] {
     # holding "/work/moved/demo" twice — JSON a parser still reads, keeping one
     # entry and silently dropping the other project's permissions.
     assert $failed
-    assert equal ($config | str contains '"/work/demo"') true
+    assert str contains $config '"/work/demo"'
 }
 
 @test
@@ -496,7 +496,7 @@ def "dry-run reports the same rows and writes nothing" [] {
     rm --recursive --force $home
 
     assert $untouched
-    assert equal ($content | str contains '"cwd":"/work/demo"') true
+    assert str contains $content '"cwd":"/work/demo"'
     assert equal ($plan | columns) [kind path replaced]
     assert equal ($plan | get kind) [sessions-dir session session history config]
     # Two cwd occurrences in the top-level file, one in the subagent transcript,
@@ -535,7 +535,7 @@ def "folds into a sessions directory already standing at the destination" [] {
 
     assert $old_gone
     assert equal $names [aaaa aaaa.jsonl cccc.jsonl]
-    assert equal ($top | str contains '"cwd":"/work/moved/demo"') true
+    assert str contains $top '"cwd":"/work/moved/demo"'
     assert equal ($report | get kind) [sessions-fold session session history config]
 }
 
@@ -671,7 +671,7 @@ def "refuses a pair where neither copy contains the other" [] {
     # flag that deleted one side would make exactly the wrong call easy. The
     # conflict is found while planning, so nothing has been written yet.
     assert $failed
-    assert equal ($untouched | str contains '"cwd":"/work/demo"') true
+    assert str contains $untouched '"cwd":"/work/demo"'
 }
 
 @test
@@ -733,6 +733,7 @@ def link-target [link: path]: nothing -> string {
 @test
 def "retargets a link inside the store to the moved store" [] {
     let home = fake-home
+
     link-agent $home "-work-demo" "dddd" | ignore
     let report = with-env {HOME: $home} { project-move $OLD $NEW }
     let moved = projects-dir $home | path join "-work-moved-demo"
@@ -763,6 +764,7 @@ def "retargets a link another store holds into the moved store" [] {
 @test
 def "plans the file behind a link once" [] {
     let home = fake-home
+
     link-agent $home "-work-demo" "dddd" | ignore
     let report = with-env {HOME: $home} { project-move $OLD $NEW --dry-run }
 
@@ -775,11 +777,13 @@ def "plans the file behind a link once" [] {
 def "repairs a link that an earlier move left pointing into the old store" [] {
     let home = fake-home
     let old_target = link-agent $home "-work-demo" "dddd" | link-target $in
+
     # A move that ran before links were retargeted: the store is at its new
     # name, every other trace of the old path is gone, the link still points
     # into the old store.
     with-env {HOME: $home} { project-move $OLD $NEW | ignore }
     let moved_link = projects-dir $home | path join "-work-moved-demo" "dddd" "subagents" "agent-1.jsonl"
+
     ^ln -s -f -n $old_target $moved_link
     let report = with-env {HOME: $home} { project-move $OLD $NEW }
     let readable = $moved_link | path exists
@@ -793,6 +797,7 @@ def "repairs a link that an earlier move left pointing into the old store" [] {
 @test
 def "drops a source link the destination store already holds as a file" [] {
     let home = fake-home
+
     link-agent $home "-work-demo" "dddd" | ignore
     let dst = seed-destination $home ("dddd" | path join "subagents" "agent-1.jsonl") (rewritten $SUBAGENT_LINE)
     let report = with-env {HOME: $home} { project-move $OLD $NEW }
@@ -807,7 +812,7 @@ def "drops a source link the destination store already holds as a file" [] {
 }
 
 @test
-def "retargets a link to a directory, not the files in it" [] {
+def "retargets a link to a directory and not the files in it" [] {
     let home = fake-home
     # The shape of a workflow run resumed in another session:
     # `<session>/subagents/workflows/wf_*` links to the run's directory.

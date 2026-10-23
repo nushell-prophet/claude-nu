@@ -33,7 +33,7 @@ const REPO = path self ../../..
 const KNOWN_FILE = path self known.nuon
 
 use ($REPO | path join claude-nu)
-use ($REPO | path join claude-nu discovery.nu) [read-session-records UUID_JSONL_PATTERN AGENT_JSONL_PATTERN]
+use ($REPO | path join claude-nu discovery.nu) [read-session-records UUID_JSONL_PATTERN AGENT_JSONL_PATTERN projects-root]
 use ($REPO | path join claude-nu render.nu) [content-blocks]
 use ($REPO | path join claude-nu extract.nu) [extract-text-content is-user-text]
 
@@ -52,11 +52,11 @@ use ($REPO | path join claude-nu extract.nu) [extract-text-content is-user-text]
 # Cost accepted: the driver notices only new shapes inside the kinds of file it
 # knows, not a new *kind* appearing under the projects root.
 export def latest-files [window?: int]: nothing -> list<path> {
-    ls (($env.HOME | path join .claude projects '**' '*.jsonl') | into glob)
+    ls ((projects-root | path join '**' '*.jsonl') | into glob)
     | where name =~ $UUID_JSONL_PATTERN or name =~ $AGENT_JSONL_PATTERN
     | sort-by modified --reverse
     | get name
-    | if $window != null and ($in | length) > $window { first $window } else { }
+    | if $window == null { } else { first $window }
 }
 
 # Decode every record in the window. A file that fails to parse yields nothing
@@ -85,7 +85,7 @@ export def is-blank []: any -> bool {
 
 # Count occurrences of each distinct value, most frequent first.
 def tally []: list -> table {
-    compact | uniq --count | sort-by count --reverse | rename value count
+    compact | uniq --count | sort-by count --reverse
 }
 
 # Every format fact the window contains, as {category, value, count} rows.
@@ -247,14 +247,14 @@ def main [
     --json # Machine-readable output, for agents and CI
     --fail # Exit non-zero when anything needs attention
     --all # Read every session file on disk: `dead` then means no file has it, and the history pass runs
-]: nothing -> any {
+]: nothing -> oneof<string, nothing> {
     let files = if $all { latest-files } else { latest-files $window }
     # Why: blank columns and the smoke run answer "does it read today's
     # format", so they stay on the newest files even under --all.
-    let recent = $files | first ([$window ($files | length)] | math min)
+    let recent = $files | first $window
 
     if ($files | is-empty) {
-        error make --unspanned {msg: $"No session files under ($env.HOME | path join .claude projects)"}
+        error make --unspanned {msg: $"No session files under (projects-root)"}
     }
 
     let known = open $KNOWN_FILE
@@ -318,7 +318,7 @@ def main [
         if ($history | is-empty) { print "none" } else { print $history }
     }
 
-    if $fail and (($drift | is-not-empty) or ($tags | is-not-empty) or ($blank | is-not-empty) or ($broken | is-not-empty) or ($history | is-not-empty)) {
+    if $fail and ([$drift $tags $blank $broken $history] | any { is-not-empty }) {
         exit 1
     }
 }

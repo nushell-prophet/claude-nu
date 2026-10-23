@@ -243,7 +243,7 @@ def "messages without --context has no hit column" [] {
 @test
 def "messages --raw --context marks the hit on raw rows" [] {
     let f = session-file $CONTEXT_LINES
-    let result = {path: $f} | messages needle --context 1 --raw | where hit | get uuid
+    let result = {path: $f} | messages needle --context 1 --raw | where $it.hit | get uuid
 
     rm $f
 

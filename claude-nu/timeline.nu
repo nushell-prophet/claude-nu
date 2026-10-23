@@ -1,7 +1,7 @@
 # claude-nu timeline - the interleaved record of a session, one row per
 # content block.
 use sessions.nu [
-    piped-session-files drop-copied-records top-level-session-files
+    piped-session-files drop-copied-records scoped-session-files
     resolve-time-bound mtime-filter-session-files rg-filter-session-files
     read-session-records session-id-from-path project-dir-name
     project-display-name pick-first content-blocks extract-text-content
@@ -43,23 +43,12 @@ export def main [
     let piped_files = piped-session-files $input
 
     # Why up here: same as in `messages` — a bad bound fails before any parsing.
-    let since_at = if $since == null { null } else { $since | resolve-time-bound "--since" }
-    let until_at = if $until == null { null } else { $until | resolve-time-bound "--until" }
-
-    let scoped_files = if $piped_files != null {
-        $piped_files
-    } else {
-        top-level-session-files
-        | if ($in | is-empty) { error make "No session files found for the current project" } else { }
-    }
+    let since_at = $since | resolve-time-bound "--since"
+    let until_at = $until | resolve-time-bound "--until"
 
     # Why here, before rg: same reason as in `messages` — rg's own "No such
     # file" would mask this and discard the matches it did find.
-    let missing = $scoped_files | where not ($it | path exists)
-
-    if ($missing | is-not-empty) {
-        error make $"Session file not found: ($missing | str join ', ')"
-    }
+    let scoped_files = scoped-session-files $piped_files
 
     $scoped_files
     | if $since_at == null { } else { mtime-filter-session-files $since_at }

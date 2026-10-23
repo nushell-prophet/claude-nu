@@ -156,11 +156,17 @@ def find-session-file [
     if ($ids | length) == 1 {
         let rows = $found | each {|file| $"  ($file)" } | str join "\n"
 
-        error make $"($selector) names more than one transcript, pick one by its path:\n($rows)"
+        error make {
+            msg: $"($selector) names more than one transcript:\n($rows)"
+            help: "pick one by its path"
+        }
     }
     let rows = $found | each {|file| $"  ($file | session-id-from-path)  ($file | project-dir-name)" } | str join "\n"
 
-    error make $"Session id prefix is ambiguous, give more characters: ($selector)\n($rows)"
+    error make {
+        msg: $"Session id prefix is ambiguous: ($selector)\n($rows)"
+        help: "give more characters"
+    }
 }
 
 # The parent session of a subagent transcript, read from its path: the
@@ -169,7 +175,7 @@ def find-session-file [
 # transcripts into its own `subagents/`, and the parent is the session where
 # the file lives — the one discovery and `--session agent-<id>` report, after
 # `drop-linked-copies` drops the link.
-export def parent-session-of []: path -> any {
+export def parent-session-of []: path -> oneof<string, nothing> {
     let file = $in | path expand
     let top = $file | top-level-session-file
 
@@ -314,7 +320,7 @@ export def subagent-identity []: path -> record {
 # Why the project-wide step: a run resumed from another session writes its state
 # there, while its agents' transcripts stay under the session that started them
 # (seen on this machine: `wf_7b4c85a1-a5c`).
-def workflow-state-file [workflow: string]: path -> any {
+def workflow-state-file [workflow: string]: path -> oneof<path, nothing> {
     let session_dir = $in | top-level-session-file | str replace --regex '\.jsonl$' ''
     let own = $session_dir | path join "workflows" $"($workflow).json"
 
@@ -356,7 +362,10 @@ def resolve-session-name [
                 }
                 | str join "\n"
 
-            error make $"Session name is ambiguous, pick a UUID: ($name)\n($rows)"
+            error make {
+                msg: $"Session name is ambiguous: ($name)\n($rows)"
+                help: "pick a UUID"
+            }
         }
     }
 }
@@ -410,7 +419,7 @@ export def read-session-records [--contains: list<string>]: path -> table {
     # all-projects `messages` search four times slower.
     let pattern = $contains
         | default []
-        | each { str replace --all --regex '[\\^$.|?*+()\[\]{}]' '\$0' }
+        | str replace --all --regex '[\\^$.|?*+()\[\]{}]' '\$0'
         | str join "|"
     let raw = open --raw $file
         | str trim --right --char (char nul)
@@ -515,10 +524,10 @@ export def drop-linked-copies [root: path]: list<path> -> list<path> {
 
             {path: $f real: $real linked: ($real != ($root_real | path join ($f | path relative-to $root)))}
         }
-    let direct = $rows | where not linked | get real
+    let direct = $rows | where not $it.linked | get real
 
     $rows
-    | where not linked or real not-in $direct
+    | where not $it.linked or real not-in $direct
     | uniq-by real
     | get path
 }
@@ -612,14 +621,16 @@ export def rg-filter-session-files [
 # A time bound as the caller typed it, turned into a datetime. A duration means
 # "ago" (`--since 1wk`), a datetime is taken as given, and a string is read as
 # either — so one flag accepts `1wk`, `2026-08-01`, and a `$start` variable.
+# A null, a flag the caller did not give, passes through as null.
 # Why one converter: --since/--until live on three commands, and each deciding
 # for itself what `1wk` means is how the same flag ends up meaning "a week ago"
 # in one place and "a week long" in another.
-export def resolve-time-bound [flag: string]: any -> datetime {
+export def resolve-time-bound [flag: string]: [nothing -> nothing any -> datetime] {
     peek | metadata access {|md|
         let value = $in
 
         match $md.peek.type {
+            "nothing" => null
             "datetime" => $value
             "duration" => ((date now) - $value)
             # Why duration first: `into datetime` rejects "1wk" and `into duration`

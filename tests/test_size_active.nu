@@ -8,7 +8,7 @@ const FIXTURES_SESSIONS_DIR = path self fixtures/sessions
 
 # A fake ~/.claude/projects/<proj> holding one session file per entry of
 # `sessions`: {id, lines, mtime}. Returns the fake home and the project dir.
-def make-store [sessions: list]: nothing -> record {
+def make-store [sessions: list<record<id: string, lines: list<string>, mtime: datetime>>]: nothing -> record {
     let fake_home = $nu.temp-dir | path join $"fake-home-(random uuid)"
     let proj_dir = $fake_home | path join ".claude" "projects" "-some-encoded-dir"
 

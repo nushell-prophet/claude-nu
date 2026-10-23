@@ -79,7 +79,7 @@ export def is-builtin-slash-command []: string -> bool {
 # transcript is a list of blocks, and this project's own sessions are full of
 # them (the text `<command-name>/usage` appears 15 times here in files where it
 # was invoked 0 times).
-export def extract-slash-command []: record -> any {
+export def extract-slash-command []: record -> oneof<record, nothing> {
     let record = $in
     let text = [$record.message?.content? $record.content?]
         | where ($it | describe) == "string"
