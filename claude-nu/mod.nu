@@ -9,6 +9,7 @@
 #   slash-commands  # Extract the slash commands invoked in a session — what you typed
 #   workflows       # List the Workflow tool runs of a session: status, duration, error, agents
 #   export-session  # Render a session's dialogue to markdown
+#   live-sessions   # List the Claude Code sessions running on this machine, from Claude Code's own registry
 #   project-move    # Retarget Claude's stored state from a project's old path to its new one
 #   gi              # gi protocol: status on its own; gi new makes a canvas and opens it, gi import turns a session into a canvas, gi open launches a session bound to one
 #   example         # Pick a pipeline from the module's own `@example` blocks and paste it into your command line
@@ -31,6 +32,7 @@ export use project-move.nu [ main ]
 export use example.nu [ main ]
 export use timeline.nu [ main ]
 export use workflows.nu [ main ]
+export use live-sessions.nu [ main ]
 
 # Why the module keeps a `main` at all: without one the bare name `claude-nu`
 # falls through to an external-command lookup and answers "command not found" —
@@ -59,7 +61,7 @@ export def main []: nothing -> any {
     error make --unspanned {
         msg: "claude-nu needs a subcommand"
         help: ([
-            "subcommands: projects, sessions, messages, tool-calls, timeline, slash-commands, records, workflows, export-session, project-move, gi, example"
+            "subcommands: projects, sessions, messages, tool-calls, timeline, slash-commands, records, workflows, live-sessions, export-session, project-move, gi, example"
             "pipelines to try: claude-nu example <tab>"
         ] | str join "\n")
     }

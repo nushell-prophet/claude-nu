@@ -12,6 +12,7 @@ Nushell utilities for working with [Claude Code](https://claude.ai/code) session
 - **Search what the agent ran** — `tool-calls 'pattern'` searches the tool calls themselves, not only what was typed
 - **Read a session in order** — `timeline` gives one row per text, thinking, tool call and result, in file order
 - **Workflow runs** — `workflows` lists each Workflow tool run: status, duration, error, agents
+- **Running sessions** — `live-sessions` lists the Claude Code sessions running on this machine, and where each one started
 - **Rank your slash commands** — `slash-commands` counts what you actually invoked, skills and custom commands, built-ins left out
 - **Smart session picker** — `claude --resume <TAB>` shows age, size, and summary instead of raw UUIDs
 - **Export to markdown** — Keep session history in git with YAML frontmatter
@@ -333,6 +334,30 @@ claude-nu workflows | sort-by started | last | get agents | group-by phase     #
 - `agents` — `{agent_id, label, phase, state}` per agent the run's progress lists; `agent_id` joins to the `agent_id` column of `sessions --subagents`
 - `state_file` — The JSON file the row was read from
 - `project`, `project_name` — As in `messages`
+
+### `claude-nu live-sessions`
+
+The Claude Code sessions running on this machine, one row per process.
+Claude Code itself writes a registry file for each session in `~/.claude/sessions/<pid>.json`, and the command reads it.
+The format is undocumented, so a Claude Code update can change it.
+A file stays after a crash, and the kernel reuses a pid.
+So on Linux a row counts only while `/proc` shows that pid, not a zombie, with the start time the file records; on macOS the pid alone must be alive.
+The command takes no scope: the registry is machine-wide, and `where` narrows it.
+
+```nushell no-run
+claude-nu live-sessions | where cwd == (pwd)                       # sessions started in this directory
+claude-nu live-sessions | where status == busy | select name cwd   # the sessions working right now
+claude-nu live-sessions | where cwd == (pwd) | claude-nu messages  # what the sessions started here were asked
+```
+
+**Output:**
+- `session` — The session id; with `project` it makes the row a selector, so it pipes on into `messages` and the rest. A session that has not written its transcript yet fails that pipe
+- `name` — The name of the session, from `/rename`, `--name`, or the one Claude Code derives
+- `status` — `busy` or `idle`, as Claude Code last wrote it
+- `cwd` — Where the session started, not where it works now
+- `pid`, `kind` — The process and its kind (`interactive`, ...)
+- `started`, `updated` — When the session started and when its file last changed
+- `project`, `project_name` — As in `messages`, from `cwd`
 
 **Why the state file and not the agents' `journal.jsonl`.**
 The journal holds only started/result pairs, while the state file has the status, the duration, the error and each agent's label and phase.
