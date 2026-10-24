@@ -335,6 +335,13 @@ claude-nu workflows | sort-by started | last | get agents | group-by phase     #
 - `state_file` — The JSON file the row was read from
 - `project`, `project_name` — As in `messages`
 
+**Why the state file and not the agents' `journal.jsonl`.**
+The journal holds only started/result pairs, while the state file has the status, the duration, the error and each agent's label and phase.
+
+**Why `state_file` and not `path`.**
+A `path` column makes a row a session selector, so piping a run on into `messages` would read the JSON state as a transcript.
+`session` already names the session to pipe on.
+
 ### `claude-nu live-sessions`
 
 The Claude Code sessions running on this machine, one row per process.
@@ -358,13 +365,6 @@ claude-nu live-sessions | where cwd == (pwd) | claude-nu messages  # what the se
 - `pid`, `kind` — The process and its kind (`interactive`, ...)
 - `started`, `updated` — When the session started and when its file last changed
 - `project`, `project_name` — As in `messages`, from `cwd`
-
-**Why the state file and not the agents' `journal.jsonl`.**
-The journal holds only started/result pairs, while the state file has the status, the duration, the error and each agent's label and phase.
-
-**Why `state_file` and not `path`.**
-A `path` column makes a row a session selector, so piping a run on into `messages` would read the JSON state as a transcript.
-`session` already names the session to pipe on.
 
 ### `claude-nu export-session`
 
